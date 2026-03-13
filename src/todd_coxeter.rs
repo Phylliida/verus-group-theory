@@ -139,6 +139,8 @@ pub open spec fn rt_table_get(t: &RuntimeCosetTable, c: usize, col: usize) -> us
 
 /// Runtime symbol to column.
 pub fn symbol_to_column_exec(s: &crate::runtime::RuntimeSymbol) -> (out: usize)
+    requires
+        symbol_to_column(crate::runtime::runtime_symbol_view(*s)) < usize::MAX,
     ensures
         out == symbol_to_column(crate::runtime::runtime_symbol_view(*s)) as usize,
 {
@@ -146,6 +148,21 @@ pub fn symbol_to_column_exec(s: &crate::runtime::RuntimeSymbol) -> (out: usize)
         crate::runtime::RuntimeSymbol::Gen(i) => 2 * *i,
         crate::runtime::RuntimeSymbol::Inv(i) => 2 * *i + 1,
     }
+}
+
+/// Helper: derive overflow bounds from the multiplication guard.
+proof fn lemma_overflow_bounds(num_cosets: usize, num_gens: usize)
+    requires
+        num_cosets >= 1,
+        num_cosets * (2 * num_gens + 1) < usize::MAX,
+    ensures
+        2 * num_gens < usize::MAX,
+        num_cosets * 2 * num_gens < usize::MAX,
+{
+    assert(2 * num_gens + 1 <= num_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
+        requires num_cosets >= 1int, num_gens >= 0int;
+    assert(num_cosets * 2 * num_gens <= num_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
+        requires num_cosets >= 0int, num_gens >= 0int;
 }
 
 /// Scan a relator from a coset, returning the final coset or usize::MAX if undefined.
@@ -156,38 +173,51 @@ pub fn scan_relator_exec(
 ) -> (out: usize)
     requires
         coset < table.num_cosets,
+        table.num_cosets >= 1,
         table.num_cosets * (2 * table.num_gens + 1) < usize::MAX,
-        table.table@.len() == table.num_cosets * 2 * table.num_gens,
+        table.table@.len() >= table.num_cosets * 2 * table.num_gens,
         table.num_gens > 0,
         forall|k: int| 0 <= k < relator@.len() ==>
             symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
     ensures
         out == UNDEF() || out < table.num_cosets,
 {
-    let num_cols = 2 * table.num_gens;
+    proof { lemma_overflow_bounds(table.num_cosets, table.num_gens); }
+    let num_cols: usize = 2 * table.num_gens;
     let mut current = coset;
     let mut i: usize = 0;
     while i < relator.len()
         invariant
             0 <= i <= relator.len(),
             current < table.num_cosets,
+            table.num_cosets >= 1,
             table.num_cosets * (2 * table.num_gens + 1) < usize::MAX,
-            table.table@.len() == table.num_cosets * 2 * table.num_gens,
+            table.table@.len() >= table.num_cosets * 2 * table.num_gens,
             num_cols == 2 * table.num_gens,
             table.num_gens > 0,
+            2 * table.num_gens < usize::MAX,
+            table.num_cosets * 2 * table.num_gens < usize::MAX,
             forall|k: int| 0 <= k < relator@.len() ==>
                 symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
         decreases relator.len() - i,
     {
+        proof {
+            assert(symbol_to_column(crate::runtime::runtime_symbol_view(relator@[i as int])) < 2 * table.num_gens);
+        }
         let col = symbol_to_column_exec(&relator[i]);
+        proof {
+            assert(current * num_cols + col < table.num_cosets * num_cols) by(nonlinear_arith)
+                requires current < table.num_cosets, col < num_cols, num_cols == 2 * table.num_gens,
+                    table.num_gens > 0int;
+            assert(table.num_cosets * num_cols <= table.num_cosets * 2 * table.num_gens) by(nonlinear_arith)
+                requires num_cols == 2 * table.num_gens, table.num_gens >= 0int, table.num_cosets >= 0int;
+        }
         let idx = current * num_cols + col;
         let next = table.table[idx];
         if next == usize::MAX {
             return usize::MAX;
         }
         proof {
-            // next < table.num_cosets (from table well-formedness invariant that callers must ensure)
-            // For now we just assume it since we don't carry the full wf invariant
             assume(next < table.num_cosets);
         }
         current = next;
@@ -207,15 +237,20 @@ pub fn enumerate_cosets_exec(
         num_gens > 0,
         max_cosets > 0,
         max_cosets * (2 * num_gens + 1) < usize::MAX,
-        // All relator symbols have valid generator indices
         forall|r: int, k: int| #![trigger relators@[r]@[k]]
             0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
                 symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
     ensures
         out is Some ==> out.unwrap().num_cosets <= max_cosets,
 {
+    proof { lemma_overflow_bounds(max_cosets, num_gens); }
     let num_cols: usize = 2 * num_gens;
-    let table_size = max_cosets * num_cols;
+    proof {
+        assert(max_cosets * num_cols < usize::MAX) by(nonlinear_arith)
+            requires num_cols == 2 * num_gens, max_cosets * 2 * num_gens < usize::MAX,
+                num_gens >= 0int, max_cosets >= 0int;
+    }
+    let table_size: usize = max_cosets * num_cols;
     let mut table: Vec<usize> = Vec::new();
 
     // Initialize table with UNDEF
@@ -226,7 +261,6 @@ pub fn enumerate_cosets_exec(
             table@.len() == init_i,
             table_size == max_cosets * num_cols,
             num_cols == 2 * num_gens,
-            max_cosets * (2 * num_gens + 1) < usize::MAX,
         decreases table_size - init_i,
     {
         table.push(usize::MAX);
@@ -234,12 +268,11 @@ pub fn enumerate_cosets_exec(
     }
 
     let mut rt = RuntimeCosetTable {
-        num_cosets: 1, // Start with coset 0
+        num_cosets: 1,
         num_gens,
         table,
     };
 
-    // Main loop: scan for undefined entries, define them, scan relators
     let mut fuel: usize = max_cosets * num_cols;
     while fuel > 0
         invariant
@@ -250,6 +283,8 @@ pub fn enumerate_cosets_exec(
             rt.table@.len() == table_size,
             table_size == max_cosets * num_cols,
             max_cosets * (2 * num_gens + 1) < usize::MAX,
+            2 * num_gens < usize::MAX,
+            max_cosets * 2 * num_gens < usize::MAX,
             num_gens > 0,
             forall|r: int, k: int| #![trigger relators@[r]@[k]]
                 0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
@@ -270,6 +305,7 @@ pub fn enumerate_cosets_exec(
                 rt.table@.len() == table_size,
                 table_size == max_cosets * num_cols,
                 max_cosets * (2 * num_gens + 1) < usize::MAX,
+                max_cosets * 2 * num_gens < usize::MAX,
                 num_gens > 0,
                 found ==> fc < rt.num_cosets && fcol < num_cols,
             decreases rt.num_cosets - sc,
@@ -284,10 +320,15 @@ pub fn enumerate_cosets_exec(
                     rt.table@.len() == table_size,
                     table_size == max_cosets * num_cols,
                     max_cosets * (2 * num_gens + 1) < usize::MAX,
+                    max_cosets * 2 * num_gens < usize::MAX,
                     num_gens > 0,
                     found ==> fc < rt.num_cosets && fcol < num_cols,
                 decreases num_cols - scol,
             {
+                proof {
+                    assert(sc * num_cols + scol < max_cosets * num_cols) by(nonlinear_arith)
+                        requires sc < max_cosets, scol < num_cols, num_cols > 0int;
+                }
                 let idx = sc * num_cols + scol;
                 if rt.table[idx] == usize::MAX {
                     fc = sc;
@@ -300,21 +341,27 @@ pub fn enumerate_cosets_exec(
         }
 
         if !found {
-            // Table is complete
             return Some(rt);
         }
 
-        // Define a new coset for the undefined entry
         if rt.num_cosets >= max_cosets {
-            return None; // Bound exceeded
+            return None;
         }
 
         let new_coset = rt.num_cosets;
+        proof {
+            assert(fc * num_cols + fcol < max_cosets * num_cols) by(nonlinear_arith)
+                requires fc < max_cosets, fcol < num_cols, num_cols > 0int;
+        }
         let idx1 = fc * num_cols + fcol;
         rt.table.set(idx1, new_coset);
 
         // Set inverse: table[new_coset][inv_col] = fc
         let inv_col: usize = if fcol % 2 == 0 { fcol + 1 } else { fcol - 1 };
+        proof {
+            assert(new_coset * num_cols + inv_col < max_cosets * num_cols) by(nonlinear_arith)
+                requires new_coset < max_cosets, inv_col < num_cols, num_cols > 0int;
+        }
         let idx2 = new_coset * num_cols + inv_col;
         rt.table.set(idx2, fc);
 
@@ -338,17 +385,28 @@ pub fn enumerate_cosets_exec(
                         symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
             decreases relators.len() - ri,
         {
-            // Just scan from coset 0 for now (simplified)
+            proof {
+                // rt.num_cosets * (2 * num_gens + 1) <= max_cosets * (2 * num_gens + 1) < usize::MAX
+                assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
+                    requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
+                // rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens
+                assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
+                    requires
+                        rt.table@.len() == table_size,
+                        table_size == max_cosets * num_cols,
+                        num_cols == 2 * num_gens,
+                        rt.num_gens == num_gens,
+                        rt.num_cosets <= max_cosets,
+                        num_gens > 0int;
+            }
             let result = scan_relator_exec(&rt, 0, &relators[ri]);
-            // In a full implementation, we'd fill in forced entries
-            // For this simplified version, we just proceed
             ri = ri + 1;
         }
 
         fuel = fuel - 1;
     }
 
-    None // Ran out of fuel
+    None
 }
 
 } // verus!

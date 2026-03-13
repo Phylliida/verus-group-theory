@@ -160,6 +160,9 @@ pub proof fn lemma_cyclic_is_finite(n: nat)
             let word = p.relators[0];
             assert(word == generator_power(0, n));
             lemma_trace_power(t, n, c as nat, n);
+            // trace gives Some(((c + n) % n) as nat), need (c + n) % n == c
+            assert((c + n as int) % (n as int) == c) by(nonlinear_arith)
+                requires 0 <= c < n as int, n > 0int;
         }
     }
 }
