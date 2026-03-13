@@ -28,4 +28,22 @@ pub mod homomorphism;
 #[cfg(verus_keep_ghost)]
 pub mod concrete;
 
+#[cfg(verus_keep_ghost)]
+pub mod abelianization;
+
+#[cfg(verus_keep_ghost)]
+pub mod isomorphism;
+
+#[cfg(verus_keep_ghost)]
+pub mod tietze;
+
+#[cfg(verus_keep_ghost)]
+pub mod action;
+
+#[cfg(verus_keep_ghost)]
+pub mod todd_coxeter;
+
+#[cfg(verus_keep_ghost)]
+pub mod finite;
+
 pub mod runtime;

@@ -65,7 +65,7 @@ pub open spec fn compose_hom(h1: HomomorphismData, h2: HomomorphismData) -> Homo
 // --- Helpers ---
 
 /// apply_hom of a singleton word.
-proof fn lemma_hom_singleton(h: HomomorphismData, s: Symbol)
+pub proof fn lemma_hom_singleton(h: HomomorphismData, s: Symbol)
     ensures
         apply_hom(h, Seq::new(1, |_i: int| s)) =~= apply_hom_symbol(h, s),
 {
@@ -82,7 +82,7 @@ proof fn lemma_hom_singleton(h: HomomorphismData, s: Symbol)
 }
 
 /// concat(x, suffix) ≡ suffix when x ≡ ε.
-proof fn lemma_identity_prefix_equiv(p: Presentation, x: Word, suffix: Word)
+pub proof fn lemma_identity_prefix_equiv(p: Presentation, x: Word, suffix: Word)
     requires
         equiv_in_presentation(p, x, empty_word()),
     ensures

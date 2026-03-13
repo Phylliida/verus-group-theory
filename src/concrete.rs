@@ -180,9 +180,10 @@ pub proof fn lemma_cyclic_generator_order(n: nat, k: nat)
     } else {
         // a^(kn) = a^n · a^((k-1)n)
         // a^n ≡ ε, and by IH a^((k-1)n) ≡ ε
-        assert((k * n) as nat == (n + (k - 1) * n) as nat) by {
-            assert(k * n == n + (k - 1) * n);
-        }
+        assert(k * n == n + (k - 1) * n) by(nonlinear_arith)
+            requires k >= 2, n > 0,
+        {}
+        assert((k * n) as nat == (n + (k - 1) * n) as nat);
         lemma_generator_power_add(0, n, ((k - 1) * n) as nat);
 
         // a^n ≡ ε
