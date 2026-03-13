@@ -25,4 +25,7 @@ pub mod subgroup;
 #[cfg(verus_keep_ghost)]
 pub mod homomorphism;
 
+#[cfg(verus_keep_ghost)]
+pub mod concrete;
+
 pub mod runtime;
