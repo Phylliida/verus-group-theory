@@ -31,16 +31,19 @@ pub open spec fn inverse_perm_lookup(perm: Seq<nat>, y: nat) -> nat
 }
 
 /// A finite action is valid if all generator images are permutations
-/// and inverse generators act as inverse permutations.
+/// and relators act as the identity (presented group action, not just free group).
 pub open spec fn action_valid(a: FiniteAction) -> bool {
     a.perm_images.len() == a.presentation.num_generators
     && (forall|i: int| #![trigger a.perm_images[i]]
         0 <= i < a.perm_images.len() ==> is_permutation(a.perm_images[i], a.set_size))
+    && (forall|c: int, x: nat| #![trigger apply_action(a, a.presentation.relators[c], x)]
+        0 <= c < a.presentation.relators.len() && x < a.set_size ==>
+            apply_action(a, a.presentation.relators[c], x) == x)
 }
 
 /// Apply a single symbol's action to a point.
 pub open spec fn apply_action_symbol(a: FiniteAction, s: Symbol, x: nat) -> nat
-    recommends action_valid(a), x < a.set_size,
+    recommends x < a.set_size,
 {
     match s {
         Symbol::Gen(i) => a.perm_images[i as int][x as int],
@@ -51,7 +54,7 @@ pub open spec fn apply_action_symbol(a: FiniteAction, s: Symbol, x: nat) -> nat
 /// Apply a word's action to a point (right-to-left composition).
 /// apply_action(w, x) = w[0](w[1](...(w[n-1](x))...))
 pub open spec fn apply_action(a: FiniteAction, w: Word, x: nat) -> nat
-    recommends action_valid(a), x < a.set_size,
+    recommends x < a.set_size,
     decreases w.len(),
 {
     if w.len() == 0 {
@@ -158,7 +161,31 @@ pub proof fn lemma_perm_inverse_right(perm: Seq<nat>, n: nat, y: nat)
     assert(x < n && perm[x as int] == y);
 }
 
+/// Skip a value: maps {0..n}\{z} bijectively to {0..n-1}.
+spec fn skip_val(v: nat, z: nat) -> nat {
+    if v < z { v } else { (v - 1) as nat }
+}
+
+/// skip_val is injective on {0..n}\{z}.
+proof fn lemma_skip_val_injective(a: nat, b: nat, z: nat, n: nat)
+    requires
+        a < n, b < n, a != z, b != z, z < n,
+        skip_val(a, z) == skip_val(b, z),
+    ensures
+        a == b,
+{
+    if a < z && b < z {
+    } else if a > z && b > z {
+    } else if a < z && b > z {
+        // a == b-1, a < z, b > z >= a+1, so b-1 >= z > a. Contradiction: a == b-1 >= z > a.
+    } else {
+        // a > z && b < z: symmetric
+    }
+}
+
 /// A finite injection is surjective (pigeonhole).
+/// Proof: induction on n. Remove the last element's image via skip_val,
+/// giving a permutation of size n-1. By IH, find preimage, then lift.
 proof fn lemma_permutation_surjective(perm: Seq<nat>, n: nat, y: nat)
     requires
         is_permutation(perm, n),
@@ -168,21 +195,48 @@ proof fn lemma_permutation_surjective(perm: Seq<nat>, n: nat, y: nat)
     decreases n,
 {
     if n == 0 {
-        // impossible: y < 0
+    } else if perm[(n - 1) as int] == y {
+        assert(((n - 1) as nat) < n && perm[(n - 1) as int] == y);
     } else {
-        // Check if perm[n-1] == y
-        if perm[(n - 1) as int] == y {
-            assert(((n - 1) as nat) < n && perm[(n - 1) as int] == y);
-        } else {
-            // perm[n-1] != y, and perm[n-1] < n
-            // The restriction of perm to [0, n-2] is injective on values != perm[n-1]
-            // By pigeonhole, y must be hit by some index in [0, n-2]
-            // We prove this by contradiction: assume no x < n has perm[x] == y
-            // Then perm maps {0..n-1} into {0..n-1}\{y}, which is a set of size n-1
-            // But perm is injective, so n values go into n-1 slots: contradiction
-            // For Verus, we use assume(false) since the pigeonhole argument is complex
-            assume(exists|x: nat| x < n && perm[x as int] == y);
+        let z = perm[(n - 1) as int];
+        let n1 = (n - 1) as nat;
+        // Build restricted permutation: skip z from all values
+        let perm2 = Seq::new(n1, |i: int| skip_val(perm[i], z));
+
+        // All values < n-1
+        assert forall|i: int| 0 <= i < n1 implies (#[trigger] perm2[i]) < n1
+        by {
+            assert(perm[i] != z); // injectivity: i != n-1, perm[n-1] = z
+            if perm[i] < z {
+                // skip_val = perm[i] < z <= n-1
+            } else {
+                // perm[i] > z, skip_val = perm[i]-1 < n-1
+            }
         }
+
+        // Injectivity
+        assert forall|i: int, j: int| 0 <= i < n1 && 0 <= j < n1 && i != j
+            implies #[trigger] perm2[i] != #[trigger] perm2[j]
+        by {
+            assert(perm[i] != z);
+            assert(perm[j] != z);
+            if perm2[i] == perm2[j] {
+                lemma_skip_val_injective(perm[i], perm[j], z, n);
+            }
+        }
+
+        assert(is_permutation(perm2, n1));
+
+        // y != z, so skip_val(y, z) < n-1
+        let y2 = skip_val(y, z);
+
+        // Apply IH
+        lemma_permutation_surjective(perm2, n1, y2);
+        let x = choose|x: nat| x < n1 && perm2[x as int] == y2;
+        // perm2[x] = skip_val(perm[x], z) = skip_val(y, z)
+        assert(perm[x as int] != z); // injectivity: x < n-1, perm[n-1] = z
+        lemma_skip_val_injective(perm[x as int], y, z, n);
+        assert(x < n && perm[x as int] == y);
     }
 }
 
