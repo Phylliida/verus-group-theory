@@ -261,20 +261,18 @@ pub fn scan_and_fill_exec(
         old(table).num_gens > 0,
         forall|k: int| 0 <= k < relator@.len() ==>
             symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * old(table).num_gens,
-        // Entry validity: active entries are UNDEF or < num_cosets
-        forall|c: int, col: int| #![trigger rt_table_get(old(table), c as usize, col as usize)]
-            0 <= c < old(table).num_cosets && 0 <= col < 2 * old(table).num_gens ==>
-            rt_table_get(old(table), c as usize, col as usize) == UNDEF()
-            || rt_table_get(old(table), c as usize, col as usize) < old(table).num_cosets,
+        // Entry validity (flat array): all entries are UNDEF or < num_cosets
+        forall|i: int| #![trigger old(table).table@[i]]
+            0 <= i < old(table).table@.len() ==>
+            old(table).table@[i] == UNDEF() || old(table).table@[i] < old(table).num_cosets,
     ensures
         table.num_cosets == old(table).num_cosets,
         table.num_gens == old(table).num_gens,
         table.table@.len() == old(table).table@.len(),
-        // Entry validity preserved
-        forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
-            0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
-            rt_table_get(table, c as usize, col as usize) == UNDEF()
-            || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+        // Entry validity preserved (flat array)
+        forall|i: int| #![trigger table.table@[i]]
+            0 <= i < table.table@.len() ==>
+            table.table@[i] == UNDEF() || table.table@[i] < table.num_cosets,
 {
     proof { lemma_overflow_bounds(table.num_cosets, table.num_gens); }
     let num_cols: usize = 2 * table.num_gens;
@@ -301,10 +299,9 @@ pub fn scan_and_fill_exec(
             rlen == relator@.len(),
             forall|k: int| 0 <= k < relator@.len() ==>
                 symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
-            forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
-                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
-                rt_table_get(table, c as usize, col as usize) == UNDEF()
-                || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+            forall|i: int| #![trigger table.table@[i]]
+                0 <= i < table.table@.len() ==>
+                table.table@[i] == UNDEF() || table.table@[i] < table.num_cosets,
         decreases rlen - f_pos,
     {
         proof {
@@ -339,9 +336,8 @@ pub fn scan_and_fill_exec(
     }
 
     // --- Backward scan ---
-    // Scan from coset through inverse of relator symbols from the end
     let mut b_coset: usize = coset;
-    let mut b_pos: usize = rlen; // b_pos represents: we've scanned symbols at positions [b_pos, rlen)
+    let mut b_pos: usize = rlen;
     while b_pos > f_pos + 1
         invariant
             f_pos < b_pos,
@@ -357,13 +353,11 @@ pub fn scan_and_fill_exec(
             rlen == relator@.len(),
             forall|k: int| 0 <= k < relator@.len() ==>
                 symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
-            forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
-                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
-                rt_table_get(table, c as usize, col as usize) == UNDEF()
-                || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+            forall|i: int| #![trigger table.table@[i]]
+                0 <= i < table.table@.len() ==>
+                table.table@[i] == UNDEF() || table.table@[i] < table.num_cosets,
         decreases b_pos - f_pos,
     {
-        // We want to follow the inverse of relator[b_pos - 1] from b_coset
         let sym_pos = b_pos - 1;
         proof {
             assert(symbol_to_column(crate::runtime::runtime_symbol_view(relator@[sym_pos as int])) < 2 * table.num_gens);
@@ -371,13 +365,9 @@ pub fn scan_and_fill_exec(
         let col = symbol_to_column_exec(&relator[sym_pos]);
         let inv_col = inverse_column_exec(col);
         proof {
-            // inv_col < num_cols since col < num_cols
             assert(inv_col < num_cols) by {
                 if col % 2 == 0 {
                     assert(inv_col == col + 1);
-                    // col is even, col < 2*num_gens, so col+1 <= 2*num_gens
-                    // But col = 2*k for some k < num_gens, so col+1 = 2*k+1 < 2*num_gens
-                    // Actually, col < 2*num_gens and col is even means col <= 2*num_gens - 2, so col+1 <= 2*num_gens - 1 < 2*num_gens
                 } else {
                     assert(inv_col == col - 1);
                 }
@@ -417,7 +407,7 @@ pub fn scan_and_fill_exec(
             }
         }
 
-        // Check for coincidence: if already set to something different
+        // Check for coincidence
         proof {
             assert(f_coset * num_cols + col_f < table.num_cosets * num_cols) by(nonlinear_arith)
                 requires f_coset < table.num_cosets, col_f < num_cols, num_cols == 2 * table.num_gens, table.num_gens > 0int;
@@ -442,31 +432,23 @@ pub fn scan_and_fill_exec(
             return ScanResult::Coincidence;
         }
 
-        // Fill forward: table[f_coset][col_f] = b_coset
+        // Fill the deduction
         table.table.set(idx_fwd, b_coset);
-        // Fill backward: table[b_coset][inv_col_f] = f_coset
         table.table.set(idx_bwd, f_coset);
 
-        // Prove entry validity preserved
+        // Flat array validity preserved: both written values < num_cosets,
+        // and all other entries unchanged from the old valid state.
         proof {
-            // After two sets, table@[idx_fwd] might be b_coset or f_coset (if idx_fwd==idx_bwd)
-            // and table@[idx_bwd] is f_coset
-            assert forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
-                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens implies
-                rt_table_get(table, c as usize, col as usize) == UNDEF()
-                || rt_table_get(table, c as usize, col as usize) < table.num_cosets
+            assert forall|i: int| #![trigger table.table@[i]]
+                0 <= i < table.table@.len() implies
+                table.table@[i] == UNDEF() || table.table@[i] < table.num_cosets
             by {
-                // rt_table_get accesses table@[(c * 2 * num_gens + col) as int]
-                let flat = (c * 2 * table.num_gens as int + col) as int;
-                assert(flat == (c as usize * 2 * table.num_gens + col as usize) as int) by(nonlinear_arith)
-                    requires 0 <= c, 0 <= col, table.num_gens >= 0int;
-                // Now flat matches what rt_table_get computes
-                if flat == idx_bwd as int {
-                    // Last set wrote f_coset here
-                } else if flat == idx_fwd as int {
-                    // First set wrote b_coset, second set didn't touch this index
+                if i == idx_bwd as int {
+                    // f_coset < num_cosets
+                } else if i == idx_fwd as int {
+                    // b_coset < num_cosets
                 } else {
-                    // Neither set touched this index — old value preserved
+                    // unchanged
                 }
             }
         }
@@ -478,8 +460,15 @@ pub fn scan_and_fill_exec(
     ScanResult::Incomplete
 }
 
-/// Simple coset enumeration: define table entries and scan relators.
-/// Returns None if the bound is exceeded or a conflict is found.
+/// Todd-Coxeter coset enumeration.
+///
+/// Algorithm:
+///   Outer loop (≤ max_cosets iterations, each adds one coset):
+///     Phase 1: Saturate deductions by scanning all relators from all cosets.
+///     Phase 2: Check completeness — if no UNDEF entries, return the table.
+///     Phase 3: Define new coset at first UNDEF entry.
+///
+/// Returns None if max_cosets exceeded or a coincidence is found.
 pub fn enumerate_cosets_exec(
     num_gens: usize,
     relators: &Vec<Vec<crate::runtime::RuntimeSymbol>>,
@@ -513,6 +502,8 @@ pub fn enumerate_cosets_exec(
             table@.len() == init_i,
             table_size == max_cosets * num_cols,
             num_cols == 2 * num_gens,
+            forall|j: int| #![trigger table@[j]]
+                0 <= j < init_i ==> table@[j] == UNDEF(),
         decreases table_size - init_i,
     {
         table.push(usize::MAX);
@@ -525,8 +516,9 @@ pub fn enumerate_cosets_exec(
         table,
     };
 
-    let mut fuel: usize = max_cosets * num_cols;
-    while fuel > 0
+    // --- Outer loop: each iteration potentially adds one coset ---
+    let mut outer_fuel: usize = max_cosets;
+    while outer_fuel > 0
         invariant
             rt.num_cosets >= 1,
             rt.num_cosets <= max_cosets,
@@ -541,15 +533,113 @@ pub fn enumerate_cosets_exec(
             forall|r: int, k: int| #![trigger relators@[r]@[k]]
                 0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
                     symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
-        decreases fuel,
+            // Flat array validity
+            forall|j: int| #![trigger rt.table@[j]]
+                0 <= j < rt.table@.len() ==>
+                rt.table@[j] == UNDEF() || rt.table@[j] < rt.num_cosets,
+        decreases outer_fuel,
     {
-        // Find first undefined entry
-        let mut found = false;
+        // === Phase 1: Saturate deductions ===
+        let mut deduction_fuel: usize = max_cosets * num_cols;
+        let mut any_progress = true;
+        while any_progress && deduction_fuel > 0
+            invariant
+                rt.num_cosets >= 1,
+                rt.num_cosets <= max_cosets,
+                rt.num_gens == num_gens,
+                num_cols == 2 * num_gens,
+                rt.table@.len() == table_size,
+                table_size == max_cosets * num_cols,
+                max_cosets * (2 * num_gens + 1) < usize::MAX,
+                2 * num_gens < usize::MAX,
+                max_cosets * 2 * num_gens < usize::MAX,
+                num_gens > 0,
+                forall|r: int, k: int| #![trigger relators@[r]@[k]]
+                    0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
+                        symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
+                forall|j: int| #![trigger rt.table@[j]]
+                    0 <= j < rt.table@.len() ==>
+                    rt.table@[j] == UNDEF() || rt.table@[j] < rt.num_cosets,
+            decreases deduction_fuel,
+        {
+            any_progress = false;
+            let mut ri: usize = 0;
+            while ri < relators.len()
+                invariant
+                    0 <= ri <= relators.len(),
+                    rt.num_cosets >= 1,
+                    rt.num_cosets <= max_cosets,
+                    rt.num_gens == num_gens,
+                    num_cols == 2 * num_gens,
+                    rt.table@.len() == table_size,
+                    table_size == max_cosets * num_cols,
+                    max_cosets * (2 * num_gens + 1) < usize::MAX,
+                    2 * num_gens < usize::MAX,
+                    max_cosets * 2 * num_gens < usize::MAX,
+                    num_gens > 0,
+                    forall|r: int, k: int| #![trigger relators@[r]@[k]]
+                        0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
+                            symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
+                    forall|j: int| #![trigger rt.table@[j]]
+                        0 <= j < rt.table@.len() ==>
+                        rt.table@[j] == UNDEF() || rt.table@[j] < rt.num_cosets,
+                decreases relators.len() - ri,
+            {
+                let mut ci: usize = 0;
+                while ci < rt.num_cosets
+                    invariant
+                        0 <= ci <= rt.num_cosets,
+                        0 <= ri < relators.len(),
+                        rt.num_cosets >= 1,
+                        rt.num_cosets <= max_cosets,
+                        rt.num_gens == num_gens,
+                        num_cols == 2 * num_gens,
+                        rt.table@.len() == table_size,
+                        table_size == max_cosets * num_cols,
+                        max_cosets * (2 * num_gens + 1) < usize::MAX,
+                        2 * num_gens < usize::MAX,
+                        max_cosets * 2 * num_gens < usize::MAX,
+                        num_gens > 0,
+                        forall|r: int, k: int| #![trigger relators@[r]@[k]]
+                            0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
+                                symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
+                        forall|j: int| #![trigger rt.table@[j]]
+                            0 <= j < rt.table@.len() ==>
+                            rt.table@[j] == UNDEF() || rt.table@[j] < rt.num_cosets,
+                    decreases rt.num_cosets - ci,
+                {
+                    proof {
+                        assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
+                            requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
+                        assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
+                            requires
+                                rt.table@.len() == table_size,
+                                table_size == max_cosets * num_cols,
+                                num_cols == 2 * num_gens,
+                                rt.num_gens == num_gens,
+                                rt.num_cosets <= max_cosets,
+                                num_gens > 0int;
+                    }
+                    let result = scan_and_fill_exec(&mut rt, ci, &relators[ri]);
+                    match result {
+                        ScanResult::Deduction => { any_progress = true; },
+                        ScanResult::Coincidence => { return None; },
+                        _ => {},
+                    }
+                    ci = ci + 1;
+                }
+                ri = ri + 1;
+            }
+            deduction_fuel = deduction_fuel - 1;
+        }
+
+        // === Phase 2: Check completeness ===
+        let mut complete = true;
         let mut fc: usize = 0;
         let mut fcol: usize = 0;
 
         let mut sc: usize = 0;
-        while sc < rt.num_cosets && !found
+        while sc < rt.num_cosets
             invariant
                 0 <= sc <= rt.num_cosets,
                 rt.num_cosets <= max_cosets,
@@ -559,11 +649,13 @@ pub fn enumerate_cosets_exec(
                 max_cosets * (2 * num_gens + 1) < usize::MAX,
                 max_cosets * 2 * num_gens < usize::MAX,
                 num_gens > 0,
-                found ==> fc < rt.num_cosets && fcol < num_cols,
+                complete ==> true,
+                !complete ==> fc < rt.num_cosets && fcol < num_cols,
             decreases rt.num_cosets - sc,
         {
+            if !complete { break; }
             let mut scol: usize = 0;
-            while scol < num_cols && !found
+            while scol < num_cols
                 invariant
                     0 <= scol <= num_cols,
                     sc < rt.num_cosets,
@@ -574,9 +666,11 @@ pub fn enumerate_cosets_exec(
                     max_cosets * (2 * num_gens + 1) < usize::MAX,
                     max_cosets * 2 * num_gens < usize::MAX,
                     num_gens > 0,
-                    found ==> fc < rt.num_cosets && fcol < num_cols,
+                    complete ==> true,
+                    !complete ==> fc < rt.num_cosets && fcol < num_cols,
                 decreases num_cols - scol,
             {
+                if !complete { break; }
                 proof {
                     assert(sc * num_cols + scol < max_cosets * num_cols) by(nonlinear_arith)
                         requires sc < max_cosets, scol < num_cols, num_cols > 0int;
@@ -585,17 +679,19 @@ pub fn enumerate_cosets_exec(
                 if rt.table[idx] == usize::MAX {
                     fc = sc;
                     fcol = scol;
-                    found = true;
+                    complete = false;
                 }
                 scol = scol + 1;
             }
             sc = sc + 1;
         }
 
-        if !found {
+        if complete {
+            // Table is complete — enumeration done!
             return Some(rt);
         }
 
+        // === Phase 3: Define new coset ===
         if rt.num_cosets >= max_cosets {
             return None;
         }
@@ -619,61 +715,25 @@ pub fn enumerate_cosets_exec(
 
         rt.num_cosets = rt.num_cosets + 1;
 
-        // Scan all relators from all cosets to find forced entries
-        let mut ri: usize = 0;
-        while ri < relators.len()
-            invariant
-                0 <= ri <= relators.len(),
-                rt.num_cosets >= 1,
-                rt.num_cosets <= max_cosets,
-                rt.num_gens == num_gens,
-                num_cols == 2 * num_gens,
-                rt.table@.len() == table_size,
-                table_size == max_cosets * num_cols,
-                max_cosets * (2 * num_gens + 1) < usize::MAX,
-                num_gens > 0,
-                forall|r: int, k: int| #![trigger relators@[r]@[k]]
-                    0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
-                        symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
-            decreases relators.len() - ri,
-        {
-            let mut ci: usize = 0;
-            while ci < rt.num_cosets
-                invariant
-                    0 <= ci <= rt.num_cosets,
-                    0 <= ri < relators.len(),
-                    rt.num_cosets >= 1,
-                    rt.num_cosets <= max_cosets,
-                    rt.num_gens == num_gens,
-                    num_cols == 2 * num_gens,
-                    rt.table@.len() == table_size,
-                    table_size == max_cosets * num_cols,
-                    max_cosets * (2 * num_gens + 1) < usize::MAX,
-                    num_gens > 0,
-                    forall|r: int, k: int| #![trigger relators@[r]@[k]]
-                        0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
-                            symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
-                decreases rt.num_cosets - ci,
-            {
-                proof {
-                    assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
-                        requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
-                    assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
-                        requires
-                            rt.table@.len() == table_size,
-                            table_size == max_cosets * num_cols,
-                            num_cols == 2 * num_gens,
-                            rt.num_gens == num_gens,
-                            rt.num_cosets <= max_cosets,
-                            num_gens > 0int;
+        // Prove flat array validity after adding new coset
+        proof {
+            // new_coset == old num_cosets, so new_coset < new num_cosets
+            // fc < old num_cosets < new num_cosets
+            assert forall|j: int| #![trigger rt.table@[j]]
+                0 <= j < rt.table@.len() implies
+                rt.table@[j] == UNDEF() || rt.table@[j] < rt.num_cosets
+            by {
+                if j == idx2 as int {
+                    // fc < old num_cosets < new num_cosets
+                } else if j == idx1 as int {
+                    // new_coset == old num_cosets == new num_cosets - 1 < new num_cosets
+                } else {
+                    // unchanged: was UNDEF or < old num_cosets <= new num_cosets
                 }
-                let _result = scan_relator_exec(&rt, ci, &relators[ri]);
-                ci = ci + 1;
             }
-            ri = ri + 1;
         }
 
-        fuel = fuel - 1;
+        outer_fuel = outer_fuel - 1;
     }
 
     None
