@@ -258,18 +258,181 @@ pub proof fn lemma_remove_relator_forward(
 )
     requires
         idx < p.relators.len(),
+        equiv_in_presentation(remove_relator(p, idx), p.relators[idx as int], empty_word()),
         equiv_in_presentation(p, w1, w2),
     ensures
-        // We can only guarantee this if we have the derivability condition,
-        // but the forward direction (adding a relator) is always sound.
-        // Actually remove is the reverse: we need the relator derivable in the smaller pres.
-        // For now, prove the simple direction: remove_relator is a "sub-presentation"
-        // if every step in the derivation only uses relators != idx.
-        // The full proof requires tracking derivability, which we defer.
-        // Instead, prove that add_relator(remove_relator(p, idx), p.relators[idx])
-        // is equivalent to a reordering of p.
-        true,
+        equiv_in_presentation(remove_relator(p, idx), w1, w2),
 {
+    let d = choose|d: Derivation| derivation_valid(p, d, w1, w2);
+    lemma_derivation_replace_removed_relator(p, idx, d.steps, w1, w2);
+}
+
+/// Helper: prove relator index correspondence for remove_relator.
+/// For ri < idx: remove_relator(p, idx).relators[ri] == p.relators[ri].
+/// For ri >= idx: remove_relator(p, idx).relators[ri] == p.relators[ri + 1].
+proof fn lemma_remove_relator_index_map(p: Presentation, idx: nat, ri: nat)
+    requires
+        idx < p.relators.len(),
+        ri < p.relators.len() - 1,
+    ensures
+        ri < idx ==> remove_relator(p, idx).relators[ri as int] == p.relators[ri as int],
+        ri >= idx ==> remove_relator(p, idx).relators[ri as int] == p.relators[(ri + 1) as int],
+{
+    let rp = remove_relator(p, idx);
+    let left = p.relators.subrange(0, idx as int);
+    let right = p.relators.subrange(idx as int + 1, p.relators.len() as int);
+    assert(rp.relators =~= left + right);
+    if ri < idx {
+        assert(rp.relators[ri as int] == left[ri as int]);
+    } else {
+        let offset = (ri - idx) as int;
+        assert(rp.relators[ri as int] == right[offset]);
+        assert(right[offset] == p.relators[idx as int + 1 + offset]);
+    }
+}
+
+/// Core of T4 forward: replace uses of the removed relator in a derivation.
+/// Mirrors lemma_derivation_replace_new_relator for the remove direction.
+proof fn lemma_derivation_replace_removed_relator(
+    p: Presentation, idx: nat,
+    steps: Seq<DerivationStep>, w_start: Word, w_end: Word,
+)
+    requires
+        idx < p.relators.len(),
+        equiv_in_presentation(remove_relator(p, idx), p.relators[idx as int], empty_word()),
+        derivation_produces(p, steps, w_start) == Some(w_end),
+    ensures
+        equiv_in_presentation(remove_relator(p, idx), w_start, w_end),
+    decreases steps.len(),
+{
+    let p2 = remove_relator(p, idx);
+    if steps.len() == 0 {
+        assert(w_start == w_end);
+        lemma_equiv_refl(p2, w_start);
+    } else {
+        let step = steps.first();
+        let w_mid = apply_step(p, w_start, step).unwrap();
+        let rest = steps.drop_first();
+
+        // Recursion: w_mid → w_end is equivalent in p2
+        lemma_derivation_replace_removed_relator(p, idx, rest, w_mid, w_end);
+
+        // Now show w_start → w_mid is equivalent in p2
+        match step {
+            DerivationStep::FreeReduce { position } => {
+                assert(apply_step(p2, w_start, step) == Some(w_mid));
+                lemma_single_step_equiv(p2, w_start, step, w_mid);
+            },
+            DerivationStep::FreeExpand { position, symbol } => {
+                assert(apply_step(p2, w_start, step) == Some(w_mid));
+                lemma_single_step_equiv(p2, w_start, step, w_mid);
+            },
+            DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+                if relator_index < idx {
+                    // Relator at same index in p2
+                    lemma_remove_relator_index_map(p, idx, relator_index);
+                    let step2 = DerivationStep::RelatorInsert { position, relator_index, inverted };
+                    assert(get_relator(p2, relator_index, inverted) == get_relator(p, relator_index, inverted));
+                    assert(apply_step(p2, w_start, step2) == Some(w_mid));
+                    lemma_single_step_equiv(p2, w_start, step2, w_mid);
+                } else if relator_index > idx {
+                    // Relator shifted down by 1 in p2
+                    let ri2 = (relator_index - 1) as nat;
+                    lemma_remove_relator_index_map(p, idx, ri2);
+                    assert(p2.relators[ri2 as int] == p.relators[relator_index as int]);
+                    let step2 = DerivationStep::RelatorInsert { position, relator_index: ri2, inverted };
+                    assert(get_relator(p2, ri2, inverted) == get_relator(p, relator_index, inverted));
+                    assert(apply_step(p2, w_start, step2) == Some(w_mid));
+                    lemma_single_step_equiv(p2, w_start, step2, w_mid);
+                } else {
+                    // relator_index == idx: the removed relator
+                    // rel ≡ ε in p2 (from requires)
+                    let rel = get_relator(p, relator_index, inverted);
+                    assert(p.relators[idx as int] == p.relators[relator_index as int]);
+
+                    // Show rel ≡ ε in p2
+                    if !inverted {
+                        assert(rel == p.relators[idx as int]);
+                    } else {
+                        assert(rel == inverse_word(p.relators[idx as int]));
+                        lemma_inverse_of_identity(p2, p.relators[idx as int]);
+                    }
+
+                    // w_mid = prefix ++ rel ++ suffix, w_start = prefix ++ suffix
+                    let prefix = w_start.subrange(0, position);
+                    let suffix = w_start.subrange(position, w_start.len() as int);
+                    assert(w_start =~= concat(prefix, suffix));
+                    assert(w_mid =~= concat(concat(prefix, rel), suffix));
+
+                    // concat(prefix, rel) ≡ prefix
+                    lemma_equiv_concat_right(p2, prefix, rel, empty_word());
+                    assert(concat(prefix, empty_word()) =~= prefix);
+                    lemma_equiv_refl(p2, prefix);
+                    lemma_equiv_transitive(p2,
+                        concat(prefix, rel),
+                        concat(prefix, empty_word()),
+                        prefix,
+                    );
+
+                    // w_mid ≡ w_start
+                    lemma_equiv_concat_left(p2,
+                        concat(prefix, rel), prefix, suffix);
+                    lemma_equiv_symmetric(p2, w_mid, w_start);
+                }
+            },
+            DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+                if relator_index < idx {
+                    lemma_remove_relator_index_map(p, idx, relator_index);
+                    let step2 = DerivationStep::RelatorDelete { position, relator_index, inverted };
+                    assert(get_relator(p2, relator_index, inverted) == get_relator(p, relator_index, inverted));
+                    assert(apply_step(p2, w_start, step2) == Some(w_mid));
+                    lemma_single_step_equiv(p2, w_start, step2, w_mid);
+                } else if relator_index > idx {
+                    let ri2 = (relator_index - 1) as nat;
+                    lemma_remove_relator_index_map(p, idx, ri2);
+                    assert(p2.relators[ri2 as int] == p.relators[relator_index as int]);
+                    let step2 = DerivationStep::RelatorDelete { position, relator_index: ri2, inverted };
+                    assert(get_relator(p2, ri2, inverted) == get_relator(p, relator_index, inverted));
+                    assert(apply_step(p2, w_start, step2) == Some(w_mid));
+                    lemma_single_step_equiv(p2, w_start, step2, w_mid);
+                } else {
+                    // relator_index == idx: deleting the removed relator
+                    let rel = get_relator(p, relator_index, inverted);
+                    assert(p.relators[idx as int] == p.relators[relator_index as int]);
+
+                    let prefix = w_start.subrange(0, position);
+                    let rlen = rel.len();
+                    let suffix = w_start.subrange(position + rlen as int, w_start.len() as int);
+                    assert(w_mid =~= concat(prefix, suffix));
+                    assert(w_start.subrange(position, position + rlen as int) == rel);
+                    assert(w_start =~= concat(concat(prefix, rel), suffix));
+
+                    // Show rel ≡ ε in p2
+                    if inverted {
+                        assert(rel == inverse_word(p.relators[idx as int]));
+                        lemma_inverse_of_identity(p2, p.relators[idx as int]);
+                    }
+
+                    // concat(prefix, rel) ≡ prefix
+                    lemma_equiv_concat_right(p2, prefix, rel, empty_word());
+                    assert(concat(prefix, empty_word()) =~= prefix);
+                    lemma_equiv_refl(p2, prefix);
+                    lemma_equiv_transitive(p2,
+                        concat(prefix, rel),
+                        concat(prefix, empty_word()),
+                        prefix,
+                    );
+
+                    // w_start ≡ w_mid
+                    lemma_equiv_concat_left(p2,
+                        concat(prefix, rel), prefix, suffix);
+                }
+            },
+        }
+
+        // Chain: w_start ≡ w_mid ≡ w_end
+        lemma_equiv_transitive(p2, w_start, w_mid, w_end);
+    }
 }
 
 /// T1: Adding a generator preserves existing equivalences.

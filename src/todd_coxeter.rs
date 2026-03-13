@@ -214,11 +214,8 @@ pub fn scan_relator_exec(
         }
         let idx = current * num_cols + col;
         let next = table.table[idx];
-        if next == usize::MAX {
+        if next == usize::MAX || next >= table.num_cosets {
             return usize::MAX;
-        }
-        proof {
-            assume(next < table.num_cosets);
         }
         current = next;
         i = i + 1;
@@ -385,21 +382,39 @@ pub fn enumerate_cosets_exec(
                         symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
             decreases relators.len() - ri,
         {
-            proof {
-                // rt.num_cosets * (2 * num_gens + 1) <= max_cosets * (2 * num_gens + 1) < usize::MAX
-                assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
-                    requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
-                // rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens
-                assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
-                    requires
-                        rt.table@.len() == table_size,
-                        table_size == max_cosets * num_cols,
-                        num_cols == 2 * num_gens,
-                        rt.num_gens == num_gens,
-                        rt.num_cosets <= max_cosets,
-                        num_gens > 0int;
+            let mut ci: usize = 0;
+            while ci < rt.num_cosets
+                invariant
+                    0 <= ci <= rt.num_cosets,
+                    0 <= ri < relators.len(),
+                    rt.num_cosets >= 1,
+                    rt.num_cosets <= max_cosets,
+                    rt.num_gens == num_gens,
+                    num_cols == 2 * num_gens,
+                    rt.table@.len() == table_size,
+                    table_size == max_cosets * num_cols,
+                    max_cosets * (2 * num_gens + 1) < usize::MAX,
+                    num_gens > 0,
+                    forall|r: int, k: int| #![trigger relators@[r]@[k]]
+                        0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
+                            symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
+                decreases rt.num_cosets - ci,
+            {
+                proof {
+                    assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1)) by(nonlinear_arith)
+                        requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
+                    assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
+                        requires
+                            rt.table@.len() == table_size,
+                            table_size == max_cosets * num_cols,
+                            num_cols == 2 * num_gens,
+                            rt.num_gens == num_gens,
+                            rt.num_cosets <= max_cosets,
+                            num_gens > 0int;
+                }
+                let _result = scan_relator_exec(&rt, ci, &relators[ri]);
+                ci = ci + 1;
             }
-            let result = scan_relator_exec(&rt, 0, &relators[ri]);
             ri = ri + 1;
         }
 
