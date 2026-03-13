@@ -223,6 +223,261 @@ pub fn scan_relator_exec(
     current
 }
 
+/// Result of scanning a relator through the coset table.
+pub enum ScanResult {
+    /// Relator traces back correctly, no changes needed.
+    Closed,
+    /// Exactly one gap found and filled (+ inverse entry).
+    Deduction,
+    /// Multiple gaps remain, no deduction possible.
+    Incomplete,
+    /// Conflict detected: two different cosets forced equal.
+    Coincidence,
+}
+
+/// Compute the inverse column index (exec version).
+pub fn inverse_column_exec(col: usize) -> (out: usize)
+    requires col < usize::MAX,
+    ensures out == inverse_column(col as nat) as usize,
+{
+    if col % 2 == 0 { col + 1 } else { col - 1 }
+}
+
+/// Scan a relator from a coset with forward+backward scanning, filling single-gap deductions.
+///
+/// Forward scans from `coset` through relator symbols until hitting UNDEF.
+/// Backward scans from `coset` through inverse symbols until meeting the forward scan.
+/// If exactly one gap remains, fills it (deduction). If the endpoints disagree, returns Coincidence.
+pub fn scan_and_fill_exec(
+    table: &mut RuntimeCosetTable,
+    coset: usize,
+    relator: &Vec<crate::runtime::RuntimeSymbol>,
+) -> (out: ScanResult)
+    requires
+        coset < old(table).num_cosets,
+        old(table).num_cosets >= 1,
+        old(table).num_cosets * (2 * old(table).num_gens + 1) < usize::MAX,
+        old(table).table@.len() >= old(table).num_cosets * 2 * old(table).num_gens,
+        old(table).num_gens > 0,
+        forall|k: int| 0 <= k < relator@.len() ==>
+            symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * old(table).num_gens,
+        // Entry validity: active entries are UNDEF or < num_cosets
+        forall|c: int, col: int| #![trigger rt_table_get(old(table), c as usize, col as usize)]
+            0 <= c < old(table).num_cosets && 0 <= col < 2 * old(table).num_gens ==>
+            rt_table_get(old(table), c as usize, col as usize) == UNDEF()
+            || rt_table_get(old(table), c as usize, col as usize) < old(table).num_cosets,
+    ensures
+        table.num_cosets == old(table).num_cosets,
+        table.num_gens == old(table).num_gens,
+        table.table@.len() == old(table).table@.len(),
+        // Entry validity preserved
+        forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
+            0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
+            rt_table_get(table, c as usize, col as usize) == UNDEF()
+            || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+{
+    proof { lemma_overflow_bounds(table.num_cosets, table.num_gens); }
+    let num_cols: usize = 2 * table.num_gens;
+    let rlen = relator.len();
+
+    if rlen == 0 {
+        return ScanResult::Closed;
+    }
+
+    // --- Forward scan ---
+    let mut f_coset: usize = coset;
+    let mut f_pos: usize = 0;
+    while f_pos < rlen
+        invariant
+            0 <= f_pos <= rlen,
+            f_coset < table.num_cosets,
+            table.num_cosets >= 1,
+            table.num_cosets * (2 * table.num_gens + 1) < usize::MAX,
+            table.table@.len() >= table.num_cosets * 2 * table.num_gens,
+            num_cols == 2 * table.num_gens,
+            table.num_gens > 0,
+            2 * table.num_gens < usize::MAX,
+            table.num_cosets * 2 * table.num_gens < usize::MAX,
+            rlen == relator@.len(),
+            forall|k: int| 0 <= k < relator@.len() ==>
+                symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
+            forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
+                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
+                rt_table_get(table, c as usize, col as usize) == UNDEF()
+                || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+        decreases rlen - f_pos,
+    {
+        proof {
+            assert(symbol_to_column(crate::runtime::runtime_symbol_view(relator@[f_pos as int])) < 2 * table.num_gens);
+        }
+        let col = symbol_to_column_exec(&relator[f_pos]);
+        proof {
+            assert(f_coset * num_cols + col < table.num_cosets * num_cols) by(nonlinear_arith)
+                requires f_coset < table.num_cosets, col < num_cols, num_cols == 2 * table.num_gens, table.num_gens > 0int;
+            assert(table.num_cosets * num_cols <= table.num_cosets * 2 * table.num_gens) by(nonlinear_arith)
+                requires num_cols == 2 * table.num_gens, table.num_gens >= 0int, table.num_cosets >= 0int;
+        }
+        let idx = f_coset * num_cols + col;
+        let val = table.table[idx];
+        if val == usize::MAX {
+            break;
+        }
+        if val >= table.num_cosets {
+            break;
+        }
+        f_coset = val;
+        f_pos = f_pos + 1;
+    }
+
+    // If forward scan completed all symbols
+    if f_pos == rlen {
+        if f_coset == coset {
+            return ScanResult::Closed;
+        } else {
+            return ScanResult::Coincidence;
+        }
+    }
+
+    // --- Backward scan ---
+    // Scan from coset through inverse of relator symbols from the end
+    let mut b_coset: usize = coset;
+    let mut b_pos: usize = rlen; // b_pos represents: we've scanned symbols at positions [b_pos, rlen)
+    while b_pos > f_pos + 1
+        invariant
+            f_pos < b_pos,
+            b_pos <= rlen,
+            b_coset < table.num_cosets,
+            table.num_cosets >= 1,
+            table.num_cosets * (2 * table.num_gens + 1) < usize::MAX,
+            table.table@.len() >= table.num_cosets * 2 * table.num_gens,
+            num_cols == 2 * table.num_gens,
+            table.num_gens > 0,
+            2 * table.num_gens < usize::MAX,
+            table.num_cosets * 2 * table.num_gens < usize::MAX,
+            rlen == relator@.len(),
+            forall|k: int| 0 <= k < relator@.len() ==>
+                symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * table.num_gens,
+            forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
+                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens ==>
+                rt_table_get(table, c as usize, col as usize) == UNDEF()
+                || rt_table_get(table, c as usize, col as usize) < table.num_cosets,
+        decreases b_pos - f_pos,
+    {
+        // We want to follow the inverse of relator[b_pos - 1] from b_coset
+        let sym_pos = b_pos - 1;
+        proof {
+            assert(symbol_to_column(crate::runtime::runtime_symbol_view(relator@[sym_pos as int])) < 2 * table.num_gens);
+        }
+        let col = symbol_to_column_exec(&relator[sym_pos]);
+        let inv_col = inverse_column_exec(col);
+        proof {
+            // inv_col < num_cols since col < num_cols
+            assert(inv_col < num_cols) by {
+                if col % 2 == 0 {
+                    assert(inv_col == col + 1);
+                    // col is even, col < 2*num_gens, so col+1 <= 2*num_gens
+                    // But col = 2*k for some k < num_gens, so col+1 = 2*k+1 < 2*num_gens
+                    // Actually, col < 2*num_gens and col is even means col <= 2*num_gens - 2, so col+1 <= 2*num_gens - 1 < 2*num_gens
+                } else {
+                    assert(inv_col == col - 1);
+                }
+            }
+            assert(b_coset * num_cols + inv_col < table.num_cosets * num_cols) by(nonlinear_arith)
+                requires b_coset < table.num_cosets, inv_col < num_cols, num_cols == 2 * table.num_gens, table.num_gens > 0int;
+            assert(table.num_cosets * num_cols <= table.num_cosets * 2 * table.num_gens) by(nonlinear_arith)
+                requires num_cols == 2 * table.num_gens, table.num_gens >= 0int, table.num_cosets >= 0int;
+        }
+        let idx = b_coset * num_cols + inv_col;
+        let val = table.table[idx];
+        if val == usize::MAX {
+            break;
+        }
+        if val >= table.num_cosets {
+            break;
+        }
+        b_coset = val;
+        b_pos = b_pos - 1;
+    }
+
+    // --- Gap analysis ---
+    if b_pos == f_pos + 1 {
+        // Exactly one gap at position f_pos: fill table[f_coset][col_f] = b_coset
+        proof {
+            assert(symbol_to_column(crate::runtime::runtime_symbol_view(relator@[f_pos as int])) < 2 * table.num_gens);
+        }
+        let col_f = symbol_to_column_exec(&relator[f_pos]);
+        let inv_col_f = inverse_column_exec(col_f);
+        proof {
+            assert(inv_col_f < num_cols) by {
+                if col_f % 2 == 0 {
+                    assert(inv_col_f == col_f + 1);
+                } else {
+                    assert(inv_col_f == col_f - 1);
+                }
+            }
+        }
+
+        // Check for coincidence: if already set to something different
+        proof {
+            assert(f_coset * num_cols + col_f < table.num_cosets * num_cols) by(nonlinear_arith)
+                requires f_coset < table.num_cosets, col_f < num_cols, num_cols == 2 * table.num_gens, table.num_gens > 0int;
+            assert(table.num_cosets * num_cols <= table.num_cosets * 2 * table.num_gens) by(nonlinear_arith)
+                requires num_cols == 2 * table.num_gens, table.num_gens >= 0int, table.num_cosets >= 0int;
+        }
+        let idx_fwd = f_coset * num_cols + col_f;
+        let existing_fwd = table.table[idx_fwd];
+        if existing_fwd != usize::MAX && existing_fwd != b_coset {
+            return ScanResult::Coincidence;
+        }
+
+        proof {
+            assert(b_coset * num_cols + inv_col_f < table.num_cosets * num_cols) by(nonlinear_arith)
+                requires b_coset < table.num_cosets, inv_col_f < num_cols, num_cols == 2 * table.num_gens, table.num_gens > 0int;
+            assert(table.num_cosets * num_cols <= table.num_cosets * 2 * table.num_gens) by(nonlinear_arith)
+                requires num_cols == 2 * table.num_gens, table.num_gens >= 0int, table.num_cosets >= 0int;
+        }
+        let idx_bwd = b_coset * num_cols + inv_col_f;
+        let existing_bwd = table.table[idx_bwd];
+        if existing_bwd != usize::MAX && existing_bwd != f_coset {
+            return ScanResult::Coincidence;
+        }
+
+        // Fill forward: table[f_coset][col_f] = b_coset
+        table.table.set(idx_fwd, b_coset);
+        // Fill backward: table[b_coset][inv_col_f] = f_coset
+        table.table.set(idx_bwd, f_coset);
+
+        // Prove entry validity preserved
+        proof {
+            // After two sets, table@[idx_fwd] might be b_coset or f_coset (if idx_fwd==idx_bwd)
+            // and table@[idx_bwd] is f_coset
+            assert forall|c: int, col: int| #![trigger rt_table_get(table, c as usize, col as usize)]
+                0 <= c < table.num_cosets && 0 <= col < 2 * table.num_gens implies
+                rt_table_get(table, c as usize, col as usize) == UNDEF()
+                || rt_table_get(table, c as usize, col as usize) < table.num_cosets
+            by {
+                // rt_table_get accesses table@[(c * 2 * num_gens + col) as int]
+                let flat = (c * 2 * table.num_gens as int + col) as int;
+                assert(flat == (c as usize * 2 * table.num_gens + col as usize) as int) by(nonlinear_arith)
+                    requires 0 <= c, 0 <= col, table.num_gens >= 0int;
+                // Now flat matches what rt_table_get computes
+                if flat == idx_bwd as int {
+                    // Last set wrote f_coset here
+                } else if flat == idx_fwd as int {
+                    // First set wrote b_coset, second set didn't touch this index
+                } else {
+                    // Neither set touched this index — old value preserved
+                }
+            }
+        }
+
+        return ScanResult::Deduction;
+    }
+
+    // Multiple gaps
+    ScanResult::Incomplete
+}
+
 /// Simple coset enumeration: define table entries and scan relators.
 /// Returns None if the bound is exceeded or a conflict is found.
 pub fn enumerate_cosets_exec(
