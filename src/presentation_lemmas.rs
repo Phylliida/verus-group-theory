@@ -447,4 +447,86 @@ pub proof fn lemma_group_associative(p: Presentation, w1: Word, w2: Word, w3: Wo
     lemma_equiv_refl(p, concat(w1, concat(w2, w3)));
 }
 
+// ============================================================
+// Quotient Presentations
+// ============================================================
+
+/// A presentation p' extends p: same generators, relators are p's relators plus extras.
+pub open spec fn extends_presentation(p: Presentation, p_prime: Presentation) -> bool {
+    p_prime.num_generators == p.num_generators
+    && p.relators.len() <= p_prime.relators.len()
+    && p_prime.relators.subrange(0, p.relators.len() as int) == p.relators
+}
+
+/// A single derivation step valid in p is also valid in any extension p'.
+pub proof fn lemma_step_valid_in_extension(
+    p: Presentation, p_prime: Presentation,
+    w: Word, step: DerivationStep, w_prime: Word,
+)
+    requires
+        extends_presentation(p, p_prime),
+        apply_step(p, w, step) == Some(w_prime),
+    ensures
+        apply_step(p_prime, w, step) == Some(w_prime),
+{
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            // FreeReduce doesn't depend on the presentation
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            // FreeExpand doesn't depend on the presentation
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            // relator_index < p.relators.len() <= p_prime.relators.len()
+            // p_prime.relators[relator_index] == p.relators[relator_index]
+            assert(0 <= relator_index < p.relators.len());
+            assert(p_prime.relators[relator_index as int] == p.relators[relator_index as int]);
+            assert(get_relator(p_prime, relator_index, inverted) == get_relator(p, relator_index, inverted));
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            assert(0 <= relator_index < p.relators.len());
+            assert(p_prime.relators[relator_index as int] == p.relators[relator_index as int]);
+            assert(get_relator(p_prime, relator_index, inverted) == get_relator(p, relator_index, inverted));
+        },
+    }
+}
+
+/// A derivation valid in p is also valid in any extension p'.
+pub proof fn lemma_derivation_valid_in_extension(
+    p: Presentation, p_prime: Presentation,
+    steps: Seq<DerivationStep>, w1: Word, w2: Word,
+)
+    requires
+        extends_presentation(p, p_prime),
+        derivation_produces(p, steps, w1) == Some(w2),
+    ensures
+        derivation_produces(p_prime, steps, w1) == Some(w2),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+    } else {
+        let step = steps.first();
+        let next = apply_step(p, w1, step).unwrap();
+        lemma_step_valid_in_extension(p, p_prime, w1, step, next);
+        lemma_derivation_valid_in_extension(p, p_prime, steps.drop_first(), next, w2);
+    }
+}
+
+/// Adding relators preserves equivalence: if w1 ≡ w2 in p, then w1 ≡ w2 in any extension p'.
+pub proof fn lemma_quotient_preserves_equiv(
+    p: Presentation, p_prime: Presentation,
+    w1: Word, w2: Word,
+)
+    requires
+        extends_presentation(p, p_prime),
+        equiv_in_presentation(p, w1, w2),
+    ensures
+        equiv_in_presentation(p_prime, w1, w2),
+{
+    let d = choose|d: Derivation| derivation_valid(p, d, w1, w2);
+    lemma_derivation_valid_in_extension(p, p_prime, d.steps, w1, w2);
+    let d_prime = Derivation { steps: d.steps };
+    assert(derivation_valid(p_prime, d_prime, w1, w2));
+}
+
 } // verus!

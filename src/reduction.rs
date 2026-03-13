@@ -671,4 +671,300 @@ proof fn lemma_disjoint_confluence(w: Word, w1: Word, w2: Word, i: int, j: int)
     assert(reduces_to(w2, w3));
 }
 
+// ============================================================
+// Reduction Respects Concatenation
+// ============================================================
+
+/// If w1 reduces in one step to wa, then concat(w1, w2) reduces in one step to concat(wa, w2).
+/// Proof: cancellation at position i in w1 is also at position i in concat(w1, w2),
+/// and reduce_at(concat(w1, w2), i) =~= concat(reduce_at(w1, i), w2).
+pub proof fn lemma_one_step_concat_left(w1: Word, wa: Word, w2: Word)
+    requires
+        reduces_one_step(w1, wa),
+    ensures
+        reduces_one_step(concat(w1, w2), concat(wa, w2)),
+{
+    let i = choose|i: int| has_cancellation_at(w1, i) && wa == reduce_at(w1, i);
+    let cw = concat(w1, w2);
+    // cancellation at i in w1 means i < w1.len() - 1, so i < cw.len() - 1
+    assert(cw[i] == w1[i]);
+    assert(cw[i + 1] == w1[i + 1]);
+    assert(has_cancellation_at(cw, i));
+    // Show reduce_at(cw, i) =~= concat(wa, w2)
+    assert(reduce_at(cw, i) =~= concat(reduce_at(w1, i), w2)) by {
+        lemma_reduce_at_len(cw, i);
+        lemma_reduce_at_len(w1, i);
+        lemma_reduce_at_elements(cw, i);
+        lemma_reduce_at_elements(w1, i);
+        let result = reduce_at(cw, i);
+        let expected = concat(reduce_at(w1, i), w2);
+        assert(result.len() == expected.len());
+        assert forall|k: int| 0 <= k < result.len() implies #[trigger] result[k] == expected[k] by {
+            if k < i {
+                assert(result[k] == cw[k]);
+                assert(cw[k] == w1[k]);
+                assert(expected[k] == reduce_at(w1, i)[k]);
+                assert(reduce_at(w1, i)[k] == w1[k]);
+            } else if k < (w1.len() - 2) as int {
+                assert(result[k] == cw[k + 2]);
+                assert(cw[k + 2] == w1[k + 2]);
+                assert(expected[k] == reduce_at(w1, i)[k]);
+                assert(reduce_at(w1, i)[k] == w1[k + 2]);
+            } else {
+                // k >= w1.len() - 2, in the w2 part
+                assert(result[k] == cw[k + 2]);
+                let w2_idx = k - (w1.len() - 2) as int;
+                assert(cw[k + 2] == w2[w2_idx]);
+                assert(expected[k] == w2[w2_idx]);
+            }
+        };
+    };
+    assert(has_cancellation_at(cw, i) && concat(wa, w2) == reduce_at(cw, i));
+}
+
+/// If w1 reduces to w1' (multi-step), then concat(w1, w2) reduces to concat(w1', w2).
+pub proof fn lemma_reduces_to_concat_left(w1: Word, w1_prime: Word, w2: Word)
+    requires
+        reduces_to(w1, w1_prime),
+    ensures
+        reduces_to(concat(w1, w2), concat(w1_prime, w2)),
+{
+    let n = choose|n: nat| reduces_in_steps(w1, w1_prime, n);
+    lemma_reduces_to_concat_left_aux(w1, w1_prime, w2, n);
+}
+
+proof fn lemma_reduces_to_concat_left_aux(w1: Word, w1_prime: Word, w2: Word, n: nat)
+    requires
+        reduces_in_steps(w1, w1_prime, n),
+    ensures
+        reduces_to(concat(w1, w2), concat(w1_prime, w2)),
+    decreases n,
+{
+    if n == 0 {
+        lemma_reduces_to_refl(concat(w1, w2));
+    } else if w1 == w1_prime {
+        lemma_reduces_to_refl(concat(w1, w2));
+    } else {
+        let w_mid = choose|w_mid: Word|
+            reduces_one_step(w1, w_mid) && reduces_in_steps(w_mid, w1_prime, (n - 1) as nat);
+        lemma_one_step_concat_left(w1, w_mid, w2);
+        // concat(w1, w2) →¹ concat(w_mid, w2)
+        let cw1 = concat(w1, w2);
+        let cwm = concat(w_mid, w2);
+        assert(reduces_in_steps(cw1, cwm, 1nat)) by {
+            assert(reduces_in_steps(cwm, cwm, 0));
+            assert(reduces_one_step(cw1, cwm) && reduces_in_steps(cwm, cwm, 0));
+        };
+        // IH: concat(w_mid, w2) →* concat(w1_prime, w2)
+        lemma_reduces_to_concat_left_aux(w_mid, w1_prime, w2, (n - 1) as nat);
+        // chain
+        lemma_reduces_to_transitive(cw1, cwm, concat(w1_prime, w2));
+    }
+}
+
+/// If w2 reduces in one step to wb, then concat(w1, w2) reduces in one step to concat(w1, wb).
+/// Cancellation at position j in w2 maps to position j + w1.len() in concat(w1, w2).
+pub proof fn lemma_one_step_concat_right(w1: Word, w2: Word, wb: Word)
+    requires
+        reduces_one_step(w2, wb),
+    ensures
+        reduces_one_step(concat(w1, w2), concat(w1, wb)),
+{
+    let j = choose|j: int| has_cancellation_at(w2, j) && wb == reduce_at(w2, j);
+    let cw = concat(w1, w2);
+    let offset = w1.len() as int;
+    // cancellation at j+offset in concat
+    assert(cw[j + offset] == w2[j]);
+    assert(cw[j + offset + 1] == w2[j + 1]);
+    assert(has_cancellation_at(cw, j + offset));
+    // Show reduce_at(cw, j+offset) =~= concat(w1, wb)
+    assert(reduce_at(cw, j + offset) =~= concat(w1, reduce_at(w2, j))) by {
+        lemma_reduce_at_len(cw, j + offset);
+        lemma_reduce_at_len(w2, j);
+        lemma_reduce_at_elements(cw, j + offset);
+        lemma_reduce_at_elements(w2, j);
+        let result = reduce_at(cw, j + offset);
+        let expected = concat(w1, reduce_at(w2, j));
+        assert(result.len() == expected.len());
+        assert forall|k: int| 0 <= k < result.len() implies #[trigger] result[k] == expected[k] by {
+            if k < offset {
+                assert(result[k] == cw[k]);
+                assert(cw[k] == w1[k]);
+                assert(expected[k] == w1[k]);
+            } else if k < j + offset {
+                assert(result[k] == cw[k]);
+                assert(cw[k] == w2[k - offset]);
+                assert(expected[k] == reduce_at(w2, j)[k - offset]);
+                assert(reduce_at(w2, j)[k - offset] == w2[k - offset]);
+            } else {
+                // k >= j + offset
+                assert(result[k] == cw[k + 2]);
+                assert(cw[k + 2] == w2[k + 2 - offset]);
+                assert(expected[k] == reduce_at(w2, j)[k - offset]);
+                assert(reduce_at(w2, j)[k - offset] == w2[k - offset + 2]);
+            }
+        };
+    };
+    assert(has_cancellation_at(cw, j + offset) && concat(w1, wb) == reduce_at(cw, j + offset));
+}
+
+/// If w2 reduces to w2' (multi-step), then concat(w1, w2) reduces to concat(w1, w2').
+pub proof fn lemma_reduces_to_concat_right(w1: Word, w2: Word, w2_prime: Word)
+    requires
+        reduces_to(w2, w2_prime),
+    ensures
+        reduces_to(concat(w1, w2), concat(w1, w2_prime)),
+{
+    let n = choose|n: nat| reduces_in_steps(w2, w2_prime, n);
+    lemma_reduces_to_concat_right_aux(w1, w2, w2_prime, n);
+}
+
+proof fn lemma_reduces_to_concat_right_aux(w1: Word, w2: Word, w2_prime: Word, n: nat)
+    requires
+        reduces_in_steps(w2, w2_prime, n),
+    ensures
+        reduces_to(concat(w1, w2), concat(w1, w2_prime)),
+    decreases n,
+{
+    if n == 0 {
+        lemma_reduces_to_refl(concat(w1, w2));
+    } else if w2 == w2_prime {
+        lemma_reduces_to_refl(concat(w1, w2));
+    } else {
+        let w_mid = choose|w_mid: Word|
+            reduces_one_step(w2, w_mid) && reduces_in_steps(w_mid, w2_prime, (n - 1) as nat);
+        lemma_one_step_concat_right(w1, w2, w_mid);
+        let cw2 = concat(w1, w2);
+        let cwm = concat(w1, w_mid);
+        assert(reduces_in_steps(cw2, cwm, 1nat)) by {
+            assert(reduces_in_steps(cwm, cwm, 0));
+            assert(reduces_one_step(cw2, cwm) && reduces_in_steps(cwm, cwm, 0));
+        };
+        lemma_reduces_to_concat_right_aux(w1, w_mid, w2_prime, (n - 1) as nat);
+        lemma_reduces_to_transitive(cw2, cwm, concat(w1, w2_prime));
+    }
+}
+
+/// Reduction respects concatenation: if w1 →* w1' and w2 →* w2',
+/// then concat(w1, w2) →* concat(w1', w2').
+pub proof fn lemma_reduces_to_concat(w1: Word, w1_prime: Word, w2: Word, w2_prime: Word)
+    requires
+        reduces_to(w1, w1_prime),
+        reduces_to(w2, w2_prime),
+    ensures
+        reduces_to(concat(w1, w2), concat(w1_prime, w2_prime)),
+{
+    lemma_reduces_to_concat_left(w1, w1_prime, w2);
+    lemma_reduces_to_concat_right(w1_prime, w2, w2_prime);
+    lemma_reduces_to_transitive(concat(w1, w2), concat(w1_prime, w2), concat(w1_prime, w2_prime));
+}
+
+// ============================================================
+// Normal Form Uniqueness
+// ============================================================
+
+/// A reduced word is its own normal form.
+pub proof fn lemma_reduced_is_own_normal_form(w: Word)
+    requires
+        is_reduced(w),
+    ensures
+        normal_form(w) == w,
+{
+    lemma_reduce_n_steps_reduced(w, w.len());
+}
+
+/// If w reduces to r and r is reduced, then r is the normal form of w.
+pub proof fn lemma_reduces_to_reduced_unique(w: Word, r: Word)
+    requires
+        reduces_to(w, r),
+        is_reduced(r),
+    ensures
+        r == normal_form(w),
+{
+    // w →* r and w →* nf(w). By confluence, ∃ s with r →* s ←* nf(w).
+    lemma_reduces_to_normal_form(w);
+    lemma_confluence(w, r, normal_form(w));
+    let s = choose|s: Word| reduces_to(r, s) && reduces_to(normal_form(w), s);
+    // r is reduced, so r →* s means r == s
+    lemma_reduced_no_step(r);
+    lemma_reduced_reduces_to_self(r, s);
+    // nf(w) is reduced, so nf(w) →* s means nf(w) == s
+    lemma_normal_form_is_reduced(w);
+    lemma_reduced_no_step(normal_form(w));
+    lemma_reduced_reduces_to_self(normal_form(w), s);
+    // r == s == nf(w)
+}
+
+/// A reduced word can only reduce to itself.
+proof fn lemma_reduced_reduces_to_self(w: Word, w2: Word)
+    requires
+        is_reduced(w),
+        reduces_to(w, w2),
+    ensures
+        w == w2,
+{
+    let n = choose|n: nat| reduces_in_steps(w, w2, n);
+    lemma_reduced_reduces_to_self_aux(w, w2, n);
+}
+
+proof fn lemma_reduced_reduces_to_self_aux(w: Word, w2: Word, n: nat)
+    requires
+        is_reduced(w),
+        reduces_in_steps(w, w2, n),
+    ensures
+        w == w2,
+    decreases n,
+{
+    if n == 0 {
+    } else {
+        if w == w2 {
+        } else {
+            // w →¹ w_mid → contradiction since w is reduced
+            let w_mid = choose|w_mid: Word|
+                reduces_one_step(w, w_mid) && reduces_in_steps(w_mid, w2, (n - 1) as nat);
+            lemma_reduced_no_step(w);
+            // contradiction: reduces_one_step(w, w_mid) is impossible
+            assert(false);
+        }
+    }
+}
+
+/// Forward direction: freely_equivalent(w1, w2) → normal_form(w1) == normal_form(w2).
+pub proof fn lemma_normal_form_equiv_forward(w1: Word, w2: Word)
+    requires
+        freely_equivalent(w1, w2),
+    ensures
+        normal_form(w1) == normal_form(w2),
+{
+    // ∃ w with w1 →* w ←* w2
+    let w = choose|w: Word| reduces_to(w1, w) && reduces_to(w2, w);
+    // w1 →* nf(w1) and w1 →* w. By confluence, ∃ t1 with nf(w1) →* t1 ←* w.
+    lemma_reduces_to_normal_form(w1);
+    lemma_confluence(w1, normal_form(w1), w);
+    let t1 = choose|t1: Word| reduces_to(normal_form(w1), t1) && reduces_to(w, t1);
+    // nf(w1) is reduced, so nf(w1) == t1
+    lemma_normal_form_is_reduced(w1);
+    lemma_reduced_reduces_to_self(normal_form(w1), t1);
+    // So w →* nf(w1)
+
+    // w2 →* w →* nf(w1). By transitivity: w2 →* nf(w1).
+    lemma_reduces_to_transitive(w2, w, normal_form(w1));
+    // nf(w1) is reduced, so it's the normal form of w2
+    lemma_reduces_to_reduced_unique(w2, normal_form(w1));
+}
+
+/// Backward direction: normal_form(w1) == normal_form(w2) → freely_equivalent(w1, w2).
+pub proof fn lemma_normal_form_equiv_backward(w1: Word, w2: Word)
+    requires
+        normal_form(w1) == normal_form(w2),
+    ensures
+        freely_equivalent(w1, w2),
+{
+    // Both w1 and w2 reduce to normal_form(w1) == normal_form(w2)
+    lemma_reduces_to_normal_form(w1);
+    lemma_reduces_to_normal_form(w2);
+    let nf = normal_form(w1);
+    assert(reduces_to(w1, nf) && reduces_to(w2, nf));
+}
+
 } // verus!
