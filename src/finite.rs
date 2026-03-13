@@ -9,11 +9,19 @@ use crate::todd_coxeter::*;
 
 verus! {
 
+/// Every entry in the coset table is defined (no None entries).
+pub open spec fn coset_table_complete(t: CosetTable) -> bool {
+    forall|c: int, col: int|
+        0 <= c < t.num_cosets && 0 <= col < 2 * t.num_gens ==>
+            (#[trigger] t.table[c][col]) is Some
+}
+
 /// A presentation defines a finite group of the given order if
-/// there exists a valid, consistent, relator-closed coset table with that many cosets.
+/// there exists a valid, consistent, complete, relator-closed coset table with that many cosets.
 pub open spec fn is_finite_of_order(p: Presentation, order: nat) -> bool {
     exists|t: CosetTable|
         coset_table_consistent(t)
+        && coset_table_complete(t)
         && relator_closed(t, p)
         && t.num_cosets == order
         && t.num_gens == p.num_generators
@@ -144,6 +152,20 @@ pub proof fn lemma_cyclic_is_finite(n: nat)
                         requires 0 <= c < n as int, n > 0,
                     {}
                 }
+            }
+        }
+    }
+
+    // Prove completeness: every entry is Some
+    assert(coset_table_complete(t)) by {
+        assert forall|c: int, col: int|
+            0 <= c < n && 0 <= col < 2 implies
+                (#[trigger] t.table[c][col]) is Some
+        by {
+            if col == 0 {
+                assert(t.table[c][col] == Some(((c + 1) % (n as int)) as nat));
+            } else {
+                assert(t.table[c][col] == Some(((c + (n as int) - 1) % (n as int)) as nat));
             }
         }
     }
