@@ -712,6 +712,7 @@ proof fn lemma_relator_subword_trivial(
         word_valid(r, t.num_gens),
         is_coset_rep_system(t, |d: nat| tree_rep(parent, depth, d)),
         0 <= from <= to <= r.len(),
+        k <= non_tree_edges.len() as int,
         // Each position in [from, to) has its edge handled
         forall|j: int| from <= j < to ==> #[trigger]
             edge_at_pos_handled(t, parent, non_tree_edges, start, r, j, k),
@@ -961,35 +962,26 @@ proof fn lemma_step2_prefix_trivial(
             all_gens_trivial_in_trace(t, p, reps, start, prefix)
         }),
 {
-    let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
-    let prefix = r.subrange(0, pos);
 
-    assert(word_valid(prefix, t.num_gens)) by {
-        assert(word_valid(r, p.num_generators));
-        assert forall|j: int| 0 <= j < prefix.len()
-            implies symbol_valid(prefix[j], t.num_gens) by { assert(prefix[j] == r[j]); }
+    assert(word_valid(r, t.num_gens)) by { assert(word_valid(r, p.num_generators)); }
+
+    // From certificate_wf: positions j != pos have edge_at_pos_handled
+    // For prefix positions [0, pos), all j != pos, so all handled
+    assert forall|j: int| 0 <= j < pos implies #[trigger]
+        edge_at_pos_handled(t, parent, non_tree_edges, start, r, j, k) by {
+        assert(r[j] == r[j]); // trigger certificate_wf forall
     }
 
-    assert forall|j: int| #![trigger prefix[j]] 0 <= j < prefix.len() implies ({
-        let c_j = trace_word(t, start, prefix.subrange(0, j)).unwrap();
-        let s_j = prefix[j];
-        let col_j = symbol_to_column(s_j);
-        let d_j = t.table[c_j as int][col_j as int].unwrap();
-        &&& c_j < t.num_cosets
-        &&& symbol_valid(s_j, t.num_gens)
-        &&& col_j < 2 * t.num_gens
-        &&& t.table[c_j as int][col_j as int] is Some
-        &&& (is_tree_edge(parent, c_j, s_j, d_j)
-            || exists|m: int| 0 <= m < k && non_tree_edges[m] == (c_j, s_j))
-    }) by {
-        assert(prefix[j] == r[j]);
-        assert(prefix.subrange(0, j) =~= r.subrange(0, j));
-        assert(r[j] == r[j]); // trigger certificate_wf
-    }
+    // r.subrange(0, 0) =~= empty, trace(start, empty) = Some(start)
+    assert(r.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    lemma_trace_empty(t, start);
 
-    lemma_build_trivial_trace(parent, depth, t, p, reps, non_tree_edges, start, prefix, k);
+    lemma_relator_subword_trivial(parent, depth, t, p, non_tree_edges, start, r, 0, pos, k);
+
+    // Connect: c_from with from=0 is trace(start, r[0..0]) = start
+    assert(r.subrange(0, pos) =~= r.subrange(0, pos));
 }
 
 /// Step 2b: build suffix triviality for certificate k's relator.
@@ -1024,71 +1016,23 @@ proof fn lemma_step2_suffix_trivial(
             let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
             let (r_idx, start, pos) = certificates[k];
             let r = p.relators[r_idx];
-            let prefix = r.subrange(0, pos);
-            let sk = r[pos];
-            let s_pos_word: Word = Seq::new(1, |_j: int| sk);
             let suffix = r.subrange(pos + 1, r.len() as int);
-            let c_pos = trace_word(t, start, prefix).unwrap();
-            let d_pos = t.table[c_pos as int][symbol_to_column(sk) as int].unwrap();
-            all_gens_trivial_in_trace(t, p, reps, d_pos, suffix)
+            let c_after = trace_word(t, start, r.subrange(0, pos + 1)).unwrap();
+            all_gens_trivial_in_trace(t, p, reps, c_after, suffix)
         }),
 {
-    let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
-    let suffix = r.subrange(pos + 1, r.len() as int);
-    let prefix = r.subrange(0, pos);
 
     assert(word_valid(r, t.num_gens)) by { assert(word_valid(r, p.num_generators)); }
-    lemma_valid_word_columns(r, t.num_gens);
 
-    assert(word_valid(suffix, t.num_gens)) by {
-        assert forall|j: int| 0 <= j < suffix.len()
-            implies symbol_valid(suffix[j], t.num_gens) by { assert(suffix[j] == r[pos + 1 + j]); }
+    // Suffix positions: j in [pos+1, r.len()), all j != pos
+    assert forall|j: int| pos + 1 <= j < r.len() implies #[trigger]
+        edge_at_pos_handled(t, parent, non_tree_edges, start, r, j, k) by {
+        assert(r[j] == r[j]); // trigger
     }
 
-    // Compute c_pos, d_pos
-    assert(word_valid(prefix, t.num_gens)) by {
-        assert forall|j: int| 0 <= j < prefix.len()
-            implies symbol_valid(prefix[j], t.num_gens) by { assert(prefix[j] == r[j]); }
-    }
-    lemma_valid_word_columns(prefix, t.num_gens);
-    lemma_trace_complete(t, start, prefix);
-    let c_pos = trace_word(t, start, prefix).unwrap();
-
-    let sk = r[pos];
-    let s_pos_word: Word = Seq::new(1, |_j: int| sk);
-    assert forall|k2: int| 0 <= k2 < s_pos_word.len()
-        implies symbol_to_column(s_pos_word[k2]) < 2 * t.num_gens by { assert(s_pos_word[k2] == sk); }
-    lemma_trace_complete(t, c_pos, s_pos_word);
-    let d_pos = t.table[c_pos as int][symbol_to_column(sk) as int].unwrap();
-
-    // trace(start, r[0..pos+1]) facts
-    assert(r.subrange(0, pos + 1) =~= concat(prefix, s_pos_word));
-    lemma_trace_word_concat(t, start, prefix, s_pos_word);
-    lemma_valid_word_columns(r.subrange(0, pos + 1), t.num_gens);
-    lemma_trace_complete(t, start, r.subrange(0, pos + 1));
-
-    assert forall|j: int| #![trigger suffix[j]] 0 <= j < suffix.len() implies ({
-        let c_j = trace_word(t, d_pos, suffix.subrange(0, j)).unwrap();
-        let s_j = suffix[j];
-        let col_j = symbol_to_column(s_j);
-        let d_j = t.table[c_j as int][col_j as int].unwrap();
-        &&& c_j < t.num_cosets
-        &&& symbol_valid(s_j, t.num_gens)
-        &&& col_j < 2 * t.num_gens
-        &&& t.table[c_j as int][col_j as int] is Some
-        &&& (is_tree_edge(parent, c_j, s_j, d_j)
-            || exists|m: int| 0 <= m < k && non_tree_edges[m] == (c_j, s_j))
-    }) by {
-        assert(suffix[j] == r[pos + 1 + j]);
-        assert(suffix.subrange(0, j) =~= r.subrange(pos + 1, pos + 1 + j));
-        assert(r.subrange(0, pos + 1 + j) =~= concat(r.subrange(0, pos + 1), r.subrange(pos + 1, pos + 1 + j)));
-        lemma_trace_word_concat(t, start, r.subrange(0, pos + 1), r.subrange(pos + 1, pos + 1 + j));
-        assert(r[pos + 1 + j] == r[pos + 1 + j]); // trigger
-    }
-
-    lemma_build_trivial_trace(parent, depth, t, p, reps, non_tree_edges, d_pos, suffix, k);
+    lemma_relator_subword_trivial(parent, depth, t, p, non_tree_edges, start, r, pos + 1, r.len() as int, k);
 }
 
 /// Step 2: extract gen_pos from sp using prefix/suffix triviality.
@@ -1183,8 +1127,26 @@ proof fn lemma_all_non_tree_trivial(
 {
     if bound <= 0 {
     } else {
+        // Recursive call: establishes forall m < bound-1
         lemma_all_non_tree_trivial(parent, depth, t, p, non_tree_edges, certificates, bound - 1);
+
+        // Explicitly assert what the recursive call gives us, to help Z3
+        // connect it to lemma_non_tree_edge_trivial's requires
+        assert(0 <= (bound - 1) && (bound - 1) < non_tree_edges.len() as int);
+
+        // Prove the k-th edge is trivial
         lemma_non_tree_edge_trivial(parent, depth, t, p, non_tree_edges, certificates, bound - 1);
+
+        // Combine: forall m < bound-1 (IH) + edge bound-1 (above) => forall m < bound
+        assert forall|m: int| #![trigger non_tree_edges[m]] 0 <= m < bound implies
+            schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), non_tree_edges[m].0, non_tree_edges[m].1)
+        by {
+            if m < bound - 1 {
+                // From IH
+            } else {
+                // m == bound - 1, from lemma_non_tree_edge_trivial
+            }
+        }
     }
 }
 
