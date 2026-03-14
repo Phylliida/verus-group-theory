@@ -50,6 +50,14 @@ pub open spec fn hnn_relators(data: HNNData) -> Seq<Word> {
     Seq::new(data.associations.len(), |i: int| hnn_relator(data, i))
 }
 
+/// An HNN extension is valid when the base is valid and all association words are word_valid.
+pub open spec fn hnn_data_valid(data: HNNData) -> bool {
+    presentation_valid(data.base)
+    && forall|i: int| 0 <= i < data.associations.len() ==>
+        word_valid(data.associations[i].0, data.base.num_generators)
+        && word_valid(data.associations[i].1, data.base.num_generators)
+}
+
 /// The HNN presentation: base generators + t, base relators + HNN relators.
 pub open spec fn hnn_presentation(data: HNNData) -> Presentation {
     Presentation {
@@ -141,6 +149,7 @@ pub proof fn lemma_base_embeds_in_hnn(data: HNNData, w1: Word, w2: Word)
 pub proof fn lemma_hnn_conjugation(data: HNNData, i: int)
     requires
         0 <= i < data.associations.len(),
+        hnn_data_valid(data),
     ensures
         equiv_in_presentation(
             hnn_presentation(data),
@@ -157,14 +166,9 @@ pub proof fn lemma_hnn_conjugation(data: HNNData, i: int)
     let t_inv = stable_letter_inv(data);
     let lhs = Seq::new(1, |_j: int| t_inv) + a_i + Seq::new(1, |_j: int| t);
 
-    // The relator is t⁻¹·a_i·t·b_i⁻¹ at index bp.relators.len() + i
     let rel_idx = (bp.relators.len() + i) as nat;
     let relator = hnn_relator(data, i);
     assert(hp.relators[rel_idx as int] == relator);
-
-    // relator = lhs + inverse_word(b_i)
-    // So lhs · inverse_word(b_i) is a relator, hence ≡ ε
-    // Which means lhs ≡ b_i (lhs · b_i⁻¹ ≡ ε ⟹ lhs ≡ b_i)
 
     // Step 1: relator ≡ ε (delete the relator)
     let step = DerivationStep::RelatorDelete {
@@ -184,50 +188,111 @@ pub proof fn lemma_hnn_conjugation(data: HNNData, i: int)
     assert(derivation_valid(hp, d_del, relator, empty_word()));
     // relator ≡ ε
 
-    // relator =~= lhs + inverse_word(b_i)
     assert(relator =~= concat(lhs, inverse_word(b_i)));
 
-    // So lhs · b_i⁻¹ ≡ ε
-    // lhs ≡ lhs · ε (identity)
-    // lhs · ε ≡ lhs · (b_i⁻¹ · b_i) (right inverse, inverted)
-    // lhs · (b_i⁻¹ · b_i) =~= (lhs · b_i⁻¹) · b_i ≡ ε · b_i ≡ b_i
-
-    // More directly: lhs · b_i⁻¹ ≡ ε, so lhs ≡ b_i
-    // Since (lhs · b_i⁻¹) · b_i ≡ ε · b_i ≡ b_i
-    // and (lhs · b_i⁻¹) · b_i =~= lhs · (b_i⁻¹ · b_i) =~= lhs · ε =~= lhs... wait that's circular.
-
-    // Let's use: lhs · b_i⁻¹ ≡ ε
-    // ⟹ (lhs · b_i⁻¹) · b_i ≡ ε · b_i ≡ b_i  (concat on right)
-    // And lhs · (b_i⁻¹ · b_i) ≡ lhs · ε ≡ lhs  (right inverse + identity)
-    // But (lhs · b_i⁻¹) · b_i =~= lhs · (b_i⁻¹ · b_i) by assoc
-    // So lhs ≡ b_i
-
-    // Step: relator ≡ ε → concat(relator, b_i) ≡ concat(ε, b_i) ≡ b_i
+    // concat(relator, b_i) ≡ b_i
     lemma_equiv_concat_left(hp, relator, empty_word(), b_i);
     assert(concat(empty_word(), b_i) =~= b_i);
     lemma_equiv_refl(hp, b_i);
-
-    // concat(relator, b_i) ≡ b_i
     lemma_equiv_transitive(hp, concat(relator, b_i), concat(empty_word(), b_i), b_i);
 
-    // concat(relator, b_i) =~= concat(lhs + inverse_word(b_i), b_i)
-    //                       =~= lhs + (inverse_word(b_i) + b_i)
     assert(concat(relator, b_i) =~= concat(lhs, concat(inverse_word(b_i), b_i)));
 
-    // inverse_word(b_i) · b_i ≡ ε (left inverse)
+    // inv(b_i) · b_i ≡ ε
     lemma_word_inverse_left(hp, b_i);
 
-    // lhs · (b_i⁻¹ · b_i) ≡ lhs · ε
+    // lhs · (inv(b_i) · b_i) ≡ lhs · ε ≡ lhs
     lemma_equiv_concat_right(hp, lhs, concat(inverse_word(b_i), b_i), empty_word());
     assert(concat(lhs, empty_word()) =~= lhs);
     lemma_equiv_refl(hp, lhs);
-    // lhs · (b_i⁻¹ · b_i) ≡ lhs
     lemma_equiv_transitive(hp, concat(lhs, concat(inverse_word(b_i), b_i)), concat(lhs, empty_word()), lhs);
 
-    // Chain: lhs ≡ concat(lhs, concat(inv(b_i), b_i)) =~= concat(relator, b_i) ≡ b_i
-    // Need: lhs ≡ concat(lhs, concat(inv(b_i), b_i))
+    // Prove presentation_valid(hp) and word_valid for symmetric call
+    let n = hp.num_generators;
+    assert(n == bp.num_generators + 1);
+
+    // presentation_valid(hp)
+    assert(presentation_valid(hp)) by {
+        assert forall|k: int| 0 <= k < hp.relators.len()
+            implies word_valid(hp.relators[k], hp.num_generators)
+        by {
+            if k < bp.relators.len() as int {
+                // base relator: word_valid for bp.num_generators < hp.num_generators
+                assert(hp.relators[k] == bp.relators[k]);
+                assert(word_valid(bp.relators[k], bp.num_generators));
+                assert forall|m: int| 0 <= m < hp.relators[k].len()
+                    implies symbol_valid(hp.relators[k][m], n) by {
+                    assert(symbol_valid(hp.relators[k][m], bp.num_generators));
+                }
+            } else {
+                // HNN relator at index bp.relators.len() + j
+                let j = k - bp.relators.len() as int;
+                let hr = hnn_relator(data, j);
+                assert(hp.relators[k] == hr);
+                let (aj, bj) = data.associations[j];
+                // hr = t_inv ++ aj ++ t ++ inv(bj)
+                // All symbols valid for n = bp.num_generators + 1
+                assert(word_valid(aj, bp.num_generators));
+                crate::word::lemma_inverse_word_valid(bj, bp.num_generators);
+                assert forall|m: int| 0 <= m < hr.len()
+                    implies symbol_valid(hr[m], n) by {
+                    // manual: check each segment of the HNN relator
+                    let t_inv_w = Seq::new(1, |_j2: int| t_inv);
+                    let t_w = Seq::new(1, |_j2: int| t);
+                    let inv_bj = inverse_word(bj);
+                    // hr = t_inv_w + aj + t_w + inv_bj
+                    if m < 1 {
+                        // t_inv = Inv(bp.num_generators), valid for n
+                        assert(hr[m] == t_inv);
+                    } else if m < (1 + aj.len()) as int {
+                        assert(hr[m] == aj[(m - 1) as int]);
+                        assert(symbol_valid(aj[(m - 1) as int], bp.num_generators));
+                    } else if m < (2 + aj.len()) as int {
+                        assert(hr[m] == t);
+                    } else {
+                        let inv_idx = (m - 2 - aj.len()) as int;
+                        assert(hr[m] == inv_bj[inv_idx]);
+                        assert(symbol_valid(inv_bj[inv_idx], bp.num_generators));
+                    }
+                }
+            }
+        }
+    }
+
+    // word_valid for concat(lhs, concat(inv(b_i), b_i))
+    assert(word_valid(b_i, n)) by {
+        assert(word_valid(b_i, bp.num_generators));
+        assert forall|m: int| 0 <= m < b_i.len() implies symbol_valid(b_i[m], n) by {
+            assert(symbol_valid(b_i[m], bp.num_generators));
+        }
+    }
+    crate::word::lemma_inverse_word_valid(b_i, n);
+    crate::word::lemma_concat_word_valid(inverse_word(b_i), b_i, n);
+
+    assert(word_valid(a_i, n)) by {
+        assert(word_valid(a_i, bp.num_generators));
+        assert forall|m: int| 0 <= m < a_i.len() implies symbol_valid(a_i[m], n) by {
+            assert(symbol_valid(a_i[m], bp.num_generators));
+        }
+    }
+    assert(word_valid(lhs, n)) by {
+        assert forall|m: int| 0 <= m < lhs.len() implies symbol_valid(lhs[m], n) by {
+            let t_inv_w = Seq::new(1, |_j2: int| t_inv);
+            let t_w = Seq::new(1, |_j2: int| t);
+            if m < 1 {
+                assert(lhs[m] == t_inv);
+            } else if m < (1 + a_i.len()) as int {
+                assert(lhs[m] == a_i[(m - 1) as int]);
+            } else {
+                assert(lhs[m] == t);
+            }
+        }
+    }
+    crate::word::lemma_concat_word_valid(lhs, concat(inverse_word(b_i), b_i), n);
+
+    // symmetric: lhs ≡ concat(lhs, concat(inv(b_i), b_i))
     lemma_equiv_symmetric(hp, concat(lhs, concat(inverse_word(b_i), b_i)), lhs);
-    // lhs ≡ concat(relator, b_i) (they're =~= via assoc)
+    // chain: lhs ≡ concat(relator, b_i) ≡ b_i
     lemma_equiv_transitive(hp, lhs, concat(lhs, concat(inverse_word(b_i), b_i)), b_i);
 }
 

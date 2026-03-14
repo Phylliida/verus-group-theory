@@ -44,9 +44,11 @@ pub open spec fn add_generator_to_presentation(p: Presentation, defining_word: W
 // --- Helpers ---
 
 /// If w ≡ ε in p, then w⁻¹ ≡ ε in p.
-proof fn lemma_inverse_of_identity(p: Presentation, w: Word)
+pub proof fn lemma_inverse_of_identity(p: Presentation, w: Word)
     requires
         equiv_in_presentation(p, w, empty_word()),
+        word_valid(w, p.num_generators),
+        presentation_valid(p),
     ensures
         equiv_in_presentation(p, inverse_word(w), empty_word()),
 {
@@ -56,7 +58,10 @@ proof fn lemma_inverse_of_identity(p: Presentation, w: Word)
     lemma_equiv_concat_right(p, inverse_word(w), w, empty_word());
     assert(concat(inverse_word(w), empty_word()) =~= inverse_word(w));
     lemma_equiv_refl(p, inverse_word(w));
-    // inv(w) ≡ concat(inv(w), ε) ≡ concat(inv(w), w) ≡ ε
+
+    // symmetric on concat(inv(w), w): need word_valid
+    crate::word::lemma_inverse_word_valid(w, p.num_generators);
+    crate::word::lemma_concat_word_valid(inverse_word(w), w, p.num_generators);
     lemma_equiv_symmetric(p,
         concat(inverse_word(w), w),
         concat(inverse_word(w), empty_word()),
@@ -106,6 +111,9 @@ pub proof fn lemma_add_derivable_relator_reverse(
     requires
         equiv_in_presentation(p, r, empty_word()),
         equiv_in_presentation(add_relator(p, r), w1, w2),
+        word_valid(r, p.num_generators),
+        presentation_valid(p),
+        word_valid(w1, p.num_generators),
     ensures
         equiv_in_presentation(p, w1, w2),
 {
@@ -122,6 +130,9 @@ proof fn lemma_derivation_replace_new_relator(
     requires
         equiv_in_presentation(p, r, empty_word()),
         derivation_produces(add_relator(p, r), steps, w_start) == Some(w_end),
+        word_valid(r, p.num_generators),
+        presentation_valid(p),
+        word_valid(w_start, p.num_generators),
     ensures
         equiv_in_presentation(p, w_start, w_end),
     decreases steps.len(),
@@ -134,6 +145,20 @@ proof fn lemma_derivation_replace_new_relator(
         let step = steps.first();
         let w_mid = apply_step(p2, w_start, step).unwrap();
         let rest = steps.drop_first();
+
+        // Prove presentation_valid(p2) and word_valid(w_mid) for recursive call
+        assert(presentation_valid(p2)) by {
+            assert forall|i: int| 0 <= i < p2.relators.len()
+                implies word_valid(p2.relators[i], p2.num_generators)
+            by {
+                if i < p.relators.len() as int {
+                    assert(p2.relators[i] == p.relators[i]);
+                } else {
+                    assert(p2.relators[i] == r);
+                }
+            }
+        }
+        lemma_step_preserves_word_valid_pres(p2, w_start, step, w_mid);
 
         // Recursion: w_mid → w_end is equivalent in p
         lemma_derivation_replace_new_relator(p, r, rest, w_mid, w_end);
@@ -156,39 +181,23 @@ proof fn lemma_derivation_replace_new_relator(
                     lemma_single_step_equiv(p, w_start, step, w_mid);
                 } else {
                     // New relator: relator_index == p.relators.len()
-                    // w_mid = w_start[0..pos] ++ r_or_inv ++ w_start[pos..]
-                    // r_or_inv ≡ ε in p (given or via inverse)
-                    // So w_mid ≡ w_start[0..pos] ++ ε ++ w_start[pos..] = w_start
                     let rel = get_relator(p2, relator_index, inverted);
                     assert(p2.relators[p.relators.len() as int] == r);
 
-                    // rel = r or inverse(r), both ≡ ε in p
+                    // Show rel ≡ ε in p
                     if !inverted {
                         assert(rel == r);
                     } else {
-                        // inverse(r) ≡ ε since r ≡ ε → r⁻¹ ≡ ε
-                        lemma_equiv_symmetric(p, r, empty_word());
-                        // ε ≡ r → ε⁻¹ ≡ r⁻¹ → ε ≡ r⁻¹
-                        lemma_inverse_empty();
-                    }
-                    // In either case, rel ≡ ε in p
-                    // So inserting rel doesn't change the word up to equiv
-                    // w_mid = prefix ++ rel ++ suffix where w_start = prefix ++ suffix
-                    let prefix = w_start.subrange(0, position);
-                    let suffix = w_start.subrange(position, w_start.len() as int);
-                    assert(w_start =~= concat(prefix, suffix));
-                    // w_mid =~= concat(concat(prefix, rel), suffix)
-                    assert(w_mid =~= concat(concat(prefix, rel), suffix));
-                    // rel ≡ ε in p
-
-                    // Show rel ≡ ε
-                    if inverted {
                         assert(rel == inverse_word(r));
                         lemma_inverse_of_identity(p, r);
                     }
-                    // Now: rel ≡ ε in p
 
-                    // concat(prefix, rel) ≡ concat(prefix, ε) = prefix
+                    let prefix = w_start.subrange(0, position);
+                    let suffix = w_start.subrange(position, w_start.len() as int);
+                    assert(w_start =~= concat(prefix, suffix));
+                    assert(w_mid =~= concat(concat(prefix, rel), suffix));
+
+                    // concat(prefix, rel) ≡ prefix
                     lemma_equiv_concat_right(p, prefix, rel, empty_word());
                     assert(concat(prefix, empty_word()) =~= prefix);
                     lemma_equiv_refl(p, prefix);
@@ -198,10 +207,10 @@ proof fn lemma_derivation_replace_new_relator(
                         prefix,
                     );
 
-                    // concat(concat(prefix, rel), suffix) ≡ concat(prefix, suffix) = w_start
+                    // w_mid ≡ w_start
                     lemma_equiv_concat_left(p,
                         concat(prefix, rel), prefix, suffix);
-                    // So w_mid ≡ w_start, hence w_start ≡ w_mid
+                    // w_start ≡ w_mid (symmetric — w_mid is word_valid from step_preserves above)
                     lemma_equiv_symmetric(p, w_mid, w_start);
                 }
             },
@@ -260,6 +269,8 @@ pub proof fn lemma_remove_relator_forward(
         idx < p.relators.len(),
         equiv_in_presentation(remove_relator(p, idx), p.relators[idx as int], empty_word()),
         equiv_in_presentation(p, w1, w2),
+        presentation_valid(p),
+        word_valid(w1, p.num_generators),
     ensures
         equiv_in_presentation(remove_relator(p, idx), w1, w2),
 {
@@ -301,11 +312,29 @@ proof fn lemma_derivation_replace_removed_relator(
         idx < p.relators.len(),
         equiv_in_presentation(remove_relator(p, idx), p.relators[idx as int], empty_word()),
         derivation_produces(p, steps, w_start) == Some(w_end),
+        presentation_valid(p),
+        word_valid(w_start, p.num_generators),
     ensures
         equiv_in_presentation(remove_relator(p, idx), w_start, w_end),
     decreases steps.len(),
 {
     let p2 = remove_relator(p, idx);
+    // Prove presentation_valid(p2) — p2 has a subset of p's relators
+    assert(presentation_valid(p2)) by {
+        assert(p2.num_generators == p.num_generators);
+        let left = p.relators.subrange(0, idx as int);
+        let right = p.relators.subrange(idx as int + 1, p.relators.len() as int);
+        assert(p2.relators =~= left + right);
+        assert forall|i: int| 0 <= i < p2.relators.len()
+            implies word_valid(p2.relators[i], p2.num_generators)
+        by {
+            if i < idx as int {
+                assert(p2.relators[i] == p.relators[i]);
+            } else {
+                assert(p2.relators[i] == p.relators[i + 1]);
+            }
+        }
+    }
     if steps.len() == 0 {
         assert(w_start == w_end);
         lemma_equiv_refl(p2, w_start);
@@ -313,6 +342,9 @@ proof fn lemma_derivation_replace_removed_relator(
         let step = steps.first();
         let w_mid = apply_step(p, w_start, step).unwrap();
         let rest = steps.drop_first();
+
+        // Prove word_valid(w_mid) for recursive call and symmetric calls
+        lemma_step_preserves_word_valid_pres(p, w_start, step, w_mid);
 
         // Recursion: w_mid → w_end is equivalent in p2
         lemma_derivation_replace_removed_relator(p, idx, rest, w_mid, w_end);

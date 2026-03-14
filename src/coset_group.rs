@@ -42,27 +42,123 @@ pub open spec fn coset_inv(t: CosetTable, a: nat) -> nat
     trace_word(t, 0 as nat, inverse_word(coset_rep(t, a))).unwrap()
 }
 
-// ─── Soundness axiom (proof debt) ────────────────────────────────────────────
+// ─── Faithfulness axiom ─────────────────────────────────────────────────────
 
-/// SOUNDNESS AXIOM (proof debt): If two words trace to the same coset from 0,
-/// they are equivalent in the presented group.
-/// Full proof requires ghost invariants in enumerate_cosets_exec tracking
-/// equivalence classes through the Todd-Coxeter algorithm execution.
+/// A coset table is faithful: words tracing 0 → 0 are trivial in the group.
+/// This is the kernel condition: ker(φ) ⊆ ⟨⟨R⟩⟩ where φ(w) = trace(0, w).
+pub open spec fn coset_table_faithful(t: CosetTable, p: Presentation) -> bool {
+    forall|w: Word|
+        word_valid(w, p.num_generators)
+        && trace_word(t, 0 as nat, w) == Some(0 as nat)
+        ==> equiv_in_presentation(p, w, empty_word())
+}
+
+/// FAITHFULNESS AXIOM (proof debt): a complete+consistent+relator-closed table
+/// is faithful. Full proof requires ghost invariants in enumerate_cosets_exec
+/// tracking equivalence classes through the Todd-Coxeter algorithm execution.
 #[verifier::external_body]
-pub proof fn axiom_coset_table_sound(t: CosetTable, p: Presentation, w1: Word, w2: Word)
+pub proof fn axiom_coset_table_faithful(t: CosetTable, p: Presentation)
     requires
+        coset_table_wf(t),
         coset_table_consistent(t),
         coset_table_complete(t),
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+    ensures
+        coset_table_faithful(t, p),
+{
+    unimplemented!();
+}
+
+// ─── Soundness from faithfulness ────────────────────────────────────────────
+
+/// Soundness: if two words trace to the same coset from 0,
+/// they are equivalent in the presented group.
+/// Proved from faithfulness via group algebra:
+///   trace(0, w1) = trace(0, w2) = c
+///   → trace(0, w1 · w2⁻¹) = 0
+///   → w1 · w2⁻¹ ≡ ε  (faithfulness)
+///   → w1 ≡ w2         (group algebra)
+pub proof fn axiom_coset_table_sound(t: CosetTable, p: Presentation, w1: Word, w2: Word)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        relator_closed(t, p),
+        t.num_gens == p.num_generators,
+        presentation_valid(p),
+        t.num_cosets > 0,
         trace_word(t, 0 as nat, w1) == trace_word(t, 0 as nat, w2),
         word_valid(w1, p.num_generators),
         word_valid(w2, p.num_generators),
     ensures
         equiv_in_presentation(p, w1, w2),
 {
-    unimplemented!();
+    let n = p.num_generators;
+    let c = trace_word(t, 0 as nat, w1).unwrap();
+
+    // Step 1: trace(c, inv(w2)) = Some(0)
+    lemma_valid_word_columns(w2, n);
+    lemma_trace_complete(t, 0, w2);
+    lemma_trace_inverse_word(t, 0, w2);
+    // Now: trace(c, inverse_word(w2)) == Some(0)
+
+    // Step 2: trace(0, concat(w1, inv(w2))) = Some(0)
+    lemma_valid_word_columns(w1, n);
+    lemma_trace_complete(t, 0, w1);
+    lemma_trace_word_concat(t, 0 as nat, w1, inverse_word(w2));
+    // trace(0, concat(w1, inv(w2))) = trace(c, inv(w2)) = Some(0)
+
+    // Step 3: concat(w1, inv(w2)) is word_valid
+    crate::word::lemma_inverse_word_valid(w2, n);
+    let inv_w2 = inverse_word(w2);
+    lemma_concat_word_valid(w1, inv_w2, n);
+
+    // Step 4: faithfulness → concat(w1, inv(w2)) ≡ ε
+    axiom_coset_table_faithful(t, p);
+    assert(trace_word(t, 0 as nat, concat(w1, inv_w2)) == Some(0 as nat));
+    assert(equiv_in_presentation(p, concat(w1, inv_w2), empty_word()));
+
+    // Step 5: Group algebra chain: w1 ≡ w2
+    // w1 ≡ concat(w1, ε)                         [identity_right, symmetric]
+    lemma_concat_identity_right(p, w1);
+    lemma_equiv_symmetric(p, concat(w1, empty_word()), w1);
+    // w1 ≡ concat(w1, empty_word())
+
+    // concat(w1, ε) ≡ concat(w1, concat(inv(w2), w2))  [inv_left, symmetric, equiv_concat]
+    lemma_word_inverse_left(p, w2);
+    lemma_equiv_symmetric(p, concat(inv_w2, w2), empty_word());
+    // empty_word() ≡ concat(inv_w2, w2)
+    lemma_equiv_refl(p, w1);
+    lemma_equiv_concat(p, w1, w1, empty_word(), concat(inv_w2, w2));
+    // concat(w1, ε) ≡ concat(w1, concat(inv_w2, w2))
+
+    // concat(w1, concat(inv_w2, w2)) =~= concat(concat(w1, inv_w2), w2)  [assoc]
+    lemma_concat_assoc(w1, inv_w2, w2);
+    // These are extensionally equal, so equiv transfers
+
+    // concat(concat(w1, inv_w2), w2) ≡ concat(ε, w2)  [step 4 + equiv_concat]
+    lemma_equiv_refl(p, w2);
+    lemma_equiv_concat(p, concat(w1, inv_w2), empty_word(), w2, w2);
+    // concat(concat(w1, inv_w2), w2) ≡ concat(ε, w2)
+
+    // concat(ε, w2) ≡ w2  [identity_left]
+    lemma_concat_identity_left(p, w2);
+
+    // Chain: w1 ≡ concat(w1, ε) ≡ concat(w1, concat(inv_w2, w2))
+    //        == concat(concat(w1, inv_w2), w2) ≡ concat(ε, w2) ≡ w2
+    lemma_equiv_transitive(p, w1, concat(w1, empty_word()), concat(w1, concat(inv_w2, w2)));
+    // w1 ≡ concat(w1, concat(inv_w2, w2))
+
+    // Use =~= to bridge assoc
+    assert(concat(w1, concat(inv_w2, w2)) =~= concat(concat(w1, inv_w2), w2));
+
+    lemma_equiv_transitive(p, w1, concat(concat(w1, inv_w2), w2), concat(empty_word(), w2));
+    // w1 ≡ concat(ε, w2)
+
+    lemma_equiv_transitive(p, w1, concat(empty_word(), w2), w2);
+    // w1 ≡ w2
 }
 
 // ─── Well-definedness of coset_mul ───────────────────────────────────────────
@@ -359,7 +455,7 @@ proof fn lemma_inv_word_traceable(
     ensures
         trace_word(t, 0 as nat, inverse_word(w_a)) is Some,
 {
-    lemma_inverse_word_valid(w_a, t.num_gens);
+    crate::word::lemma_inverse_word_valid(w_a, t.num_gens);
     lemma_valid_word_columns(inverse_word(w_a), t.num_gens);
     lemma_trace_complete(t, 0, inverse_word(w_a));
 }
@@ -397,7 +493,7 @@ pub proof fn lemma_coset_inv_right(
 
     // w_inv_coset also traces 0 → inv_a
     lemma_columns_to_word_valid(w_inv_coset, t.num_gens);
-    lemma_inverse_word_valid(w_a, t.num_gens);
+    crate::word::lemma_inverse_word_valid(w_a, t.num_gens);
     lemma_same_coset_same_trace(t, p, a, w_inv_coset, inv_w_a, inv_a);
 }
 
@@ -429,7 +525,7 @@ pub proof fn lemma_coset_inv_left(
 
     // mul(inv_a, a) = trace(inv_a, w_a)
     // trace(0, inv_w_a ++ w_a) = trace(inv_a, w_a)
-    lemma_inverse_word_valid(w_a, t.num_gens);
+    crate::word::lemma_inverse_word_valid(w_a, t.num_gens);
     lemma_valid_word_columns(inverse_word(w_a), t.num_gens);
     lemma_trace_complete(t, 0, inv_w_a);
     lemma_trace_word_concat(t, 0 as nat, inv_w_a, w_a);

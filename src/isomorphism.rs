@@ -30,6 +30,7 @@ pub proof fn lemma_kernel_closed_under_equiv(h: HomomorphismData, w1: Word, w2: 
         is_valid_homomorphism(h),
         equiv_in_presentation(h.source, w1, w2),
         in_kernel(h, w1),
+        word_valid(w1, h.source.num_generators),
     ensures
         in_kernel(h, w2),
 {
@@ -37,6 +38,7 @@ pub proof fn lemma_kernel_closed_under_equiv(h: HomomorphismData, w1: Word, w2: 
     lemma_hom_preserves_equiv(h, w1, w2);
     // hom(w1) ≡ ε (w1 in kernel)
     // So hom(w2) ≡ hom(w1) ≡ ε
+    lemma_apply_hom_word_valid(h, w1);
     lemma_equiv_symmetric(h.target, apply_hom(h, w1), apply_hom(h, w2));
     lemma_equiv_transitive(h.target, apply_hom(h, w2), apply_hom(h, w1), empty_word());
 }
@@ -71,43 +73,17 @@ pub proof fn lemma_kernel_closed_under_concat(h: HomomorphismData, w1: Word, w2:
 /// Kernel is closed under word inverse.
 pub proof fn lemma_kernel_closed_under_inverse(h: HomomorphismData, w: Word)
     requires
+        is_valid_homomorphism(h),
+        word_valid(w, h.source.num_generators),
         in_kernel(h, w),
     ensures
         in_kernel(h, inverse_word(w)),
 {
     // hom(w⁻¹) =~= hom(w)⁻¹
     lemma_hom_respects_inverse(h, w);
-    // hom(w) ≡ ε, so hom(w)⁻¹ ≡ ε⁻¹ = ε
-    // Need: equiv(hom(w)⁻¹, ε)
-
-    // ε⁻¹ = ε
-    lemma_inverse_empty();
-
-    // hom(w) ≡ ε → hom(w)⁻¹ ≡ ε⁻¹ = ε
-    // Use: hom(w)⁻¹ · hom(w) ≡ ε (left inverse)
-    lemma_word_inverse_left(h.target, apply_hom(h, w));
-    // inverse_word(hom(w)) · hom(w) ≡ ε
-
-    // hom(w) ≡ ε, so inverse_word(hom(w)) · hom(w) ≡ inverse_word(hom(w)) · ε = inverse_word(hom(w))
-    lemma_equiv_concat_right(h.target,
-        inverse_word(apply_hom(h, w)),
-        apply_hom(h, w),
-        empty_word(),
-    );
-    assert(concat(inverse_word(apply_hom(h, w)), empty_word()) =~= inverse_word(apply_hom(h, w)));
-    lemma_equiv_refl(h.target, inverse_word(apply_hom(h, w)));
-
-    // inverse_word(hom(w)) ≡ concat(inverse_word(hom(w)), hom(w)) ≡ ε
-    lemma_equiv_symmetric(h.target,
-        concat(inverse_word(apply_hom(h, w)), apply_hom(h, w)),
-        concat(inverse_word(apply_hom(h, w)), empty_word()),
-    );
-    lemma_equiv_transitive(h.target,
-        inverse_word(apply_hom(h, w)),
-        concat(inverse_word(apply_hom(h, w)), apply_hom(h, w)),
-        empty_word(),
-    );
-
+    // hom(w) ≡ ε (in_kernel), so inverse_word(hom(w)) ≡ ε
+    lemma_apply_hom_word_valid(h, w);
+    crate::tietze::lemma_inverse_of_identity(h.target, apply_hom(h, w));
     // apply_hom(inverse_word(w)) =~= inverse_word(apply_hom(w))
     // So in_kernel(inverse_word(w))
 }

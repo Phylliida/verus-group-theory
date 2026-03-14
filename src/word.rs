@@ -158,4 +158,51 @@ pub proof fn lemma_concat_len(w1: Word, w2: Word)
 {
 }
 
+/// inverse_word preserves word_valid.
+pub proof fn lemma_inverse_word_valid(w: Word, n: nat)
+    requires word_valid(w, n),
+    ensures word_valid(inverse_word(w), n),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        assert(inverse_word(w) =~= empty_word());
+    } else {
+        let rest = w.drop_first();
+        assert(word_valid(rest, n)) by {
+            assert forall|i: int| 0 <= i < rest.len()
+                implies symbol_valid(rest[i], n) by { assert(rest[i] == w[i + 1]); }
+        }
+        lemma_inverse_word_valid(rest, n);
+        let inv_rest = inverse_word(rest);
+        let inv_first = inverse_symbol(w.first());
+        assert(inverse_word(w) =~= inv_rest + seq![inv_first]);
+        lemma_inverse_preserves_valid(w.first(), n);
+        assert forall|i: int| 0 <= i < inverse_word(w).len()
+            implies symbol_valid(inverse_word(w)[i], n)
+        by {
+            if i < inv_rest.len() {
+                assert(inverse_word(w)[i] == inv_rest[i]);
+            } else {
+                assert(inverse_word(w)[i] == inv_first);
+            }
+        }
+    }
+}
+
+/// Concatenation preserves word_valid.
+pub proof fn lemma_concat_word_valid(w1: Word, w2: Word, n: nat)
+    requires word_valid(w1, n), word_valid(w2, n),
+    ensures word_valid(concat(w1, w2), n),
+{
+    assert forall|k: int| 0 <= k < concat(w1, w2).len()
+        implies symbol_valid(concat(w1, w2)[k], n)
+    by {
+        if k < w1.len() {
+            assert(concat(w1, w2)[k] == w1[k]);
+        } else {
+            assert(concat(w1, w2)[k] == w2[k - w1.len()]);
+        }
+    }
+}
+
 } // verus!

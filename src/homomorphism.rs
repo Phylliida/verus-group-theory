@@ -33,11 +33,17 @@ pub open spec fn apply_hom(h: HomomorphismData, w: Word) -> Word
     }
 }
 
-/// A homomorphism is valid if images.len() == num_generators and each relator image ≡ ε.
+/// A homomorphism is valid if images.len() == num_generators,
+/// both presentations are valid, generator images are word_valid,
+/// and each relator image ≡ ε.
 pub open spec fn is_valid_homomorphism(h: HomomorphismData) -> bool {
     h.generator_images.len() == h.source.num_generators
-    && forall|i: int| 0 <= i < h.source.relators.len() ==>
-        equiv_in_presentation(h.target, apply_hom(h, h.source.relators[i]), empty_word())
+    && presentation_valid(h.source)
+    && presentation_valid(h.target)
+    && (forall|i: int| 0 <= i < h.generator_images.len() ==>
+        word_valid(h.generator_images[i], h.target.num_generators))
+    && (forall|i: int| 0 <= i < h.source.relators.len() ==>
+        equiv_in_presentation(h.target, apply_hom(h, h.source.relators[i]), empty_word()))
 }
 
 /// The identity homomorphism: Gen(i) → [Gen(i)].
@@ -81,6 +87,47 @@ pub proof fn lemma_hom_singleton(h: HomomorphismData, s: Symbol)
     assert(concat(apply_hom_symbol(h, s), empty_word()) =~= apply_hom_symbol(h, s));
 }
 
+/// Image of a single symbol is word_valid for target.
+proof fn lemma_apply_hom_symbol_word_valid(h: HomomorphismData, s: Symbol)
+    requires
+        is_valid_homomorphism(h),
+        symbol_valid(s, h.source.num_generators),
+    ensures
+        word_valid(apply_hom_symbol(h, s), h.target.num_generators),
+{
+    match s {
+        Symbol::Gen(i) => {},
+        Symbol::Inv(i) => {
+            crate::word::lemma_inverse_word_valid(
+                h.generator_images[i as int], h.target.num_generators);
+        },
+    }
+}
+
+/// Image of a word under a valid homomorphism is word_valid for target.
+pub proof fn lemma_apply_hom_word_valid(h: HomomorphismData, w: Word)
+    requires
+        is_valid_homomorphism(h),
+        word_valid(w, h.source.num_generators),
+    ensures
+        word_valid(apply_hom(h, w), h.target.num_generators),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert(word_valid(rest, h.source.num_generators)) by {
+            assert forall|i: int| 0 <= i < rest.len()
+                implies symbol_valid(rest[i], h.source.num_generators)
+            by { assert(rest[i] == w[i + 1]); }
+        }
+        lemma_apply_hom_symbol_word_valid(h, s);
+        lemma_apply_hom_word_valid(h, rest);
+        crate::word::lemma_concat_word_valid(
+            apply_hom_symbol(h, s), apply_hom(h, rest), h.target.num_generators);
+    }
+}
+
 /// concat(x, suffix) ≡ suffix when x ≡ ε.
 pub proof fn lemma_identity_prefix_equiv(p: Presentation, x: Word, suffix: Word)
     requires
@@ -109,6 +156,13 @@ proof fn lemma_inverted_relator_image_is_identity(h: HomomorphismData, relator_i
     let orig_r = h.source.relators[relator_index as int];
     let hom_orig = apply_hom(h, orig_r);
 
+    // word_valid facts for lemma_equiv_symmetric calls
+    assert(word_valid(orig_r, h.source.num_generators));
+    lemma_apply_hom_word_valid(h, orig_r);
+    let n = h.target.num_generators;
+    crate::word::lemma_inverse_word_valid(hom_orig, n);
+    crate::word::lemma_concat_word_valid(inverse_word(hom_orig), hom_orig, n);
+
     lemma_hom_respects_inverse(h, orig_r);
 
     lemma_word_inverse_left(h.target, hom_orig);
@@ -116,6 +170,7 @@ proof fn lemma_inverted_relator_image_is_identity(h: HomomorphismData, relator_i
     lemma_equiv_concat_right(h.target, inverse_word(hom_orig), hom_orig, empty_word());
     assert(concat(inverse_word(hom_orig), empty_word()) =~= inverse_word(hom_orig));
 
+    crate::word::lemma_concat_word_valid(inverse_word(hom_orig), empty_word(), n);
     lemma_equiv_symmetric(h.target,
         concat(inverse_word(hom_orig), hom_orig),
         concat(inverse_word(hom_orig), empty_word()),
@@ -296,6 +351,7 @@ proof fn lemma_hom_preserves_free_expand(
     requires
         is_valid_homomorphism(h),
         0 <= position <= w.len(),
+        symbol_valid(symbol, h.source.num_generators),
     ensures
         equiv_in_presentation(
             h.target,
@@ -339,14 +395,22 @@ proof fn lemma_hom_preserves_free_expand(
     //                    =~= concat(hom_prefix, concat(pair_img, hom_suffix))
     lemma_concat_assoc(hom_prefix, pair_img, hom_suffix);
 
-    // pair_img ≡ ε → concat(pair_img, hom_suffix) ≡ hom_suffix
-    lemma_identity_prefix_equiv(h.target, pair_img, hom_suffix);
-    // hom_suffix ≡ concat(pair_img, hom_suffix) (symmetric)
-    lemma_equiv_symmetric(h.target, concat(pair_img, hom_suffix), hom_suffix);
-    // concat(hom_prefix, hom_suffix) ≡ concat(hom_prefix, concat(pair_img, hom_suffix))
-    lemma_equiv_concat_right(h.target, hom_prefix, hom_suffix, concat(pair_img, hom_suffix));
+    // pair_img ≡ ε
+    // symmetric: ε ≡ pair_img (need word_valid(pair_img) — provable from symbol_valid)
+    lemma_apply_hom_symbol_word_valid(h, symbol);
+    crate::symbol::lemma_inverse_preserves_valid(symbol, h.source.num_generators);
+    lemma_apply_hom_symbol_word_valid(h, inverse_symbol(symbol));
+    crate::word::lemma_concat_word_valid(img_s, img_inv_s, h.target.num_generators);
+    lemma_equiv_symmetric(h.target, pair_img, empty_word());
 
-    // apply_hom(w) =~= concat(hom_prefix, hom_suffix)
+    // ε ≡ pair_img → concat(ε, hom_suffix) ≡ concat(pair_img, hom_suffix)
+    lemma_equiv_concat_left(h.target, empty_word(), pair_img, hom_suffix);
+    // concat(ε, hom_suffix) =~= hom_suffix
+    // concat(hom_prefix, concat(ε, hom_suffix)) ≡ concat(hom_prefix, concat(pair_img, hom_suffix))
+    lemma_equiv_concat_right(h.target, hom_prefix,
+        concat(empty_word(), hom_suffix), concat(pair_img, hom_suffix));
+
+    // apply_hom(w) =~= concat(hom_prefix, hom_suffix) =~= concat(hom_prefix, concat(ε, hom_suffix))
     // apply_hom(w_prime) =~= concat(hom_prefix, concat(pair_img, hom_suffix))
 }
 
@@ -387,9 +451,23 @@ proof fn lemma_hom_preserves_relator_insert(
     //                    =~= concat(hom_prefix, concat(hom_r, hom_suffix))
     lemma_concat_assoc(hom_prefix, hom_r, hom_suffix);
 
-    lemma_identity_prefix_equiv(h.target, hom_r, hom_suffix);
-    lemma_equiv_symmetric(h.target, concat(hom_r, hom_suffix), hom_suffix);
-    lemma_equiv_concat_right(h.target, hom_prefix, hom_suffix, concat(hom_r, hom_suffix));
+    // hom_r ≡ ε → symmetric: ε ≡ hom_r
+    // Prove word_valid(hom_r) for symmetric call
+    let rel = get_relator(h.source, relator_index, inverted);
+    assert(word_valid(h.source.relators[relator_index as int], h.source.num_generators));
+    if inverted {
+        crate::word::lemma_inverse_word_valid(
+            h.source.relators[relator_index as int], h.source.num_generators);
+    }
+    lemma_apply_hom_word_valid(h, rel);
+    lemma_equiv_symmetric(h.target, hom_r, empty_word());
+
+    // ε ≡ hom_r → concat(ε, hom_suffix) ≡ concat(hom_r, hom_suffix)
+    lemma_equiv_concat_left(h.target, empty_word(), hom_r, hom_suffix);
+    // concat(hom_prefix, concat(ε, hom_suffix)) ≡ concat(hom_prefix, concat(hom_r, hom_suffix))
+    lemma_equiv_concat_right(h.target, hom_prefix,
+        concat(empty_word(), hom_suffix), concat(hom_r, hom_suffix));
+    // apply_hom(w) =~= concat(hom_prefix, hom_suffix) =~= concat(hom_prefix, concat(ε, hom_suffix))
 }
 
 /// Helper: hom preserves RelatorDelete step.
