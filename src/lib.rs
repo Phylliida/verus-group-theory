@@ -65,6 +65,9 @@ pub mod schreier;
 pub mod schreier_proofs;
 
 #[cfg(verus_keep_ghost)]
+pub mod schreier_induction;
+
+#[cfg(verus_keep_ghost)]
 pub mod group;
 
 pub mod runtime;
