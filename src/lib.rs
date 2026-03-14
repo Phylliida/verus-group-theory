@@ -46,4 +46,13 @@ pub mod todd_coxeter;
 #[cfg(verus_keep_ghost)]
 pub mod finite;
 
+#[cfg(verus_keep_ghost)]
+pub mod completeness;
+
+#[cfg(verus_keep_ghost)]
+pub mod coset_group;
+
+#[cfg(verus_keep_ghost)]
+pub mod decidability;
+
 pub mod runtime;
