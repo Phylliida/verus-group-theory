@@ -369,7 +369,7 @@ proof fn lemma_runtime_word_view_append(a: Seq<RuntimeSymbol>, b: Seq<RuntimeSym
 }
 
 /// Helper: runtime_word_view of a subrange equals subrange of runtime_word_view.
-proof fn lemma_runtime_word_view_subrange(w: Seq<RuntimeSymbol>, lo: int, hi: int)
+pub proof fn lemma_runtime_word_view_subrange(w: Seq<RuntimeSymbol>, lo: int, hi: int)
     requires
         0 <= lo <= hi <= w.len(),
     ensures
