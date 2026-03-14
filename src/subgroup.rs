@@ -157,4 +157,37 @@ pub proof fn lemma_each_added_relator_is_identity(
     }
 }
 
+/// Adding relators preserves presentation_valid when all added words are word_valid.
+pub proof fn lemma_add_relators_valid(p: Presentation, rs: Seq<Word>)
+    requires
+        presentation_valid(p),
+        forall|i: int| 0 <= i < rs.len() ==> word_valid(rs[i], p.num_generators),
+    ensures
+        presentation_valid(add_relators(p, rs)),
+    decreases rs.len(),
+{
+    if rs.len() == 0 {
+    } else {
+        let p1 = add_relator(p, rs.first());
+        assert(presentation_valid(p1)) by {
+            assert forall|i: int| 0 <= i < p1.relators.len()
+                implies word_valid(p1.relators[i], p1.num_generators)
+            by {
+                if i < p.relators.len() as int {
+                    assert(p1.relators[i] == p.relators[i]);
+                } else {
+                    assert(p1.relators[i] == rs.first());
+                    assert(rs[0] == rs.first());
+                }
+            }
+        }
+        assert forall|i: int| 0 <= i < rs.drop_first().len()
+            implies word_valid(rs.drop_first()[i], p1.num_generators)
+        by {
+            assert(rs.drop_first()[i] == rs[i + 1]);
+        }
+        lemma_add_relators_valid(p1, rs.drop_first());
+    }
+}
+
 } // verus!

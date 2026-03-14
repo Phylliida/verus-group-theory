@@ -81,6 +81,70 @@ pub proof fn lemma_commutator_in_list(n: nat, i: nat, j: nat)
     }
 }
 
+/// Single-generator words are word_valid.
+proof fn lemma_gen_word_valid(i: nat, n: nat)
+    requires i < n,
+    ensures word_valid(gen_word(i), n),
+{
+    assert forall|k: int| 0 <= k < gen_word(i).len()
+        implies symbol_valid(gen_word(i)[k], n) by {}
+}
+
+/// Commutator word is word_valid.
+proof fn lemma_commutator_word_valid(i: nat, j: nat, n: nat)
+    requires i < n, j < n,
+    ensures word_valid(commutator(gen_word(i), gen_word(j)), n),
+{
+    lemma_gen_word_valid(i, n);
+    lemma_gen_word_valid(j, n);
+    crate::word::lemma_inverse_word_valid(gen_word(i), n);
+    crate::word::lemma_inverse_word_valid(gen_word(j), n);
+    crate::word::lemma_concat_word_valid(gen_word(i), gen_word(j), n);
+    crate::word::lemma_concat_word_valid(concat(gen_word(i), gen_word(j)), inverse_word(gen_word(i)), n);
+    crate::word::lemma_concat_word_valid(
+        concat(concat(gen_word(i), gen_word(j)), inverse_word(gen_word(i))),
+        inverse_word(gen_word(j)), n);
+}
+
+/// All generator commutators are word_valid.
+proof fn lemma_commutators_word_valid(n: nat)
+    ensures
+        forall|k: int| 0 <= k < generator_commutators(n).len()
+            ==> word_valid(generator_commutators(n)[k], n),
+    decreases n,
+{
+    if n == 0 {
+    } else {
+        lemma_commutators_word_valid((n - 1) as nat);
+        let prev = generator_commutators((n - 1) as nat);
+        let new_comms = Seq::new((n - 1) as nat, |i: int|
+            commutator(gen_word(i as nat), gen_word((n - 1) as nat))
+        );
+        let comms = prev + new_comms;
+        assert(comms == generator_commutators(n));
+        assert forall|k: int| 0 <= k < comms.len()
+            implies word_valid(comms[k], n)
+        by {
+            if k < prev.len() as int {
+                assert(comms[k] == prev[k]);
+                // prev[k] is word_valid for (n-1) which is < n, so also for n
+                assert(word_valid(prev[k], (n - 1) as nat));
+                // word_valid for (n-1) implies word_valid for n
+                assert forall|m: int| 0 <= m < prev[k].len()
+                    implies symbol_valid(prev[k][m], n)
+                by {
+                    assert(symbol_valid(prev[k][m], (n - 1) as nat));
+                }
+            } else {
+                let i = (k - prev.len()) as int;
+                assert(comms[k] == new_comms[i]);
+                assert(new_comms[i] == commutator(gen_word(i as nat), gen_word((n - 1) as nat)));
+                lemma_commutator_word_valid(i as nat, (n - 1) as nat, n);
+            }
+        }
+    }
+}
+
 /// [g_i, g_j] ≡ ε in abelianization(p) when i < j < p.num_generators.
 pub proof fn lemma_commutator_is_identity(p: Presentation, i: nat, j: nat)
     requires
@@ -112,6 +176,7 @@ pub proof fn lemma_abelianization_commutes(p: Presentation, i: nat, j: nat)
     requires
         i < j,
         j < p.num_generators,
+        presentation_valid(p),
     ensures
         equiv_in_presentation(
             abelianization(p),
@@ -232,10 +297,6 @@ pub proof fn lemma_abelianization_commutes(p: Presentation, i: nat, j: nat)
 
     // So tail ≡ ε
     // concat(gi_gj, tail) ≡ concat(gi_gj, ε) = gi_gj
-    lemma_equiv_concat_left(ap, tail, empty_word(), gi_gj);
-    lemma_equiv_symmetric(ap, concat(tail, gi_gj), concat(empty_word(), gi_gj));
-    // Wait, wrong direction. We want gi_gj to be on the left.
-    // concat(gi_gj, tail) ≡ gi_gj
     lemma_equiv_concat_right(ap, gi_gj, tail, empty_word());
     assert(concat(gi_gj, empty_word()) =~= gi_gj);
     lemma_equiv_refl(ap, gi_gj);
@@ -245,17 +306,33 @@ pub proof fn lemma_abelianization_commutes(p: Presentation, i: nat, j: nat)
         gi_gj,
     );
 
-    // gi_gj ≡ concat(gi_gj, tail) (symmetric of what we proved)
+    // gi_gj ≡ concat(gi_gj, tail) (symmetric)
+    // Prove word_valid(concat(gi_gj, tail)) and presentation_valid(ap) for symmetric
+    lemma_abelianization_extends(p);
+    assert(ap.num_generators == p.num_generators);
+    lemma_gen_word_valid(i, ap.num_generators);
+    lemma_gen_word_valid(j, ap.num_generators);
+    crate::word::lemma_concat_word_valid(gi, gj, ap.num_generators);
+    lemma_inverse_singleton(Symbol::Gen(i));
+    lemma_inverse_singleton(Symbol::Gen(j));
+    assert(word_valid(gi_inv, ap.num_generators)) by {
+        crate::word::lemma_inverse_word_valid(gi, ap.num_generators);
+    }
+    assert(word_valid(gj_inv, ap.num_generators)) by {
+        crate::word::lemma_inverse_word_valid(gj, ap.num_generators);
+    }
+    crate::word::lemma_concat_word_valid(gi_inv, gj_inv, ap.num_generators);
+    crate::word::lemma_concat_word_valid(concat(gi_inv, gj_inv), gj, ap.num_generators);
+    crate::word::lemma_concat_word_valid(concat(concat(gi_inv, gj_inv), gj), gi, ap.num_generators);
+    crate::word::lemma_concat_word_valid(gi_gj, tail, ap.num_generators);
+    // Prove presentation_valid(ap)
+    // Commutators are word_valid since they use Gen(i)/Inv(i) with i < p.num_generators
+    lemma_commutators_word_valid(p.num_generators);
+    lemma_add_relators_valid(p, generator_commutators(p.num_generators));
     lemma_equiv_symmetric(ap, concat(gi_gj, tail), gi_gj);
-    // concat(gi_gj, tail) =~= concat(commutator(gi, gj), gj_gi) (extensional eq)
-    // So we need: equiv(gi_gj, concat(commutator(gi,gj), gj_gi))
-    // We have: equiv(concat(gi_gj, tail), gi_gj) → equiv(gi_gj, concat(gi_gj, tail))
-    // and concat(gi_gj, tail) =~= concat(commutator(gi,gj), gj_gi)
-    // Verus should see =~= as equiv_refl-worthy
-    lemma_equiv_refl(ap, concat(commutator(gi, gj), gj_gi));
-    // Now chain: gi_gj ≡ concat(gi_gj, tail) ≡ concat(commutator, gj_gi) ≡ gj_gi
-    // But concat(gi_gj, tail) =~= concat(commutator, gj_gi) so they're the same Seq
-    // Therefore: gi_gj ≡ concat(commutator, gj_gi) ≡ gj_gi
+
+    // concat(gi_gj, tail) =~= concat(commutator(gi, gj), gj_gi)
+    // gi_gj ≡ concat(commutator, gj_gi) ≡ gj_gi
     lemma_equiv_transitive(ap, gi_gj, concat(commutator(gi, gj), gj_gi), gj_gi);
 }
 

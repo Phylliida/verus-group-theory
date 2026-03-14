@@ -73,6 +73,7 @@ pub proof fn lemma_word_problem_sound(t: CosetTable, p: Presentation)
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        t.num_cosets > 0,
     ensures
         word_problem_sound(t, p),
 {

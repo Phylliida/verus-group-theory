@@ -53,37 +53,6 @@ pub proof fn lemma_valid_word_columns(w: Word, num_gens: nat)
     by { lemma_valid_symbol_column(w[k], num_gens); }
 }
 
-/// inverse_word preserves word_valid.
-pub proof fn lemma_inverse_word_valid(w: Word, n: nat)
-    requires word_valid(w, n),
-    ensures word_valid(inverse_word(w), n),
-    decreases w.len(),
-{
-    if w.len() == 0 {
-        assert(inverse_word(w) =~= empty_word());
-    } else {
-        let rest = w.drop_first();
-        assert(word_valid(rest, n)) by {
-            assert forall|i: int| 0 <= i < rest.len()
-                implies symbol_valid(rest[i], n) by { assert(rest[i] == w[i + 1]); }
-        }
-        lemma_inverse_word_valid(rest, n);
-        let inv_rest = inverse_word(rest);
-        let inv_first = inverse_symbol(w.first());
-        assert(inverse_word(w) =~= inv_rest + seq![inv_first]);
-        lemma_inverse_preserves_valid(w.first(), n);
-        assert forall|i: int| 0 <= i < inverse_word(w).len()
-            implies symbol_valid(inverse_word(w)[i], n)
-        by {
-            if i < inv_rest.len() {
-                assert(inverse_word(w)[i] == inv_rest[i]);
-            } else {
-                assert(inverse_word(w)[i] == inv_first);
-            }
-        }
-    }
-}
-
 // ─── Trace completeness: complete table → trace always Some ──────────────────
 
 /// If the table is complete and wf, trace_word always returns Some.
@@ -502,7 +471,8 @@ pub proof fn lemma_trace_single_step(
 
 // ─── Step preserves word_valid ───────────────────────────────────────────────
 
-/// A single step preserves word_valid (assume for FreeExpand symbol validity).
+/// A single step preserves word_valid.
+/// Now fully proved: apply_step's FreeExpand guard ensures symbol_valid.
 proof fn lemma_step_preserves_word_valid(
     p: Presentation, w: Word, step: DerivationStep, w_next: Word,
 )
@@ -524,9 +494,7 @@ proof fn lemma_step_preserves_word_valid(
             }
         },
         DerivationStep::FreeExpand { position, symbol } => {
-            // FreeExpand can insert any symbol — assume it's valid.
-            // This is a well-formedness condition on derivations.
-            assume(symbol_valid(symbol, n));
+            // apply_step guard ensures symbol_valid(symbol, n)
             lemma_inverse_preserves_valid(symbol, n);
             let pfx = w.subrange(0, position);
             let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
@@ -543,7 +511,7 @@ proof fn lemma_step_preserves_word_valid(
         },
         DerivationStep::RelatorInsert { position, relator_index, inverted } => {
             let r = get_relator(p, relator_index, inverted);
-            if inverted { lemma_inverse_word_valid(p.relators[relator_index as int], n); }
+            if inverted { crate::word::lemma_inverse_word_valid(p.relators[relator_index as int], n); }
             assert(word_valid(r, n));
             assert forall|k: int| 0 <= k < w_next.len()
                 implies symbol_valid(w_next[k], n)
