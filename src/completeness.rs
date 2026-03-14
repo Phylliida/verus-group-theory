@@ -98,7 +98,7 @@ pub proof fn lemma_trace_word_split(t: CosetTable, c: nat, w: Word, pos: int)
 // ─── Lemma 1: trace of inverse pair cancels ─────────────────────────────────
 
 /// Tracing a single symbol from coset c.
-proof fn lemma_trace_single(t: CosetTable, c: nat, s: Symbol)
+pub proof fn lemma_trace_single(t: CosetTable, c: nat, s: Symbol)
     requires
         coset_table_wf(t),
         coset_table_complete(t),
