@@ -932,6 +932,7 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
     requires
         rt.num_cosets >= 1,
         rt.num_gens > 0,
+        rt.num_cosets * (2 * rt.num_gens + 1) < usize::MAX,
         rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
         forall|i: int| 0 <= i < rt.table@.len() ==>
             rt.table@[i] == UNDEF() || rt.table@[i] < rt.num_cosets,
@@ -941,6 +942,7 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
     ensures
         coset_table_consistent(rt_to_spec_table(rt)),
 {
+    lemma_overflow_bounds(rt.num_cosets, rt.num_gens);
     let spec_t = rt_to_spec_table(rt);
 
     // Prove wf
@@ -956,6 +958,15 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
                     None => true,
                 }
         by {
+            // Need flat index in bounds
+            let flat = ci * 2 * rt.num_gens as int + coli;
+            assert(0 <= flat && flat < rt.table@.len() as int) by(nonlinear_arith)
+                requires
+                    flat == ci * 2 * rt.num_gens as int + coli,
+                    0 <= ci, ci < rt.num_cosets as int,
+                    0 <= coli, coli < 2 * rt.num_gens as int,
+                    rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
+                    rt.num_gens >= 0int, rt.num_cosets >= 0int;
             assert(spec_t.table[ci] ==
                 Seq::new(2 * rt.num_gens as nat, |col2: int| {
                     let v = rt.table@[(ci * 2 * rt.num_gens as int + col2) as int];
@@ -973,15 +984,19 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
                 None => true,
             }
     by {
-        // Trigger the rt_consistent_at fact
         assert(rt_consistent_at(rt, ci, coli));
-        let flat = (ci * 2 * rt.num_gens as int + coli) as int;
+        let flat = ci * 2 * rt.num_gens as int + coli;
+        assert(0 <= flat && flat < rt.table@.len() as int) by(nonlinear_arith)
+            requires
+                flat == ci * 2 * rt.num_gens as int + coli,
+                0 <= ci, ci < rt.num_cosets as int,
+                0 <= coli, coli < 2 * rt.num_gens as int,
+                rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
+                rt.num_gens >= 0int, rt.num_cosets >= 0int;
         let val = rt.table@[flat];
         if val != UNDEF() {
             let inv_col: int = if coli % 2 == 0 { coli + 1 } else { coli - 1 };
-            // From rt_consistent_at: back == ci as usize
             assert(rt.table@[(val as int * 2 * rt.num_gens as int + inv_col) as int] == ci as usize);
-            // inverse_column matches
             assert(inverse_column(coli as nat) as int == inv_col) by {
                 if coli % 2 == 0 {
                     assert(inverse_column(coli as nat) == coli + 1);
@@ -991,10 +1006,21 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
             }
             let d = val as nat;
             assert(ci as usize != UNDEF()) by {
-                assert(ci < rt.num_cosets as int);
-                assert(rt.num_cosets <= usize::MAX - 1);
+                let nc = rt.num_cosets as int;
+                let ng = rt.num_gens as int;
+                let max_usize = usize::MAX as int;
+                assert(nc < max_usize) by(nonlinear_arith)
+                    requires nc * (2 * ng + 1) < max_usize, ng > 0, nc >= 0;
             }
             // Unfold spec_t.table[d][inv_col]
+            let inv_flat = val as int * 2 * rt.num_gens as int + inv_col;
+            assert(0 <= inv_flat && inv_flat < rt.table@.len() as int) by(nonlinear_arith)
+                requires
+                    inv_flat == val as int * 2 * rt.num_gens as int + inv_col,
+                    0 <= val as int, (val as int) < rt.num_cosets as int,
+                    0 <= inv_col, inv_col < 2 * rt.num_gens as int,
+                    rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
+                    rt.num_gens >= 0int, rt.num_cosets >= 0int;
             assert(spec_t.table[d as int] ==
                 Seq::new(2 * rt.num_gens as nat, |col2: int| {
                     let v = rt.table@[(d as int * 2 * rt.num_gens as int + col2) as int];
@@ -1002,6 +1028,52 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
                 }));
         }
     }
+}
+
+/// Helper: scan one relator from all cosets, checking closure.
+fn check_one_relator_closed_exec(
+    rt: &RuntimeCosetTable,
+    relator: &Vec<crate::runtime::RuntimeSymbol>,
+) -> (result: bool)
+    requires
+        rt.num_cosets >= 1,
+        rt.num_gens > 0,
+        rt.num_cosets * (2 * rt.num_gens + 1) < usize::MAX,
+        rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
+        forall|i: int| 0 <= i < rt.table@.len() ==>
+            rt.table@[i] == UNDEF() || rt.table@[i] < rt.num_cosets,
+        forall|k: int| 0 <= k < relator@.len() ==>
+            symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * rt.num_gens,
+    ensures
+        result ==> forall|ci: nat| ci < rt.num_cosets ==>
+            rt_trace_word(*rt, ci,
+                crate::runtime::runtime_word_view(relator@)) == Some(ci),
+{
+    proof { lemma_overflow_bounds(rt.num_cosets, rt.num_gens); }
+    let mut ci: usize = 0;
+    while ci < rt.num_cosets
+        invariant
+            0 <= ci <= rt.num_cosets,
+            rt.num_cosets >= 1,
+            rt.num_gens > 0,
+            rt.num_cosets * (2 * rt.num_gens + 1) < usize::MAX,
+            rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
+            forall|i: int| 0 <= i < rt.table@.len() ==>
+                rt.table@[i] == UNDEF() || rt.table@[i] < rt.num_cosets,
+            forall|k: int| 0 <= k < relator@.len() ==>
+                symbol_to_column(crate::runtime::runtime_symbol_view(relator@[k])) < 2 * rt.num_gens,
+            forall|cj: nat| cj < ci ==>
+                rt_trace_word(*rt, cj,
+                    crate::runtime::runtime_word_view(relator@)) == Some(cj),
+        decreases rt.num_cosets - ci,
+    {
+        let out = scan_relator_exec(rt, ci, relator);
+        if out == usize::MAX || out != ci {
+            return false;
+        }
+        ci = ci + 1;
+    }
+    true
 }
 
 /// Check that all relators trace back to the starting coset.
@@ -1025,7 +1097,6 @@ pub fn check_rt_relator_closed_exec(
             rt_presentation_view(rt.num_gens, relators@),
         ),
 {
-    proof { lemma_overflow_bounds(rt.num_cosets, rt.num_gens); }
     let mut ri: usize = 0;
     while ri < relators.len()
         invariant
@@ -1034,56 +1105,23 @@ pub fn check_rt_relator_closed_exec(
             rt.num_gens > 0,
             rt.num_cosets * (2 * rt.num_gens + 1) < usize::MAX,
             rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
-            2 * rt.num_gens < usize::MAX,
-            rt.num_cosets * 2 * rt.num_gens < usize::MAX,
             forall|i: int| 0 <= i < rt.table@.len() ==>
                 rt.table@[i] == UNDEF() || rt.table@[i] < rt.num_cosets,
             forall|r: int, k: int| #![trigger relators@[r]@[k]]
                 0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
                     symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * rt.num_gens,
-            // All (coset, relator) pairs checked so far trace back
-            forall|ci: int, rj: int| #![trigger relators@[rj], rt.table@[ci]]
-                0 <= ci < rt.num_cosets && 0 <= rj < ri ==>
-                    rt_trace_word(*rt, ci as nat,
+            // All relators up to ri have been checked
+            forall|ci: nat, rj: int|
+                #![trigger rt_trace_word(*rt, ci, crate::runtime::runtime_word_view(relators@[rj]@))]
+                ci < rt.num_cosets && 0 <= rj < ri ==>
+                    rt_trace_word(*rt, ci,
                         crate::runtime::runtime_word_view(relators@[rj]@))
-                        == Some(ci as nat),
+                        == Some(ci),
         decreases relators.len() - ri,
     {
-        let mut ci: usize = 0;
-        while ci < rt.num_cosets
-            invariant
-                0 <= ci <= rt.num_cosets,
-                0 <= ri < relators.len(),
-                rt.num_cosets >= 1,
-                rt.num_gens > 0,
-                rt.num_cosets * (2 * rt.num_gens + 1) < usize::MAX,
-                rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens,
-                2 * rt.num_gens < usize::MAX,
-                rt.num_cosets * 2 * rt.num_gens < usize::MAX,
-                forall|i: int| 0 <= i < rt.table@.len() ==>
-                    rt.table@[i] == UNDEF() || rt.table@[i] < rt.num_cosets,
-                forall|r: int, k: int| #![trigger relators@[r]@[k]]
-                    0 <= r < relators@.len() && 0 <= k < relators@[r]@.len() ==>
-                        symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * rt.num_gens,
-                // Previously checked relators
-                forall|cj: int, rj: int| #![trigger relators@[rj], rt.table@[cj]]
-                    0 <= cj < rt.num_cosets && 0 <= rj < ri ==>
-                        rt_trace_word(*rt, cj as nat,
-                            crate::runtime::runtime_word_view(relators@[rj]@))
-                            == Some(cj as nat),
-                // Current relator, checked cosets
-                forall|cj: int| #![trigger rt.table@[cj]]
-                    0 <= cj < ci ==>
-                        rt_trace_word(*rt, cj as nat,
-                            crate::runtime::runtime_word_view(relators@[ri as int]@))
-                            == Some(cj as nat),
-            decreases rt.num_cosets - ci,
-        {
-            let out = scan_relator_exec(rt, ci, &relators[ri]);
-            if out == usize::MAX || out != ci {
-                return false;
-            }
-            ci = ci + 1;
+        let ok = check_one_relator_closed_exec(rt, &relators[ri]);
+        if !ok {
+            return false;
         }
         ri = ri + 1;
     }
@@ -1095,9 +1133,8 @@ pub fn check_rt_relator_closed_exec(
                 trace_word(spec_t, c as nat, p.relators[r]) == Some(c as nat)
         by {
             assert(p.relators[r] == crate::runtime::runtime_word_view(relators@[r]@));
-            // Trigger the loop invariant fact
+            // Trigger the loop invariant
             assert(relators@[r] == relators@[r]);
-            assert(rt.table@[c] == rt.table@[c]);
             assert(rt_trace_word(*rt, c as nat, p.relators[r]) == Some(c as nat));
             // Bridge to spec trace
             assert forall|k: int| 0 <= k < p.relators[r].len() implies
@@ -1135,6 +1172,14 @@ pub fn enumerate_cosets_exec(
                 symbol_to_column(crate::runtime::runtime_symbol_view(relators@[r]@[k])) < 2 * num_gens,
     ensures
         out is Some ==> out.unwrap().num_cosets <= max_cosets,
+        out is Some ==> coset_table_consistent(rt_to_spec_table(out.unwrap())),
+        out is Some ==> coset_table_complete(rt_to_spec_table(out.unwrap())),
+        out is Some ==> relator_closed(
+            rt_to_spec_table(out.unwrap()),
+            rt_presentation_view(num_gens, relators@),
+        ),
+        out is Some ==> rt_to_spec_table(out.unwrap()).num_gens
+            == rt_presentation_view(num_gens, relators@).num_generators,
 {
     proof { lemma_overflow_bounds(max_cosets, num_gens); }
     let num_cols: usize = 2 * num_gens;
@@ -1339,7 +1384,25 @@ pub fn enumerate_cosets_exec(
         }
 
         if complete {
-            // Table is complete — enumeration done!
+            // Table is complete — verify before returning.
+            proof {
+                assert(rt.num_cosets * (2 * rt.num_gens + 1) <= max_cosets * (2 * num_gens + 1))
+                    by(nonlinear_arith)
+                    requires rt.num_cosets <= max_cosets, rt.num_gens == num_gens, num_gens > 0int;
+                assert(rt.table@.len() >= rt.num_cosets * 2 * rt.num_gens) by(nonlinear_arith)
+                    requires
+                        rt.table@.len() == max_cosets * num_cols,
+                        num_cols == 2 * num_gens,
+                        rt.num_gens == num_gens,
+                        rt.num_cosets <= max_cosets,
+                        num_gens > 0int;
+            }
+            let complete_ok = check_rt_complete_exec(&rt);
+            let consistent_ok = check_rt_consistent_exec(&rt);
+            let relator_ok = check_rt_relator_closed_exec(&rt, relators);
+            if !complete_ok || !consistent_ok || !relator_ok {
+                return None;
+            }
             return Some(rt);
         }
 
