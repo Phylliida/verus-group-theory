@@ -1,193 +1,252 @@
 use vstd::prelude::*;
+use crate::symbol::*;
 use crate::word::*;
 use crate::presentation::*;
 use crate::presentation_lemmas::*;
+use crate::isomorphism::*;
+use crate::homomorphism::*;
 
 verus! {
 
-/// Add a single relator to a presentation.
-pub open spec fn add_relator(p: Presentation, r: Word) -> Presentation {
-    Presentation {
-        num_generators: p.num_generators,
-        relators: p.relators.push(r),
+// ============================================================
+// Subgroup and Normal Subgroup Predicates
+// ============================================================
+
+/// A set of words forms a subgroup of the group presented by `p`.
+pub open spec fn is_subgroup_set(p: Presentation, in_set: spec_fn(Word) -> bool) -> bool {
+    // Contains identity
+    &&& in_set(empty_word())
+    // Closed under concatenation (group multiplication)
+    &&& (forall|w1: Word, w2: Word| in_set(w1) && in_set(w2) ==> in_set(concat(w1, w2)))
+    // Closed under inverse
+    &&& (forall|w: Word| in_set(w) ==> in_set(inverse_word(w)))
+    // Well-defined: closed under equivalence
+    &&& (forall|w1: Word, w2: Word| in_set(w1) && equiv_in_presentation(p, w1, w2)
+        ==> in_set(w2))
+}
+
+/// A normal subgroup: a subgroup closed under conjugation by word_valid elements.
+/// Restricting g to word_valid is mathematically natural — in a presented group,
+/// only word_valid words represent group elements.
+pub open spec fn is_normal_subgroup_set(p: Presentation, in_set: spec_fn(Word) -> bool) -> bool {
+    &&& is_subgroup_set(p, in_set)
+    &&& (forall|w: Word, g: Word| in_set(w) && word_valid(g, p.num_generators)
+        ==> in_set(concat(concat(g, w), inverse_word(g))))
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/// concat preserves word_valid.
+proof fn lemma_concat_word_valid(w1: Word, w2: Word, n: nat)
+    requires word_valid(w1, n), word_valid(w2, n),
+    ensures word_valid(concat(w1, w2), n),
+{
+    assert forall|k: int| 0 <= k < concat(w1, w2).len()
+        implies symbol_valid(concat(w1, w2)[k], n)
+    by {
+        if k < w1.len() { assert(concat(w1, w2)[k] == w1[k]); }
+        else { assert(concat(w1, w2)[k] == w2[k - w1.len()]); }
     }
 }
 
-/// Add multiple relators to a presentation (recursive).
-pub open spec fn add_relators(p: Presentation, rs: Seq<Word>) -> Presentation
-    decreases rs.len(),
-{
-    if rs.len() == 0 {
-        p
-    } else {
-        add_relators(add_relator(p, rs.first()), rs.drop_first())
-    }
-}
-
-// --- Lemmas ---
-
-/// Adding a relator extends the presentation.
-pub proof fn lemma_add_relator_extends(p: Presentation, r: Word)
-    ensures
-        extends_presentation(p, add_relator(p, r)),
-{
-    let p2 = add_relator(p, r);
-    assert(p2.num_generators == p.num_generators);
-    assert(p2.relators.len() == p.relators.len() + 1);
-    assert(p2.relators.subrange(0, p.relators.len() as int) =~= p.relators);
-}
-
-/// Extension is transitive.
-pub proof fn lemma_extends_transitive(p1: Presentation, p2: Presentation, p3: Presentation)
-    requires
-        extends_presentation(p1, p2),
-        extends_presentation(p2, p3),
-    ensures
-        extends_presentation(p1, p3),
-{
-    assert(p3.num_generators == p1.num_generators);
-    assert(p1.relators.len() <= p2.relators.len() <= p3.relators.len());
-    // p3.relators[0..p2.len] == p2.relators
-    // p2.relators[0..p1.len] == p1.relators
-    // So p3.relators[0..p1.len] == p1.relators
-    assert(p3.relators.subrange(0, p1.relators.len() as int) =~= p1.relators);
-}
-
-/// Adding a relator preserves existing equivalences.
-pub proof fn lemma_add_relator_preserves_equiv(
-    p: Presentation, r: Word, w1: Word, w2: Word,
+/// A derivation preserves word_valid (induction on steps).
+proof fn lemma_derivation_preserves_word_valid(
+    p: Presentation, steps: Seq<DerivationStep>, w1: Word, w2: Word,
 )
+    requires
+        derivation_produces(p, steps, w1) == Some(w2),
+        word_valid(w1, p.num_generators),
+        presentation_valid(p),
+    ensures
+        word_valid(w2, p.num_generators),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+    } else {
+        let next = apply_step(p, w1, steps.first()).unwrap();
+        lemma_step_preserves_word_valid_pres(p, w1, steps.first(), next);
+        lemma_derivation_preserves_word_valid(p, steps.drop_first(), next, w2);
+    }
+}
+
+/// equiv_in_presentation preserves word_valid.
+pub proof fn lemma_equiv_preserves_word_valid(p: Presentation, w1: Word, w2: Word)
     requires
         equiv_in_presentation(p, w1, w2),
+        word_valid(w1, p.num_generators),
+        presentation_valid(p),
     ensures
-        equiv_in_presentation(add_relator(p, r), w1, w2),
+        word_valid(w2, p.num_generators),
 {
-    lemma_add_relator_extends(p, r);
-    lemma_quotient_preserves_equiv(p, add_relator(p, r), w1, w2);
+    let d = choose|d: Derivation| derivation_valid(p, d, w1, w2);
+    lemma_derivation_preserves_word_valid(p, d.steps, w1, w2);
 }
 
-/// The newly added relator is the identity in the extended presentation.
-pub proof fn lemma_added_relator_is_identity(p: Presentation, r: Word)
-    ensures
-        equiv_in_presentation(add_relator(p, r), r, empty_word()),
-{
-    let p2 = add_relator(p, r);
-    let idx = p.relators.len();
-    assert(p2.relators[idx as int] == r);
-    lemma_relator_is_identity(p2, idx as int);
-}
+// ============================================================
+// Lemmas
+// ============================================================
 
-/// Conjugates of the added relator are also identity.
-pub proof fn lemma_normal_closure_contains_conjugates(
-    p: Presentation, r: Word, w: Word,
-)
-    ensures
-        equiv_in_presentation(
-            add_relator(p, r),
-            concat(concat(w, r), inverse_word(w)),
-            empty_word(),
-        ),
-{
-    let p2 = add_relator(p, r);
-    let idx = p.relators.len();
-    assert(p2.relators[idx as int] == r);
-    lemma_conjugate_relator_is_identity(p2, w, idx as int);
-}
-
-/// Adding multiple relators extends the original presentation.
-pub proof fn lemma_add_relators_extends(p: Presentation, rs: Seq<Word>)
-    ensures
-        extends_presentation(p, add_relators(p, rs)),
-    decreases rs.len(),
-{
-    if rs.len() == 0 {
-        assert(p.relators.subrange(0, p.relators.len() as int) =~= p.relators);
-    } else {
-        let p1 = add_relator(p, rs.first());
-        lemma_add_relator_extends(p, rs.first());
-        lemma_add_relators_extends(p1, rs.drop_first());
-        lemma_extends_transitive(p, p1, add_relators(p1, rs.drop_first()));
-    }
-}
-
-/// Adding multiple relators preserves existing equivalences.
-pub proof fn lemma_add_relators_preserves_equiv(
-    p: Presentation, rs: Seq<Word>, w1: Word, w2: Word,
-)
-    requires
-        equiv_in_presentation(p, w1, w2),
-    ensures
-        equiv_in_presentation(add_relators(p, rs), w1, w2),
-{
-    lemma_add_relators_extends(p, rs);
-    lemma_quotient_preserves_equiv(p, add_relators(p, rs), w1, w2);
-}
-
-/// Each added relator is the identity in the extended presentation.
-pub proof fn lemma_each_added_relator_is_identity(
-    p: Presentation, rs: Seq<Word>, i: int,
-)
-    requires
-        0 <= i < rs.len(),
-    ensures
-        equiv_in_presentation(add_relators(p, rs), rs[i], empty_word()),
-    decreases rs.len(),
-{
-    if rs.len() == 0 {
-        // impossible
-    } else {
-        let p1 = add_relator(p, rs.first());
-        if i == 0 {
-            // rs[0] = rs.first() is the identity in p1
-            lemma_added_relator_is_identity(p, rs.first());
-            // Lift to add_relators(p1, rs.drop_first())
-            lemma_add_relators_extends(p1, rs.drop_first());
-            lemma_quotient_preserves_equiv(
-                p1,
-                add_relators(p1, rs.drop_first()),
-                rs.first(),
-                empty_word(),
-            );
-            assert(rs[0] == rs.first());
-        } else {
-            // rs[i] == rs.drop_first()[i-1]
-            assert(rs[i] == rs.drop_first()[(i - 1) as int]);
-            lemma_each_added_relator_is_identity(p1, rs.drop_first(), i - 1);
-        }
-    }
-}
-
-/// Adding relators preserves presentation_valid when all added words are word_valid.
-pub proof fn lemma_add_relators_valid(p: Presentation, rs: Seq<Word>)
+/// The trivial subgroup: word_valid words equivalent to ε.
+pub proof fn lemma_trivial_subgroup(p: Presentation)
     requires
         presentation_valid(p),
-        forall|i: int| 0 <= i < rs.len() ==> word_valid(rs[i], p.num_generators),
     ensures
-        presentation_valid(add_relators(p, rs)),
-    decreases rs.len(),
+        is_subgroup_set(p,
+            |w: Word| word_valid(w, p.num_generators)
+                && equiv_in_presentation(p, w, empty_word())),
 {
-    if rs.len() == 0 {
-    } else {
-        let p1 = add_relator(p, rs.first());
-        assert(presentation_valid(p1)) by {
-            assert forall|i: int| 0 <= i < p1.relators.len()
-                implies word_valid(p1.relators[i], p1.num_generators)
-            by {
-                if i < p.relators.len() as int {
-                    assert(p1.relators[i] == p.relators[i]);
-                } else {
-                    assert(p1.relators[i] == rs.first());
-                    assert(rs[0] == rs.first());
-                }
-            }
-        }
-        assert forall|i: int| 0 <= i < rs.drop_first().len()
-            implies word_valid(rs.drop_first()[i], p1.num_generators)
-        by {
-            assert(rs.drop_first()[i] == rs[i + 1]);
-        }
-        lemma_add_relators_valid(p1, rs.drop_first());
+    let n = p.num_generators;
+    let in_set = |w: Word| word_valid(w, n)
+        && equiv_in_presentation(p, w, empty_word());
+
+    // Identity: word_valid(ε) ∧ ε ≡ ε
+    lemma_equiv_refl(p, empty_word());
+
+    // Concat
+    assert forall|w1: Word, w2: Word| in_set(w1) && in_set(w2)
+        implies in_set(concat(w1, w2)) by {
+        lemma_concat_word_valid(w1, w2, n);
+        lemma_equiv_concat(p, w1, empty_word(), w2, empty_word());
+        assert(concat(empty_word(), empty_word()) =~= empty_word());
+        lemma_equiv_refl(p, empty_word());
+        lemma_equiv_transitive(p,
+            concat(w1, w2),
+            concat(empty_word(), empty_word()),
+            empty_word(),
+        );
     }
+
+    // Inverse
+    assert forall|w: Word| in_set(w) implies in_set(inverse_word(w)) by {
+        crate::word::lemma_inverse_word_valid(w, n);
+        // Get ε ≡ w from symmetry (needs word_valid(w) ✓)
+        lemma_equiv_symmetric(p, w, empty_word());
+        // concat(ε, inv(w)) ≡ concat(w, inv(w))
+        lemma_equiv_concat_left(p, empty_word(), w, inverse_word(w));
+        assert(concat(empty_word(), inverse_word(w)) =~= inverse_word(w));
+        // concat(w, inv(w)) ≡ ε
+        lemma_word_inverse_right(p, w);
+        // inv(w) ≡ concat(w, inv(w)) ≡ ε
+        lemma_equiv_transitive(p,
+            inverse_word(w),
+            concat(w, inverse_word(w)),
+            empty_word(),
+        );
+    }
+
+    // Equiv closure
+    assert forall|w1: Word, w2: Word| in_set(w1) && equiv_in_presentation(p, w1, w2)
+        implies in_set(w2) by {
+        // word_valid(w2) from derivation preservation
+        lemma_equiv_preserves_word_valid(p, w1, w2);
+        // equiv(w2, w1) from symmetry (needs word_valid(w1) ✓)
+        lemma_equiv_symmetric(p, w1, w2);
+        // equiv(w2, ε) from transitivity
+        lemma_equiv_transitive(p, w2, w1, empty_word());
+    }
+}
+
+/// The whole group is a subgroup.
+pub proof fn lemma_whole_group_subgroup(p: Presentation)
+    ensures
+        is_subgroup_set(p, |_w: Word| true),
+{
+}
+
+/// The kernel of a valid homomorphism is a normal subgroup.
+pub proof fn lemma_kernel_is_normal_subgroup(h: HomomorphismData)
+    requires
+        is_valid_homomorphism(h),
+        presentation_valid(h.source),
+        presentation_valid(h.target),
+    ensures
+        is_normal_subgroup_set(h.source,
+            |w: Word| word_valid(w, h.source.num_generators) && in_kernel(h, w)),
+{
+    let p = h.source;
+    let n = p.num_generators;
+    let in_set = |w: Word| word_valid(w, n) && in_kernel(h, w);
+
+    // Identity
+    lemma_kernel_contains_identity(h);
+
+    // Concat
+    assert forall|w1: Word, w2: Word| in_set(w1) && in_set(w2)
+        implies in_set(concat(w1, w2)) by {
+        lemma_concat_word_valid(w1, w2, n);
+        lemma_kernel_closed_under_concat(h, w1, w2);
+    }
+
+    // Inverse
+    assert forall|w: Word| in_set(w) implies in_set(inverse_word(w)) by {
+        crate::word::lemma_inverse_word_valid(w, n);
+        lemma_kernel_closed_under_inverse(h, w);
+    }
+
+    // Equiv closure
+    assert forall|w1: Word, w2: Word| in_set(w1) && equiv_in_presentation(p, w1, w2)
+        implies in_set(w2) by {
+        lemma_equiv_preserves_word_valid(p, w1, w2);
+        lemma_kernel_closed_under_equiv(h, w1, w2);
+    }
+
+    // Normal: conjugation by word_valid elements
+    assert forall|w: Word, g: Word| in_set(w) && word_valid(g, n)
+        implies in_set(concat(concat(g, w), inverse_word(g))) by {
+        // word_valid(g·w·g⁻¹)
+        crate::word::lemma_inverse_word_valid(g, n);
+        lemma_concat_word_valid(g, w, n);
+        lemma_concat_word_valid(concat(g, w), inverse_word(g), n);
+
+        // in_kernel: hom(g·w·g⁻¹) ≡ ε
+        let hg = apply_hom(h, g);
+        let hw = apply_hom(h, w);
+        let inv_g = inverse_word(g);
+        let gw = concat(g, w);
+
+        // Step 1: apply_hom(gw·inv_g) =~= concat(apply_hom(gw), apply_hom(inv_g))
+        lemma_hom_respects_concat(h, gw, inv_g);
+        // Step 2: apply_hom(gw) =~= concat(hg, hw)
+        lemma_hom_respects_concat(h, g, w);
+        // Step 3: apply_hom(inv_g) =~= inverse_word(hg)
+        lemma_hom_respects_inverse(h, g);
+
+        // So: apply_hom(gw·inv_g) =~= concat(concat(hg, hw), inverse_word(hg))
+        assert(apply_hom(h, concat(gw, inv_g))
+            =~= concat(concat(hg, hw), inverse_word(hg)));
+
+        // hw ≡ ε (in_kernel), so concat(hg, hw) ≡ concat(hg, ε) =~= hg
+        lemma_equiv_concat_right(h.target, hg, hw, empty_word());
+        assert(concat(hg, empty_word()) =~= hg);
+        lemma_equiv_refl(h.target, hg);
+        lemma_equiv_transitive(h.target,
+            concat(hg, hw), concat(hg, empty_word()), hg);
+
+        // concat(concat(hg, hw), inv(hg)) ≡ concat(hg, inv(hg))
+        lemma_equiv_concat_left(h.target,
+            concat(hg, hw), hg, inverse_word(hg));
+
+        // concat(hg, inv(hg)) ≡ ε
+        lemma_word_inverse_right(h.target, hg);
+
+        // Chain: concat(concat(hg, hw), inv(hg)) ≡ concat(hg, inv(hg)) ≡ ε
+        lemma_equiv_transitive(h.target,
+            concat(concat(hg, hw), inverse_word(hg)),
+            concat(hg, inverse_word(hg)),
+            empty_word(),
+        );
+    }
+}
+
+/// Every normal subgroup is a subgroup.
+pub proof fn lemma_normal_subgroup_is_subgroup(p: Presentation, in_set: spec_fn(Word) -> bool)
+    requires
+        is_normal_subgroup_set(p, in_set),
+    ensures
+        is_subgroup_set(p, in_set),
+{
 }
 
 } // verus!

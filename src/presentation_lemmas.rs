@@ -529,4 +529,81 @@ pub proof fn lemma_quotient_preserves_equiv(
     assert(derivation_valid(p_prime, d_prime, w1, w2));
 }
 
+// ============================================================
+// Bridge: free reduction → presentation equivalence
+// ============================================================
+
+/// A single free reduction step implies presentation equivalence.
+/// reduce_at(w, i) IS apply_step(p, w, FreeReduce{position: i}).
+proof fn lemma_reduces_one_step_equiv(p: Presentation, w1: Word, w2: Word)
+    requires
+        reduces_one_step(w1, w2),
+    ensures
+        equiv_in_presentation(p, w1, w2),
+{
+    let i = choose|i: int| has_cancellation_at(w1, i) && w2 == reduce_at(w1, i);
+    lemma_free_reduce_step(p, w1, i);
+}
+
+/// Multi-step free reduction implies presentation equivalence (induction on n).
+proof fn lemma_reduces_in_steps_equiv(p: Presentation, w1: Word, w2: Word, n: nat)
+    requires
+        reduces_in_steps(w1, w2, n),
+    ensures
+        equiv_in_presentation(p, w1, w2),
+    decreases n,
+{
+    if n == 0 {
+        assert(w1 == w2);
+        lemma_equiv_refl(p, w1);
+    } else {
+        if w1 == w2 {
+            lemma_equiv_refl(p, w1);
+        } else {
+            let w_mid = choose|w_mid: Word|
+                reduces_one_step(w1, w_mid) && reduces_in_steps(w_mid, w2, (n - 1) as nat);
+            lemma_reduces_one_step_equiv(p, w1, w_mid);
+            lemma_reduces_in_steps_equiv(p, w_mid, w2, (n - 1) as nat);
+            lemma_equiv_transitive(p, w1, w_mid, w2);
+        }
+    }
+}
+
+/// Free reduction implies presentation equivalence.
+pub proof fn lemma_reduces_to_equiv(p: Presentation, w1: Word, w2: Word)
+    requires
+        reduces_to(w1, w2),
+    ensures
+        equiv_in_presentation(p, w1, w2),
+{
+    let n = choose|n: nat| reduces_in_steps(w1, w2, n);
+    lemma_reduces_in_steps_equiv(p, w1, w2, n);
+}
+
+/// Free equivalence implies presentation equivalence.
+/// freely_equivalent(w1, w2) means ∃ w. w1 →* w ←* w2.
+/// Both directions give equiv_in_presentation, then symmetry + transitivity.
+pub proof fn lemma_freely_equivalent_implies_equiv(p: Presentation, w1: Word, w2: Word)
+    requires
+        freely_equivalent(w1, w2),
+        word_valid(w1, p.num_generators),
+        word_valid(w2, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, w1, w2),
+{
+    let w = choose|w: Word| reduces_to(w1, w) && reduces_to(w2, w);
+    // w1 →* w  ⟹  w1 ≡ w in presentation
+    lemma_reduces_to_equiv(p, w1, w);
+    // w2 →* w  ⟹  w2 ≡ w in presentation
+    lemma_reduces_to_equiv(p, w2, w);
+    // w ≡ w2 by symmetry (needs word_valid(w2) + presentation_valid)
+    lemma_equiv_symmetric(p, w2, w);
+    // w1 ≡ w ≡ w2 by transitivity... wait, we have w1 ≡ w and w ≡ w2
+    // Hmm, we have equiv(w1, w) and equiv(w, w2) — but for symmetry we need word_valid(w2).
+    // Actually: we have equiv(w2, w). To get equiv(w, w2) we need symmetry on w2.
+    // lemma_equiv_symmetric requires word_valid(w2) which we have.
+    lemma_equiv_transitive(p, w1, w, w2);
+}
+
 } // verus!
