@@ -61,4 +61,7 @@ pub mod decidability;
 #[cfg(verus_keep_ghost)]
 pub mod schreier;
 
+#[cfg(verus_keep_ghost)]
+pub mod group;
+
 pub mod runtime;
