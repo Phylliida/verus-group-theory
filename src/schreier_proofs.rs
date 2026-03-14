@@ -7,6 +7,7 @@ use crate::todd_coxeter::*;
 use crate::finite::coset_table_complete;
 use crate::coset_group::*;
 use crate::completeness::*;
+use crate::schreier_induction::lemma_all_non_tree_trivial;
 
 verus! {
 
@@ -80,6 +81,7 @@ pub open spec fn edge_at_pos_handled(
 }
 
 /// Certificate well-formedness for non-tree edges.
+#[verifier::opaque]
 pub open spec fn certificate_wf(
     t: CosetTable, p: Presentation,
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
@@ -799,7 +801,7 @@ proof fn lemma_relator_subword_trivial(
 }
 
 /// Single non-tree edge at index k is trivial, given all prior are trivial.
-proof fn lemma_non_tree_edge_trivial(
+pub proof fn lemma_non_tree_edge_trivial(
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
     depth: spec_fn(nat) -> nat,
     t: CosetTable, p: Presentation,
@@ -831,6 +833,7 @@ proof fn lemma_non_tree_edge_trivial(
     ensures
         schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), non_tree_edges[k].0, non_tree_edges[k].1),
 {
+    reveal(certificate_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let ck = non_tree_edges[k].0;
     let sk = non_tree_edges[k].1;
@@ -898,6 +901,7 @@ proof fn lemma_non_tree_step1_sp_trivial(
             equiv_in_presentation(p, schreier_product(t, reps, start, r), empty_word())
         }),
 {
+    reveal(certificate_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
@@ -962,6 +966,7 @@ proof fn lemma_step2_prefix_trivial(
             all_gens_trivial_in_trace(t, p, reps, start, prefix)
         }),
 {
+    reveal(certificate_wf);
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
 
@@ -1021,6 +1026,7 @@ proof fn lemma_step2_suffix_trivial(
             all_gens_trivial_in_trace(t, p, reps, c_after, suffix)
         }),
 {
+    reveal(certificate_wf);
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
 
@@ -1077,6 +1083,7 @@ proof fn lemma_non_tree_step2_extract_gen(
             equiv_in_presentation(p, schreier_product(t, reps, start, r), gen_pos)
         }),
 {
+    reveal(certificate_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
@@ -1093,63 +1100,7 @@ proof fn lemma_non_tree_step2_extract_gen(
     lemma_extract_nontrivial_gen(t, p, reps, start, r, pos);
 }
 
-/// All non-tree edges are trivial (strong induction wrapper).
-#[verifier::rlimit(30)]
-proof fn lemma_all_non_tree_trivial(
-    parent: spec_fn(nat) -> Option<(nat, Symbol)>,
-    depth: spec_fn(nat) -> nat,
-    t: CosetTable, p: Presentation,
-    non_tree_edges: Seq<(nat, Symbol)>,
-    certificates: Seq<(int, nat, int)>,
-    bound: int,
-)
-    requires
-        tree_wf(t, parent, depth),
-        coset_table_wf(t),
-        coset_table_consistent(t),
-        coset_table_complete(t),
-        relator_closed(t, p),
-        presentation_valid(p),
-        t.num_gens == p.num_generators,
-        t.num_cosets > 0,
-        certificate_wf(t, p, parent, non_tree_edges, certificates),
-        0 <= bound <= non_tree_edges.len(),
-        // All tree edges trivial
-        forall|c: nat, s: Symbol|
-            c < t.num_cosets && symbol_valid(s, t.num_gens) &&
-            symbol_to_column(s) < 2 * t.num_gens &&
-            t.table[c as int][symbol_to_column(s) as int] is Some &&
-            #[trigger] is_tree_edge(parent, c, s, t.table[c as int][symbol_to_column(s) as int].unwrap())
-            ==> schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), c, s),
-    ensures
-        forall|m: int| #![trigger non_tree_edges[m]] 0 <= m < bound ==>
-            schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), non_tree_edges[m].0, non_tree_edges[m].1),
-    decreases bound
-{
-    if bound <= 0 {
-    } else {
-        // Recursive call: establishes forall m < bound-1
-        lemma_all_non_tree_trivial(parent, depth, t, p, non_tree_edges, certificates, bound - 1);
-
-        // Explicitly assert what the recursive call gives us, to help Z3
-        // connect it to lemma_non_tree_edge_trivial's requires
-        assert(0 <= (bound - 1) && (bound - 1) < non_tree_edges.len() as int);
-
-        // Prove the k-th edge is trivial
-        lemma_non_tree_edge_trivial(parent, depth, t, p, non_tree_edges, certificates, bound - 1);
-
-        // Combine: forall m < bound-1 (IH) + edge bound-1 (above) => forall m < bound
-        assert forall|m: int| #![trigger non_tree_edges[m]] 0 <= m < bound implies
-            schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), non_tree_edges[m].0, non_tree_edges[m].1)
-        by {
-            if m < bound - 1 {
-                // From IH
-            } else {
-                // m == bound - 1, from lemma_non_tree_edge_trivial
-            }
-        }
-    }
-}
+// lemma_all_non_tree_trivial is in schreier_induction.rs (separate module for rlimit isolation)
 
 // ========================================================================
 // Part 7: Main theorem
@@ -1176,6 +1127,7 @@ pub proof fn lemma_schreier_trivial_from_witness(
     ensures
         has_schreier_system(t, p),
 {
+    reveal(certificate_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
 
     // Rep system validity
