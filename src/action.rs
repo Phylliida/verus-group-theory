@@ -4,6 +4,9 @@ use crate::word::*;
 use crate::presentation::*;
 use crate::presentation_lemmas::*;
 use crate::reduction::*;
+use crate::todd_coxeter::*;
+use crate::finite::coset_table_complete;
+use crate::completeness::*;
 
 verus! {
 
@@ -265,6 +268,314 @@ pub proof fn lemma_gen_inv_cancels(a: FiniteAction, gen_idx: nat, x: nat)
     assert(perm[x2 as int] == y);
     assert(perm[x as int] == y);
     // Injectivity: x2 != x would give perm[x2] == perm[x] with x2 != x, contradiction
+}
+
+// ============================================================
+// Left-to-right action (matches trace_word direction)
+// ============================================================
+
+/// Apply a word's action to a point (left-to-right composition).
+/// apply_action_left(w, x) = w[n-1](...(w[1](w[0](x)))...)
+pub open spec fn apply_action_left(a: FiniteAction, w: Word, x: nat) -> nat
+    recommends x < a.set_size,
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        x
+    } else {
+        apply_action_left(a, w.drop_first(), apply_action_symbol(a, w.first(), x))
+    }
+}
+
+/// Left-to-right action on the empty word is identity.
+pub proof fn lemma_action_left_identity(a: FiniteAction, x: nat)
+    ensures
+        apply_action_left(a, empty_word(), x) == x,
+{
+}
+
+/// Left-to-right action is compatible with concatenation.
+pub proof fn lemma_action_left_compatible(a: FiniteAction, w1: Word, w2: Word, x: nat)
+    ensures
+        apply_action_left(a, concat(w1, w2), x) == apply_action_left(a, w2, apply_action_left(a, w1, x)),
+    decreases w1.len(),
+{
+    if w1.len() == 0 {
+        assert(concat(w1, w2) =~= w2);
+    } else {
+        let s = w1.first();
+        let rest = w1.drop_first();
+        assert(concat(w1, w2).first() == s);
+        assert(concat(w1, w2).drop_first() =~= concat(rest, w2));
+        lemma_action_left_compatible(a, rest, w2, apply_action_symbol(a, s, x));
+    }
+}
+
+// ============================================================
+// Coset table action constructor
+// ============================================================
+
+/// Construct a FiniteAction from a coset table.
+/// perm_images[g][c] = table[c][2*g] (the result of applying Gen(g) to coset c).
+pub open spec fn coset_table_action(t: CosetTable, p: Presentation) -> FiniteAction {
+    FiniteAction {
+        presentation: p,
+        set_size: t.num_cosets,
+        perm_images: Seq::new(p.num_generators, |g: int|
+            Seq::new(t.num_cosets, |c: int| t.table[c][2 * g].unwrap())),
+    }
+}
+
+// ============================================================
+// Bridge: coset table action ↔ trace_word
+// ============================================================
+
+/// Single symbol bridge: apply_action_symbol on coset_table_action
+/// matches a single trace_word step.
+proof fn lemma_coset_action_symbol(t: CosetTable, p: Presentation, s: Symbol, c: nat)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        t.num_gens == p.num_generators,
+        c < t.num_cosets,
+        symbol_valid(s, p.num_generators),
+    ensures
+        apply_action_symbol(coset_table_action(t, p), s, c)
+            == t.table[c as int][symbol_to_column(s) as int].unwrap(),
+{
+    let a = coset_table_action(t, p);
+    let col = symbol_to_column(s);
+    match s {
+        Symbol::Gen(g) => {
+            // perm_images[g][c] = table[c][2*g].unwrap()
+            // symbol_to_column(Gen(g)) = 2*g
+            assert(a.perm_images[g as int][c as int] == t.table[c as int][(2 * g) as int].unwrap());
+        },
+        Symbol::Inv(g) => {
+            // apply_action_symbol(Inv(g), c) = inverse_perm_lookup(perm_images[g], c)
+            // perm_images[g] = Seq::new(num_cosets, |c| table[c][2*g].unwrap())
+            // We need: inverse_perm_lookup(perm_images[g], c) == table[c][2*g+1].unwrap()
+            //
+            // By consistency: table[c][2*g+1] = Some(d) means table[d][2*g] = Some(c).
+            // So perm_images[g][d] = c, meaning inverse_perm_lookup(perm_images[g], c) should be d.
+            let perm = a.perm_images[g as int];
+            let d = t.table[c as int][(2 * g + 1) as int].unwrap();
+            // consistency: table[c][2*g+1] = Some(d) → table[d][2*g] = Some(c)
+            assert(t.table[c as int][(2 * g + 1) as int] is Some);
+            assert(t.table[d as int][(2 * g) as int] == Some(c));
+            // So perm[d] = table[d][2*g].unwrap() = c
+            assert(perm[d as int] == c);
+            // inverse_perm_lookup finds some x with perm[x] == c
+            // We need it to find d. Since perm is injective (from permutation proof),
+            // any x with perm[x] == c must equal d.
+            // But we need is_permutation for that. Let's prove it inline.
+            // Actually, we can just assert perm[d] == c and let Z3 resolve choose.
+            // The issue is that inverse_perm_lookup uses `choose`, which is
+            // deterministic but unspecified. We just need to show that whatever
+            // x it picks, it satisfies our property.
+            //
+            // We know d < num_cosets and perm[d] == c.
+            // inverse_perm_lookup picks some x with x < perm.len() && perm[x] == c.
+            // d is such a witness, so the choose succeeds.
+            // The result x satisfies perm[x] == c.
+            // By consistency + wf, table[x][2*g] = Some(c) means table[c][2*g+1] = Some(x).
+            // But table[c][2*g+1] = Some(d). Since table entries are deterministic, x == d.
+            //
+            // Hmm, that argument uses consistency in the reverse direction.
+            // consistency says: table[c][col] = Some(d) → table[d][inv_col] = Some(c).
+            // We need: table[d][2*g] = Some(c) → table[c][2*g+1] = Some(d).
+            // This IS the consistency condition with c→d, col→2*g: table[d][2*g] = Some(c) → table[c][inv(2*g)] = Some(d).
+            // inv(2*g) = 2*g+1. ✓
+            let x = inverse_perm_lookup(perm, c);
+            assert(perm.len() == t.num_cosets);
+            assert(d < t.num_cosets);
+            assert(perm[d as int] == c);
+            // Z3 should find x via the witness d
+            // Now show x == d using consistency
+            assert(perm[x as int] == c);
+            // perm[x] == c means table[x][2*g].unwrap() == c
+            assert(t.table[x as int][(2 * g) as int].unwrap() == c);
+            assert(t.table[x as int][(2 * g) as int] == Some(c));
+            // consistency on (x, 2*g): table[x][2*g] = Some(c) → table[c][inv(2*g)] = Some(x)
+            // inv(2*g) = 2*g+1
+            assert(t.table[c as int][(2 * g + 1) as int] == Some(x));
+            // But we also know table[c][2*g+1] = Some(d)
+            assert(Some(x) == Some(d));
+        },
+    }
+}
+
+/// Bridge: apply_action_left on coset_table_action matches trace_word.
+pub proof fn lemma_coset_action_traces(
+    t: CosetTable, p: Presentation, w: Word, c: nat,
+)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        t.num_gens == p.num_generators,
+        c < t.num_cosets,
+        word_valid(w, p.num_generators),
+    ensures
+        trace_word(t, c, w) is Some,
+        apply_action_left(coset_table_action(t, p), w, c)
+            == trace_word(t, c, w).unwrap(),
+    decreases w.len(),
+{
+    let a = coset_table_action(t, p);
+    lemma_valid_word_columns(w, p.num_generators);
+    lemma_trace_complete(t, c, w);
+
+    if w.len() == 0 {
+        lemma_trace_empty(t, c);
+    } else {
+        let s = w.first();
+        let w_tail = w.drop_first();
+        let col = symbol_to_column(s);
+
+        assert(symbol_valid(s, p.num_generators)) by { assert(s == w[0]); }
+        lemma_coset_action_symbol(t, p, s, c);
+        let d = t.table[c as int][col as int].unwrap();
+        assert(apply_action_symbol(a, s, c) == d);
+
+        // word_valid for tail
+        assert(word_valid(w_tail, p.num_generators)) by {
+            assert forall|k: int| 0 <= k < w_tail.len()
+                implies symbol_valid(w_tail[k], p.num_generators)
+            by { assert(w_tail[k] == w[k + 1]); }
+        }
+
+        // Recurse
+        lemma_coset_action_traces(t, p, w_tail, d);
+    }
+}
+
+// ============================================================
+// Permutation proof for coset_table_action
+// ============================================================
+
+/// Each generator's image in coset_table_action is a permutation.
+pub proof fn lemma_coset_action_permutations(t: CosetTable, p: Presentation, g: nat)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        t.num_gens == p.num_generators,
+        g < p.num_generators,
+    ensures
+        is_permutation(
+            coset_table_action(t, p).perm_images[g as int],
+            t.num_cosets,
+        ),
+{
+    let a = coset_table_action(t, p);
+    let perm = a.perm_images[g as int];
+    let n = t.num_cosets;
+
+    // Length
+    assert(perm.len() == n);
+
+    // Range: perm[c] = table[c][2*g].unwrap() < num_cosets (from wf)
+    assert forall|i: int| 0 <= i < n implies (#[trigger] perm[i]) < n by {
+        assert(perm[i] == t.table[i][(2 * g) as int].unwrap());
+    }
+
+    // Injectivity: if perm[c1] == perm[c2] then c1 == c2
+    // Proof via consistency: perm[c] = d means table[c][2*g] = Some(d).
+    // By consistency: table[d][2*g+1] = Some(c).
+    // If perm[c1] == perm[c2] == d, then table[d][2*g+1] = Some(c1) AND Some(c2),
+    // so c1 == c2.
+    assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n && i != j
+        implies #[trigger] perm[i] != #[trigger] perm[j] by {
+        if perm[i] == perm[j] {
+            let d = perm[i];
+            assert(t.table[i][(2 * g) as int] == Some(d));
+            assert(t.table[j][(2 * g) as int] == Some(d));
+            // consistency: table[i][2*g] = Some(d) → table[d][2*g+1] = Some(i)
+            assert(t.table[d as int][(2 * g + 1) as int] == Some(i as nat));
+            // consistency: table[j][2*g] = Some(d) → table[d][2*g+1] = Some(j)
+            assert(t.table[d as int][(2 * g + 1) as int] == Some(j as nat));
+            // Both equal, so i == j — contradiction
+        }
+    }
+}
+
+// ============================================================
+// Left-to-right action validity (matches trace_word direction)
+// ============================================================
+
+/// A finite action is valid under left-to-right composition:
+/// all generator images are permutations and relators act as the identity
+/// when applied left-to-right (matching trace_word direction).
+pub open spec fn action_valid_left(a: FiniteAction) -> bool {
+    a.perm_images.len() == a.presentation.num_generators
+    && (forall|i: int| #![trigger a.perm_images[i]]
+        0 <= i < a.perm_images.len() ==> is_permutation(a.perm_images[i], a.set_size))
+    && (forall|c: int, x: nat| #![trigger apply_action_left(a, a.presentation.relators[c], x)]
+        0 <= c < a.presentation.relators.len() && x < a.set_size ==>
+            apply_action_left(a, a.presentation.relators[c], x) == x)
+}
+
+/// Left-to-right action is compatible with concatenation.
+/// apply_action_left(w1·w2, x) == apply_action_left(w2, apply_action_left(w1, x))
+pub proof fn lemma_action_left_concat(a: FiniteAction, w1: Word, w2: Word, x: nat)
+    ensures
+        apply_action_left(a, concat(w1, w2), x) == apply_action_left(a, w2, apply_action_left(a, w1, x)),
+    decreases w1.len(),
+{
+    if w1.len() == 0 {
+        assert(concat(w1, w2) =~= w2);
+    } else {
+        let s = w1.first();
+        let rest = w1.drop_first();
+        assert(concat(w1, w2).first() == s);
+        assert(concat(w1, w2).drop_first() =~= concat(rest, w2));
+        lemma_action_left_concat(a, rest, w2, apply_action_symbol(a, s, x));
+    }
+}
+
+/// The coset table action satisfies action_valid_left.
+/// Proof: permutations from lemma_coset_action_permutations,
+/// relator identity from relator_closed + lemma_coset_action_traces bridge.
+pub proof fn lemma_coset_action_valid_left(t: CosetTable, p: Presentation)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        relator_closed(t, p),
+        t.num_gens == p.num_generators,
+        presentation_valid(p),
+    ensures
+        action_valid_left(coset_table_action(t, p)),
+{
+    let a = coset_table_action(t, p);
+
+    // Permutations
+    assert forall|i: int| #![trigger a.perm_images[i]]
+        0 <= i < a.perm_images.len()
+        implies is_permutation(a.perm_images[i], a.set_size)
+    by {
+        lemma_coset_action_permutations(t, p, i as nat);
+    }
+
+    // Relator identity: apply_action_left(a, relator, x) == x for all relators and x
+    assert forall|c: int, x: nat| #![trigger apply_action_left(a, a.presentation.relators[c], x)]
+        0 <= c < a.presentation.relators.len() && x < a.set_size
+        implies apply_action_left(a, a.presentation.relators[c], x) == x
+    by {
+        let r = p.relators[c];
+        // relator_closed: trace_word(t, x, r) == Some(x)
+        assert(trace_word(t, x as nat, r) == Some(x));
+        // Bridge: apply_action_left matches trace_word
+        // Need word_valid(r, p.num_generators)
+        assert(word_valid(r, p.num_generators)) by {
+            // presentation_valid ensures all relator symbols valid
+            assert(presentation_valid(p));
+        }
+        lemma_coset_action_traces(t, p, r, x);
+        // apply_action_left(a, r, x) == trace_word(t, x, r).unwrap() == x
+    }
 }
 
 } // verus!

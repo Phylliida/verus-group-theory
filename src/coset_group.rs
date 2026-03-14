@@ -453,7 +453,7 @@ pub proof fn lemma_coset_mul_identity_right(
 }
 
 /// If all symbols have valid columns, the word is word_valid.
-proof fn lemma_columns_to_word_valid(w: Word, num_gens: nat)
+pub proof fn lemma_columns_to_word_valid(w: Word, num_gens: nat)
     requires
         forall|k: int| 0 <= k < w.len() ==> symbol_to_column(w[k]) < 2 * num_gens,
     ensures

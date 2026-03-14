@@ -20,6 +20,9 @@ pub mod free_product;
 pub mod hnn;
 
 #[cfg(verus_keep_ghost)]
+pub mod quotient;
+
+#[cfg(verus_keep_ghost)]
 pub mod subgroup;
 
 #[cfg(verus_keep_ghost)]
@@ -54,5 +57,8 @@ pub mod coset_group;
 
 #[cfg(verus_keep_ghost)]
 pub mod decidability;
+
+#[cfg(verus_keep_ghost)]
+pub mod schreier;
 
 pub mod runtime;

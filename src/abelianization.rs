@@ -3,7 +3,7 @@ use crate::symbol::*;
 use crate::word::*;
 use crate::presentation::*;
 use crate::presentation_lemmas::*;
-use crate::subgroup::*;
+use crate::quotient::*;
 
 verus! {
 
