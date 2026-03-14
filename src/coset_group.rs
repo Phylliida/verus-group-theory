@@ -42,7 +42,47 @@ pub open spec fn coset_inv(t: CosetTable, a: nat) -> nat
     trace_word(t, 0 as nat, inverse_word(coset_rep(t, a))).unwrap()
 }
 
-// ─── Faithfulness axiom ─────────────────────────────────────────────────────
+// ─── Schreier representative system ─────────────────────────────────────────
+
+/// A coset representative system: rep(0) = ε, each rep traces 0 → c,
+/// and all reps are word_valid with valid columns.
+pub open spec fn is_coset_rep_system(t: CosetTable, reps: spec_fn(nat) -> Word) -> bool {
+    &&& reps(0nat) =~= empty_word()
+    &&& forall|c: nat| c < t.num_cosets ==> (
+        #[trigger] trace_word(t, 0 as nat, reps(c)) == Some(c)
+        && word_valid(reps(c), t.num_gens)
+        && (forall|k: int| 0 <= k < reps(c).len() ==> #[trigger] symbol_to_column(reps(c)[k]) < 2 * t.num_gens)
+    )
+}
+
+/// The Schreier generator for coset c and symbol s is trivial.
+pub open spec fn schreier_gen_equiv(
+    t: CosetTable, p: Presentation, reps: spec_fn(nat) -> Word,
+    c: nat, s: Symbol,
+) -> bool {
+    let col = symbol_to_column(s);
+    let d = t.table[c as int][col as int].unwrap();
+    equiv_in_presentation(p,
+        concat(concat(reps(c), Seq::new(1, |_j: int| s)), inverse_word(reps(d))),
+        empty_word())
+}
+
+/// All Schreier generators are trivial: for each coset c and valid symbol s,
+/// reps(c) · [s] · reps(d)⁻¹ ≡ ε where d = table[c][s].
+pub open spec fn schreier_trivial(t: CosetTable, p: Presentation, reps: spec_fn(nat) -> Word) -> bool {
+    forall|c: nat, s: Symbol|
+        c < t.num_cosets && symbol_valid(s, t.num_gens)
+        ==> #[trigger] schreier_gen_equiv(t, p, reps, c, s)
+}
+
+/// A coset table has a Schreier system: there exist representatives
+/// such that all Schreier generators are trivial.
+pub open spec fn has_schreier_system(t: CosetTable, p: Presentation) -> bool {
+    exists|reps: spec_fn(nat) -> Word|
+        is_coset_rep_system(t, reps) && schreier_trivial(t, p, reps)
+}
+
+// ─── Faithfulness ───────────────────────────────────────────────────────────
 
 /// A coset table is faithful: words tracing 0 → 0 are trivial in the group.
 /// This is the kernel condition: ker(φ) ⊆ ⟨⟨R⟩⟩ where φ(w) = trace(0, w).
@@ -53,11 +93,99 @@ pub open spec fn coset_table_faithful(t: CosetTable, p: Presentation) -> bool {
         ==> equiv_in_presentation(p, w, empty_word())
 }
 
-/// FAITHFULNESS AXIOM (proof debt): a complete+consistent+relator-closed table
-/// is faithful. Full proof requires ghost invariants in enumerate_cosets_exec
-/// tracking equivalence classes through the Todd-Coxeter algorithm execution.
-#[verifier::external_body]
-pub proof fn axiom_coset_table_faithful(t: CosetTable, p: Presentation)
+/// If concat(u, inv(v)) ≡ ε, then u ≡ v.
+proof fn lemma_cancel_inverse_right(p: Presentation, u: Word, v: Word)
+    requires
+        equiv_in_presentation(p, concat(u, inverse_word(v)), empty_word()),
+        word_valid(u, p.num_generators),
+        word_valid(v, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, u, v),
+{
+    let inv_v = inverse_word(v);
+    let n = p.num_generators;
+    // concat(concat(u, inv_v), v) ≡ concat(ε, v) ≡ v
+    lemma_equiv_concat_left(p, concat(u, inv_v), empty_word(), v);
+    lemma_concat_identity_left(p, v);
+    lemma_equiv_transitive(p, concat(concat(u, inv_v), v), concat(empty_word(), v), v);
+    // By assoc: concat(u, concat(inv_v, v)) =~= concat(concat(u, inv_v), v) ≡ v
+    lemma_concat_assoc(u, inv_v, v);
+    // concat(inv_v, v) ≡ ε
+    lemma_word_inverse_left(p, v);
+    // concat(u, concat(inv_v, v)) ≡ concat(u, ε)
+    lemma_equiv_concat_right(p, u, concat(inv_v, v), empty_word());
+    // concat(u, ε) ≡ u
+    lemma_concat_identity_right(p, u);
+    // Chain: concat(u, concat(inv_v, v)) ≡ u
+    lemma_equiv_transitive(p, concat(u, concat(inv_v, v)), concat(u, empty_word()), u);
+    // Symmetric: u ≡ concat(u, concat(inv_v, v))
+    crate::word::lemma_inverse_word_valid(v, n);
+    lemma_concat_word_valid(inv_v, v, n);
+    lemma_concat_word_valid(u, concat(inv_v, v), n);
+    lemma_equiv_symmetric(p, concat(u, concat(inv_v, v)), u);
+    // Transitive: u ≡ v
+    lemma_equiv_transitive(p, u, concat(u, concat(inv_v, v)), v);
+}
+
+/// Step case helper: given IH result concat(reps(d), w_tail) ≡ reps(c),
+/// prove concat(reps(a), w) ≡ reps(c) using Schreier triviality.
+proof fn lemma_trace_to_rep_step(
+    t: CosetTable, p: Presentation,
+    reps: spec_fn(nat) -> Word,
+    a: nat, w: Word, s: Symbol, d: nat, c: nat,
+)
+    requires
+        t.num_gens == p.num_generators,
+        presentation_valid(p),
+        is_coset_rep_system(t, reps),
+        schreier_trivial(t, p, reps),
+        a < t.num_cosets,
+        d < t.num_cosets,
+        symbol_valid(s, t.num_gens),
+        symbol_to_column(s) < 2 * t.num_gens,
+        t.table[a as int][symbol_to_column(s) as int] == Some(d),
+        w.len() > 0,
+        w.first() == s,
+        word_valid(w.drop_first(), t.num_gens),
+        equiv_in_presentation(p, concat(reps(d), w.drop_first()), reps(c)),
+    ensures
+        equiv_in_presentation(p, concat(reps(a), w), reps(c)),
+{
+    let w_tail = w.drop_first();
+    let n = t.num_gens;
+    let s_word: Word = Seq::new(1, |_j: int| s);
+    let rep_a_s = concat(reps(a), s_word);
+
+    // Trigger rep system forall instantiation for a and d
+    assert(trace_word(t, 0 as nat, reps(a)) == Some(a));
+    assert(trace_word(t, 0 as nat, reps(d)) == Some(d));
+
+    // Trigger Schreier instantiation
+    assert(schreier_gen_equiv(t, p, reps, a, s));
+
+    // word_valid for cancel_inverse_right
+    assert(word_valid(s_word, n)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(s_word[k], n) by { assert(s_word[k] == s); }
+    }
+    lemma_concat_word_valid(reps(a), s_word, n);
+    // cancel: rep_a_s ≡ reps(d)
+    lemma_cancel_inverse_right(p, rep_a_s, reps(d));
+    // concat(rep_a_s, w_tail) ≡ concat(reps(d), w_tail) ≡ reps(c)
+    lemma_equiv_concat_left(p, rep_a_s, reps(d), w_tail);
+    lemma_equiv_transitive(p, concat(rep_a_s, w_tail), concat(reps(d), w_tail), reps(c));
+    // concat(reps(a), w) =~= concat(rep_a_s, w_tail) by assoc + decomposition
+    assert(w =~= concat(s_word, w_tail));
+    lemma_concat_assoc(reps(a), s_word, w_tail);
+}
+
+/// Inductive core: if trace(a, w) = c, then concat(reps(a), w) ≡ reps(c).
+proof fn lemma_trace_to_rep(
+    t: CosetTable, p: Presentation,
+    reps: spec_fn(nat) -> Word,
+    a: nat, w: Word,
+)
     requires
         coset_table_wf(t),
         coset_table_consistent(t),
@@ -65,10 +193,69 @@ pub proof fn axiom_coset_table_faithful(t: CosetTable, p: Presentation)
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        is_coset_rep_system(t, reps),
+        schreier_trivial(t, p, reps),
+        a < t.num_cosets,
+        word_valid(w, t.num_gens),
+        trace_word(t, a, w) is Some,
+    ensures
+        equiv_in_presentation(p, concat(reps(a), w), reps(trace_word(t, a, w).unwrap())),
+    decreases w.len(),
+{
+    let c = trace_word(t, a, w).unwrap();
+    if w.len() == 0 {
+        assert(concat(reps(a), w) =~= reps(a));
+        lemma_equiv_refl(p, reps(a));
+    } else {
+        let s = w.first();
+        let w_tail = w.drop_first();
+        let n = t.num_gens;
+        let col = symbol_to_column(s);
+        assert(symbol_valid(s, n)) by { assert(s == w[0]); }
+        lemma_valid_word_columns(w, n);
+        let d = t.table[a as int][col as int].unwrap();
+        assert(word_valid(w_tail, n)) by {
+            assert forall|k: int| 0 <= k < w_tail.len()
+                implies symbol_valid(w_tail[k], n)
+            by { assert(w_tail[k] == w[k + 1]); }
+        }
+        lemma_valid_word_columns(w_tail, n);
+        lemma_trace_complete(t, d, w_tail);
+        lemma_trace_to_rep(t, p, reps, d, w_tail);
+        lemma_trace_to_rep_step(t, p, reps, a, w, s, d, c);
+    }
+}
+
+/// Faithfulness: a complete+consistent+relator-closed table with a Schreier
+/// system is faithful. Proved by induction on word length via lemma_trace_to_rep.
+pub proof fn lemma_coset_table_faithful(t: CosetTable, p: Presentation)
+    requires
+        coset_table_wf(t),
+        coset_table_consistent(t),
+        coset_table_complete(t),
+        relator_closed(t, p),
+        t.num_gens == p.num_generators,
+        presentation_valid(p),
+        has_schreier_system(t, p),
+        t.num_cosets > 0,
     ensures
         coset_table_faithful(t, p),
 {
-    unimplemented!();
+    let reps = choose|reps: spec_fn(nat) -> Word|
+        is_coset_rep_system(t, reps) && schreier_trivial(t, p, reps);
+    assert forall|w: Word|
+        word_valid(w, p.num_generators)
+        && trace_word(t, 0 as nat, w) == Some(0 as nat)
+        implies equiv_in_presentation(p, w, empty_word())
+    by {
+        lemma_valid_word_columns(w, p.num_generators);
+        lemma_trace_complete(t, 0, w);
+        lemma_trace_to_rep(t, p, reps, 0, w);
+        // concat(reps(0), w) ≡ reps(0), and reps(0) =~= ε
+        // so concat(ε, w) ≡ ε, and concat(ε, w) =~= w, so w ≡ ε
+        assert(reps(0nat) =~= empty_word());
+        assert(concat(empty_word(), w) =~= w);
+    }
 }
 
 // ─── Soundness from faithfulness ────────────────────────────────────────────
@@ -88,6 +275,7 @@ pub proof fn axiom_coset_table_sound(t: CosetTable, p: Presentation, w1: Word, w
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         t.num_cosets > 0,
         trace_word(t, 0 as nat, w1) == trace_word(t, 0 as nat, w2),
         word_valid(w1, p.num_generators),
@@ -116,7 +304,7 @@ pub proof fn axiom_coset_table_sound(t: CosetTable, p: Presentation, w1: Word, w
     lemma_concat_word_valid(w1, inv_w2, n);
 
     // Step 4: faithfulness → concat(w1, inv(w2)) ≡ ε
-    axiom_coset_table_faithful(t, p);
+    lemma_coset_table_faithful(t, p);
     assert(trace_word(t, 0 as nat, concat(w1, inv_w2)) == Some(0 as nat));
     assert(equiv_in_presentation(p, concat(w1, inv_w2), empty_word()));
 
@@ -174,6 +362,7 @@ pub proof fn lemma_coset_mul_well_defined(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         trace_word(t, 0 as nat, w) == trace_word(t, 0 as nat, w_prime),
         word_valid(w, p.num_generators),
@@ -237,6 +426,7 @@ pub proof fn lemma_coset_mul_identity_right(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         coset_reachable(t, 0 as nat),
         coset_reachable(t, a),
@@ -305,6 +495,7 @@ proof fn lemma_assoc_trace_chain(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         word_valid(w_b, t.num_gens),
         word_valid(w_c, t.num_gens),
@@ -353,6 +544,7 @@ pub proof fn lemma_coset_mul_assoc(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         b < t.num_cosets,
         c < t.num_cosets,
@@ -432,6 +624,7 @@ proof fn lemma_same_coset_same_trace(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         trace_word(t, 0 as nat, w1) == Some(target),
         trace_word(t, 0 as nat, w2) == Some(target),
@@ -471,6 +664,7 @@ pub proof fn lemma_coset_inv_right(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         coset_reachable(t, a),
         coset_reachable(t, coset_inv(t, a)),
@@ -508,6 +702,7 @@ pub proof fn lemma_coset_inv_left(
         relator_closed(t, p),
         t.num_gens == p.num_generators,
         presentation_valid(p),
+        has_schreier_system(t, p),
         a < t.num_cosets,
         coset_reachable(t, a),
         coset_reachable(t, coset_inv(t, a)),
