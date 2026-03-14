@@ -1094,6 +1094,7 @@ proof fn lemma_non_tree_step2_extract_gen(
 }
 
 /// All non-tree edges are trivial (strong induction wrapper).
+#[verifier::rlimit(30)]
 proof fn lemma_all_non_tree_trivial(
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
     depth: spec_fn(nat) -> nat,
