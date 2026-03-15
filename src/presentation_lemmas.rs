@@ -530,6 +530,119 @@ pub proof fn lemma_quotient_preserves_equiv(
 }
 
 // ============================================================
+// Relator inclusion (generalization of extends_presentation)
+// ============================================================
+
+/// Every relator of p1 appears somewhere in p2's relators.
+pub open spec fn relators_included(p1: Presentation, p2: Presentation) -> bool {
+    p1.num_generators == p2.num_generators &&
+    forall|i: int| 0 <= i < p1.relators.len() ==>
+        exists|j: int| 0 <= j < p2.relators.len() &&
+            p2.relators[j] == #[trigger] p1.relators[i]
+}
+
+/// Re-index a derivation step from p1 to p2 using relator inclusion.
+pub open spec fn reindex_step(p1: Presentation, p2: Presentation, step: DerivationStep) -> DerivationStep {
+    match step {
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            let j = choose|j: int| 0 <= j < p2.relators.len()
+                && p2.relators[j] == p1.relators[relator_index as int];
+            DerivationStep::RelatorInsert { position, relator_index: j as nat, inverted }
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            let j = choose|j: int| 0 <= j < p2.relators.len()
+                && p2.relators[j] == p1.relators[relator_index as int];
+            DerivationStep::RelatorDelete { position, relator_index: j as nat, inverted }
+        },
+        _ => step,
+    }
+}
+
+/// A single derivation step valid in p1 can be replayed in p2
+/// when relators are included.
+pub proof fn lemma_step_valid_with_inclusion(
+    p1: Presentation, p2: Presentation,
+    w: Word, step: DerivationStep, w_prime: Word,
+)
+    requires
+        relators_included(p1, p2),
+        apply_step(p1, w, step) == Some(w_prime),
+    ensures
+        apply_step(p2, w, reindex_step(p1, p2, step)) == Some(w_prime),
+{
+    match step {
+        DerivationStep::FreeReduce { position } => {},
+        DerivationStep::FreeExpand { position, symbol } => {},
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            assert(0 <= relator_index < p1.relators.len());
+            let j = choose|j: int| 0 <= j < p2.relators.len()
+                && p2.relators[j] == p1.relators[relator_index as int];
+            assert(get_relator(p2, j as nat, inverted)
+                == get_relator(p1, relator_index, inverted));
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            assert(0 <= relator_index < p1.relators.len());
+            let j = choose|j: int| 0 <= j < p2.relators.len()
+                && p2.relators[j] == p1.relators[relator_index as int];
+            assert(get_relator(p2, j as nat, inverted)
+                == get_relator(p1, relator_index, inverted));
+        },
+    }
+}
+
+/// Re-index a sequence of derivation steps.
+pub open spec fn reindex_steps(p1: Presentation, p2: Presentation, steps: Seq<DerivationStep>) -> Seq<DerivationStep> {
+    Seq::new(steps.len(), |i: int| reindex_step(p1, p2, steps[i]))
+}
+
+/// A valid derivation in p1 can be replayed in p2 when relators are included.
+pub proof fn lemma_derivation_valid_with_inclusion(
+    p1: Presentation, p2: Presentation,
+    steps: Seq<DerivationStep>, w1: Word, w2: Word,
+)
+    requires
+        relators_included(p1, p2),
+        derivation_produces(p1, steps, w1) == Some(w2),
+    ensures
+        derivation_produces(p2, reindex_steps(p1, p2, steps), w1) == Some(w2),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        assert(reindex_steps(p1, p2, steps) =~= Seq::<DerivationStep>::empty());
+    } else {
+        let step = steps.first();
+        let next = apply_step(p1, w1, step).unwrap();
+        lemma_step_valid_with_inclusion(p1, p2, w1, step, next);
+
+        let new_steps = reindex_steps(p1, p2, steps);
+        assert(new_steps.first() == reindex_step(p1, p2, step));
+        assert(apply_step(p2, w1, new_steps.first()) == Some(next));
+
+        let tail = steps.drop_first();
+        lemma_derivation_valid_with_inclusion(p1, p2, tail, next, w2);
+
+        assert(new_steps.drop_first() =~= reindex_steps(p1, p2, tail));
+    }
+}
+
+/// Equivalence transfers from p1 to p2 when relators are included.
+pub proof fn lemma_relator_inclusion_preserves_equiv(
+    p1: Presentation, p2: Presentation,
+    w1: Word, w2: Word,
+)
+    requires
+        relators_included(p1, p2),
+        equiv_in_presentation(p1, w1, w2),
+    ensures
+        equiv_in_presentation(p2, w1, w2),
+{
+    let d = choose|d: Derivation| derivation_valid(p1, d, w1, w2);
+    lemma_derivation_valid_with_inclusion(p1, p2, d.steps, w1, w2);
+    let d2 = Derivation { steps: reindex_steps(p1, p2, d.steps) };
+    assert(derivation_valid(p2, d2, w1, w2));
+}
+
+// ============================================================
 // Bridge: free reduction → presentation equivalence
 // ============================================================
 
