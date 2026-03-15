@@ -475,6 +475,178 @@ proof fn lemma_base_word_valid_down(w: Word, n: nat)
     }
 }
 
+/// If w is base and a step produces a non-base w', the step must introduce stable letters.
+/// This means: FreeReduce → always base result; FreeExpand(base sym) → base result;
+/// RelatorDelete(base relator) → base result; RelatorInsert(base relator) → base result.
+/// So only FreeExpand(stable sym) or RelatorInsert/Delete(HNN relator) can produce non-base.
+proof fn lemma_base_to_nonbase_step_type(
+    data: HNNData, w: Word, w1: Word, step: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        is_base_word(w, data.base.num_generators),
+        word_valid(w, data.base.num_generators),
+        apply_step(hnn_presentation(data), w, step) == Some(w1),
+        !is_base_word(w1, data.base.num_generators),
+    ensures
+        // step introduces stable letters: FreeExpand with stable symbol or RelatorInsert with HNN relator
+        match step {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            // reduce_at(w, pos) = w[0..pos] + w[pos+2..] — subrange of base w, still base
+            lemma_stable_count_reduce(w, position, n);
+            // gen_idx(w[pos]) < n (word_valid(w, n)), so delta = 0
+            assert(symbol_valid(w[position], n));
+            match w[position] {
+                Symbol::Gen(idx) => { assert(idx < n); },
+                Symbol::Inv(idx) => { assert(idx < n); },
+            }
+            assert(stable_letter_count(w1, n) == 0nat);
+            assert(false); // contradiction with !is_base_word(w1)
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            if generator_index(symbol) != n {
+                // Base symbol: pair has no stable letters
+                // So w1 = w[0..pos] + pair + w[pos..] has stable_count = 0 + 0 + 0 = 0
+                // Contradiction with !is_base_word(w1)
+                let left = w.subrange(0, position);
+                let right = w.subrange(position, w.len() as int);
+                let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+                assert(w1 =~= left + pair + right);
+
+                // pair has 0 stable letters
+                assert(pair =~= seq![symbol, inverse_symbol(symbol)]);
+                lemma_stable_count_pair(symbol, inverse_symbol(symbol), n);
+                match symbol {
+                    Symbol::Gen(idx) => { assert(idx != n); },
+                    Symbol::Inv(idx) => { assert(idx != n); },
+                }
+                assert(stable_letter_count(pair, n) == 0nat);
+
+                // subranges of base w have 0 stable letters
+                assert(w =~= left + right);
+                lemma_stable_letter_count_concat(left, right, n);
+                assert(stable_letter_count(left, n) == 0nat);
+                assert(stable_letter_count(right, n) == 0nat);
+
+                assert(w1 =~= left + (pair + right));
+                lemma_stable_letter_count_concat(pair, right, n);
+                lemma_stable_letter_count_concat(left, pair + right, n);
+                assert(stable_letter_count(w1, n) == 0nat);
+                assert(false); // contradiction
+            }
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            if (relator_index as int) < data.base.relators.len() {
+                // Base relator: no stable letters
+                let r = get_relator(hp, relator_index, inverted);
+                let left = w.subrange(0, position);
+                let right = w.subrange(position, w.len() as int);
+                assert(w1 =~= left + r + right);
+
+                // r is a base relator (or its inverse), word_valid(n)
+                reveal(presentation_valid);
+                assert(word_valid(data.base.relators[relator_index as int], n));
+                if inverted {
+                    lemma_inverse_word_valid(data.base.relators[relator_index as int], n);
+                }
+                // Show base relator is base (stable count 0)
+                let base_r = if inverted {
+                    inverse_word(data.base.relators[relator_index as int])
+                } else {
+                    data.base.relators[relator_index as int]
+                };
+                assert(r == base_r);
+                assert(hp.relators[relator_index as int] == data.base.relators[relator_index as int]);
+                lemma_base_word_characterization(base_r, n);
+                assert(is_base_word(base_r, n));
+                assert(stable_letter_count(base_r, n) == 0nat);
+
+                // w1 has same stable count as w
+                assert(w =~= left + right);
+                lemma_stable_letter_count_concat(left, right, n);
+                assert(stable_letter_count(left, n) == 0nat);
+                assert(stable_letter_count(right, n) == 0nat);
+                assert(w1 =~= left + (r + right));
+                lemma_stable_letter_count_concat(r, right, n);
+                lemma_stable_letter_count_concat(left, r + right, n);
+                assert(stable_letter_count(w1, n) == 0nat);
+                assert(false);
+            }
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            // Removes a substring from w. Result is subranges of w, still base.
+            let r = get_relator(hp, relator_index, inverted);
+            let rlen = r.len();
+            // w1 = w[0..pos] + w[pos+rlen..]
+            let left = w.subrange(0, position);
+            let right = w.subrange(position + rlen as int, w.len() as int);
+            assert(w1 =~= left + right);
+
+            assert(w =~= left + w.subrange(position, w.len() as int));
+            assert(w.subrange(position, w.len() as int) =~=
+                w.subrange(position, position + rlen as int) + right);
+            lemma_stable_letter_count_concat(left, w.subrange(position, w.len() as int), n);
+            lemma_stable_letter_count_concat(
+                w.subrange(position, position + rlen as int), right, n);
+            assert(stable_letter_count(left, n) == 0nat);
+            assert(stable_letter_count(right, n) == 0nat);
+
+            lemma_stable_letter_count_concat(left, right, n);
+            assert(stable_letter_count(w1, n) == 0nat);
+            assert(false);
+        },
+    }
+}
+
+/// Removing a word equivalent to ε preserves equivalence.
+/// If u ≡ ε in G, then left·u·right ≡ left·right in G.
+proof fn lemma_remove_trivial_equiv(
+    p: Presentation, left: Word, right: Word, u: Word,
+)
+    requires
+        equiv_in_presentation(p, u, empty_word()),
+    ensures
+        equiv_in_presentation(p, concat(left, concat(u, right)), concat(left, right)),
+{
+    // u ≡ ε → concat(u, right) ≡ concat(ε, right) =~= right
+    lemma_equiv_concat_left(p, u, empty_word(), right);
+    assert(concat(empty_word(), right) =~= right);
+    // Now: equiv(concat(u, right), right)
+    lemma_equiv_concat_right(p, left, concat(u, right), right);
+}
+
+/// Inserting a word equivalent to ε preserves equivalence.
+/// If u ≡ ε in G, then left·right ≡ left·u·right in G.
+proof fn lemma_insert_trivial_equiv(
+    p: Presentation, left: Word, right: Word, u: Word,
+)
+    requires
+        equiv_in_presentation(p, u, empty_word()),
+        word_valid(u, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, concat(left, right), concat(left, concat(u, right))),
+{
+    // ε ≡ u by symmetry (needs word_valid + presentation_valid)
+    lemma_equiv_symmetric(p, u, empty_word());
+    // concat(ε, right) ≡ concat(u, right), i.e., right ≡ concat(u, right)
+    lemma_equiv_concat_left(p, empty_word(), u, right);
+    assert(concat(empty_word(), right) =~= right);
+    // Now: equiv(right, concat(u, right))
+    lemma_equiv_concat_right(p, left, right, concat(u, right));
+}
+
 /// Case (a): FreeExpand(stable) + FreeReduce → w2 = w by stable count argument.
 proof fn lemma_k2_expand_reduce(
     data: HNNData, w: Word, w1: Word, w_end: Word,
@@ -677,33 +849,28 @@ proof fn lemma_single_segment_k2(
     };
     assert(w_end2 == w_end);
 
+    // Classify step0: must introduce stable letters
+    lemma_base_to_nonbase_step_type(data, w, w1, step0);
+
     match step0 {
         DerivationStep::FreeExpand { position: pos0, symbol: sym } => {
-            if generator_index(sym) == n {
-                // step0 introduces stable letters
-                match step1 {
-                    DerivationStep::FreeReduce { position: pos1 } => {
-                        // Case (a): FreeExpand(stable) + FreeReduce
-                        lemma_k2_expand_reduce(data, w, w1, w_end, pos0, sym, pos1);
-                    },
-                    _ => {
-                        assume(false); // Cases (b)-(d) and impossible cases
-                    },
-                }
-            } else {
-                // FreeExpand with base symbol: the pair [sym, inv(sym)] has gen_idx < n
-                // so w1 still has stable_count 0, contradiction with !is_base_word(w1)
-                assume(false); // unreachable: proved by stable count argument
+            // gen_idx(sym) == n guaranteed by lemma_base_to_nonbase_step_type
+            match step1 {
+                DerivationStep::FreeReduce { position: pos1 } => {
+                    // Case (a): FreeExpand(stable) + FreeReduce
+                    lemma_k2_expand_reduce(data, w, w1, w_end, pos0, sym, pos1);
+                },
+                _ => {
+                    assume(false); // Cases (b): FreeExpand(stable) + RelatorDelete-HNN
+                },
             }
         },
         DerivationStep::RelatorInsert { position: pos0, relator_index: r_idx, inverted: inv } => {
-            assume(false); // Cases (c) and (d)
+            // r_idx >= base.relators.len() guaranteed by lemma_base_to_nonbase_step_type
+            assume(false); // Cases (c) and (d): RelatorInsert-HNN + FreeReduce/RelatorDelete
         },
-        DerivationStep::FreeReduce { position: pos0 } => {
-            assume(false); // unreachable: FreeReduce on base → still base
-        },
-        DerivationStep::RelatorDelete { position: pos0, relator_index: r_idx, inverted: inv } => {
-            assume(false); // unreachable: RelatorDelete on base → still base or removes HNN relator
+        _ => {
+            // Impossible by lemma_base_to_nonbase_step_type
         },
     }
 }
