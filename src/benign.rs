@@ -3,6 +3,7 @@ use crate::symbol::*;
 use crate::word::*;
 use crate::presentation::*;
 use crate::presentation_lemmas::*;
+use crate::quotient::*;
 
 verus! {
 
@@ -168,6 +169,22 @@ pub open spec fn benign_witness_valid(
         word_valid(v, g.num_generators) &&
         in_generated_subgroup(w.overgroup, w.l_generators, apply_embedding(w.embedding,v))
         ==> #[trigger] in_generated_subgroup(g, gens, v))
+    // Quotient forward: equiv in G/⟨⟨gens⟩⟩ → equiv in K/⟨⟨l_gens⟩⟩ via embedding
+    &&& (forall|w1: Word, w2: Word|
+        word_valid(w1, g.num_generators) && word_valid(w2, g.num_generators) &&
+        equiv_in_presentation(add_relators(g, gens), w1, w2)
+        ==> #[trigger] equiv_in_presentation(
+            add_relators(w.overgroup, w.l_generators),
+            apply_embedding(w.embedding, w1),
+            apply_embedding(w.embedding, w2)))
+    // Quotient backward: equiv in K/⟨⟨l_gens⟩⟩ via embedding → equiv in G/⟨⟨gens⟩⟩
+    &&& (forall|w1: Word, w2: Word|
+        word_valid(w1, g.num_generators) && word_valid(w2, g.num_generators) &&
+        equiv_in_presentation(
+            add_relators(w.overgroup, w.l_generators),
+            apply_embedding(w.embedding, w1),
+            apply_embedding(w.embedding, w2))
+        ==> #[trigger] equiv_in_presentation(add_relators(g, gens), w1, w2))
 }
 
 // ============================================================

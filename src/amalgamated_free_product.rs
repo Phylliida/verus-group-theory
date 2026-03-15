@@ -72,7 +72,7 @@ pub open spec fn amalgamated_free_product(data: AmalgamatedData) -> Presentation
 // ============================================================
 
 /// Adding relators preserves the number of generators.
-proof fn lemma_add_relators_num_generators(p: Presentation, rs: Seq<Word>)
+pub proof fn lemma_add_relators_num_generators(p: Presentation, rs: Seq<Word>)
     ensures
         add_relators(p, rs).num_generators == p.num_generators,
     decreases rs.len(),

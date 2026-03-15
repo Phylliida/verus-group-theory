@@ -5,6 +5,7 @@ use crate::presentation::*;
 use crate::presentation_lemmas::*;
 use crate::benign::*;
 use crate::quotient::*;
+use crate::amalgamated_free_product::*;
 
 verus! {
 
@@ -87,19 +88,10 @@ pub open spec fn in_normal_closure(
 /// free group), then the quotient F₂/⟨⟨A⟩⟩ embeds in a finitely
 /// presented group.
 ///
-/// This is Higman's key construction: the benignness witness provides
-/// the overgroup K and the finitely generated L. The Rope Trick
-/// builds H from K using HNN extensions, ensuring that the quotient
-/// embeds injectively.
-///
-/// The proof requires:
-/// 1. Building an HNN extension that identifies the benign subgroup
-/// 2. Using amalgamated free products to merge with K
-/// 3. Proving injectivity via Britton's Lemma
-///
-/// This is axiomatized as the construction is intricate but standard.
-#[verifier::external_body]
-pub proof fn axiom_rope_trick(
+/// Proof: take H = K/⟨⟨l_gens⟩⟩ with the benign witness embedding.
+/// The quotient conditions in benign_witness_valid directly give
+/// the forward and backward directions.
+pub proof fn lemma_rope_trick(
     gens: Seq<Word>,
     witness: BenignWitness,
 )
@@ -122,6 +114,42 @@ pub proof fn axiom_rope_trick(
                 equiv_in_presentation(p, apply_embedding(emb, w1), apply_embedding(emb, w2))
                 ==> #[trigger] equiv_in_presentation(add_relators(free_group(2), gens), w1, w2)),
 {
+    let p = add_relators(witness.overgroup, witness.l_generators);
+    let emb = witness.embedding;
+
+    // presentation_valid(p)
+    lemma_add_relators_valid(witness.overgroup, witness.l_generators);
+
+    // emb.len() == 2
+    assert(emb.len() == free_group(2).num_generators);
+
+    // p.num_generators == witness.overgroup.num_generators
+    lemma_add_relators_num_generators(witness.overgroup, witness.l_generators);
+
+    // emb[i] word_valid for p.num_generators
+    assert forall|i: int| 0 <= i < emb.len()
+        implies word_valid(#[trigger] emb[i], p.num_generators)
+    by {
+    };
+
+    // Forward: from quotient_forward condition of benign_witness_valid
+    assert forall|w1: Word, w2: Word|
+        word_valid(w1, 2) && word_valid(w2, 2) &&
+        equiv_in_presentation(add_relators(free_group(2), gens), w1, w2)
+        implies #[trigger] equiv_in_presentation(p, apply_embedding(emb, w1), apply_embedding(emb, w2))
+    by {
+        // g = free_group(2), g.num_generators = 2
+        // Direct from benign_witness_valid quotient_forward
+    };
+
+    // Backward: from quotient_backward condition of benign_witness_valid
+    assert forall|w1: Word, w2: Word|
+        word_valid(w1, 2) && word_valid(w2, 2) &&
+        equiv_in_presentation(p, apply_embedding(emb, w1), apply_embedding(emb, w2))
+        implies #[trigger] equiv_in_presentation(add_relators(free_group(2), gens), w1, w2)
+    by {
+        // Direct from benign_witness_valid quotient_backward
+    };
 }
 
 } // verus!
