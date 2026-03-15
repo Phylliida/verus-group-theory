@@ -635,7 +635,7 @@ proof fn lemma_base_to_nonbase_step_type(
 
 /// Removing a word equivalent to ε preserves equivalence.
 /// If u ≡ ε in G, then left·u·right ≡ left·right in G.
-proof fn lemma_remove_trivial_equiv(
+pub proof fn lemma_remove_trivial_equiv(
     p: Presentation, left: Word, right: Word, u: Word,
 )
     requires
@@ -652,7 +652,7 @@ proof fn lemma_remove_trivial_equiv(
 
 /// Inserting a word equivalent to ε preserves equivalence.
 /// If u ≡ ε in G, then left·right ≡ left·u·right in G.
-proof fn lemma_insert_trivial_equiv(
+pub proof fn lemma_insert_trivial_equiv(
     p: Presentation, left: Word, right: Word, u: Word,
 )
     requires
@@ -672,7 +672,7 @@ proof fn lemma_insert_trivial_equiv(
 }
 
 /// Right cancellation: if concat(x, y) ≡ x in G, then y ≡ ε.
-proof fn lemma_right_cancel(
+pub proof fn lemma_right_cancel(
     p: Presentation, x: Word, y: Word,
 )
     requires
@@ -716,7 +716,7 @@ proof fn lemma_right_cancel(
 }
 
 /// Left cancellation: if concat(x, y) ≡ y in G, then x ≡ ε.
-proof fn lemma_left_cancel(
+pub proof fn lemma_left_cancel(
     p: Presentation, x: Word, y: Word,
 )
     requires
@@ -1749,10 +1749,6 @@ proof fn lemma_k2_relinsert_reduce(
     }
 }
 
-/// Case (d) common preamble: establish r2 is HNN and count(r1)=count(r2)=2.
-/// Returns j2 (HNN index of r2).
-/// Not a separate function to avoid parameter explosion — this doc records the shared logic.
-
 /// Case (d), (!inv, !inv2): both relators non-inverted.
 proof fn lemma_k2_rr_nn(
     data: HNNData, w: Word, w1: Word, w_end: Word,
@@ -1899,7 +1895,7 @@ proof fn lemma_k2_rr_nn(
     lemma_inverse_word_valid(b_j2, n);
     lemma_identity_split(data.base, b_j1, inverse_word(b_j2));
 
-    // Word manipulation via tail
+    // Word manipulation via tail + helper
     let tail = concat(inv_b_j1, w_right);
     let inv_b_j2 = inverse_word(b_j2);
     let spl = a_j1.len() as int + 2;
@@ -1908,37 +1904,23 @@ proof fn lemma_k2_rr_nn(
     assert(w1.subrange(pos1 + r2.len() as int, w1.len() as int) =~= tail.subrange(b_j2.len() as int, tail.len() as int));
     assert(w1.subrange(0, pos1) =~= w_left);
     assert(w_end =~= w_left + tail.subrange(b_j2.len() as int, tail.len() as int));
-    assert(tail.subrange(b_j1.len() as int, tail.len() as int) =~= w_right);
-    assert(w =~= w_left + tail.subrange(b_j1.len() as int, tail.len() as int));
-
-    if b_j1.len() == b_j2.len() {
-        assert(w_end =~= w);
-        lemma_equiv_refl(data.base, w);
-    } else if b_j1.len() > b_j2.len() {
-        let extra = tail.subrange(b_j2.len() as int, b_j1.len() as int);
-        assert(tail.subrange(b_j2.len() as int, tail.len() as int) =~= extra + tail.subrange(b_j1.len() as int, tail.len() as int));
-        assert(w_end =~= w_left + (extra + w_right));
-        assert(inv_b_j1 =~= inv_b_j1.subrange(0, b_j2.len() as int) + extra);
-        assert(inv_b_j2 =~= tail.subrange(0, b_j2.len() as int));
-        assert(inv_b_j1 =~= concat(inv_b_j2, extra));
-        lemma_subrange_word_valid(inv_b_j1, b_j2.len() as int, b_j1.len() as int, n);
-        lemma_right_cancel(data.base, inv_b_j2, extra);
-        lemma_insert_trivial_equiv(data.base, w_left, w_right, extra);
-    } else {
-        let extra = tail.subrange(b_j1.len() as int, b_j2.len() as int);
-        assert(tail.subrange(b_j1.len() as int, tail.len() as int) =~= extra + tail.subrange(b_j2.len() as int, tail.len() as int));
-        assert(w =~= w_left + (extra + tail.subrange(b_j2.len() as int, tail.len() as int)));
-        assert(inv_b_j2 =~= tail.subrange(0, b_j2.len() as int));
-        assert(inv_b_j1 =~= tail.subrange(0, b_j1.len() as int));
-        assert(inv_b_j2 =~= concat(inv_b_j1, extra));
-        lemma_subrange_word_valid(w_right, 0, (b_j2.len() - b_j1.len()) as int, n);
-        assert(extra =~= w_right.subrange(0, (b_j2.len() - b_j1.len()) as int));
-        lemma_right_cancel(data.base, inv_b_j1, extra);
-        let rest = tail.subrange(b_j2.len() as int, tail.len() as int);
-        assert(w =~= concat(w_left, concat(extra, rest)));
-        assert(w_end =~= concat(w_left, rest));
-        lemma_remove_trivial_equiv(data.base, w_left, rest, extra);
+    // Bridge: tail[0..|b_j2|] = inv_b_j2 (from r2 overlap in w1)
+    let head2 = t_inv_seq + a_j2 + t_seq;
+    assert(r2 =~= head2 + inv_b_j2);
+    assert(head2.len() == spl);
+    assert forall|k: int| 0 <= k < b_j2.len()
+        implies tail[k] == #[trigger] inv_b_j2[k]
+    by {
+        assert(w1[(pos0 + spl + k) as int] == r2[(spl + k) as int]);
+        assert(r2[(spl + k) as int] == inv_b_j2[k]);
     }
+    assert(inv_b_j2 =~= tail.subrange(0, b_j2.len() as int));
+    assert(inv_b_j2.len() <= tail.len()) by {
+        assert(tail.len() == inv_b_j1.len() + w_right.len());
+    }
+    lemma_subrange_word_valid(w, 0, pos0, n);
+    lemma_subrange_word_valid(w, pos0, w.len() as int, n);
+    crate::britton_proof_helpers::lemma_tail_shift_equiv(data.base, n, w, w_left, w_right, w_end, inv_b_j1, inv_b_j2, tail);
 }
 
 /// Case (d), (!inv, inv2): r1 non-inverted, r2 inverted.
@@ -2096,6 +2078,16 @@ proof fn lemma_k2_rr_ni(
     assert(w1.subrange(0, pos1) =~= left_part);
     assert(w1.subrange(pos0 + a_j1.len() as int + 2, w1.len() as int) =~= concat(inv_b_j1, w_right));
     assert(w_end =~= left_part + (inv_b_j1 + w_right));
+    // Bridge: r2 starts at pos1, first |b_j2| elements are b_j2
+    let inv_a_j2 = inverse_word(a_j2);
+    assert(r2 =~= b_j2 + t_inv_seq + inv_a_j2 + t_seq);
+    assert forall|i_idx: int| 0 <= i_idx < b_j2.len()
+        implies w_left[(pos1 + i_idx) as int] == #[trigger] b_j2[i_idx]
+    by {
+        assert(w1[(pos1 + i_idx) as int] == r2[i_idx]);
+        assert(r2[i_idx] == b_j2[i_idx]);
+        assert(w1[(pos1 + i_idx) as int] == w_left[(pos1 + i_idx) as int]);
+    }
     assert(w_left.subrange(pos0 - b_j2.len() as int, pos0) =~= b_j2);
     assert(w_left =~= left_part + b_j2);
     assert(w =~= left_part + (b_j2 + w_right));
@@ -2464,39 +2456,26 @@ proof fn lemma_k2_rr_ii(
     crate::word::lemma_inverse_involution(b_j1);
     // b_j2 ≡ b_j1
 
-    // Word manipulation: r1 and r2 both end at same position
+    // Word manipulation via extracted helper (avoids path explosion with preamble)
+    // Establish r1/r2 element-wise facts for the helper
+    assert forall|i: int| 0 <= i < b_j1.len() implies r1[i] == b_j1[i] by {
+        assert(r1 =~= b_j1 + t_inv_seq + inv_a_j1 + t_seq);
+    }
+    let inv_a_j2 = inverse_word(a_j2);
+    assert(r2 =~= b_j2 + Seq::new(1, |_k: int| t_inv) + inv_a_j2 + t_seq);
+    assert forall|i: int| 0 <= i < b_j2.len() implies r2[i] == b_j2[i] by {
+        assert(r2 =~= b_j2 + Seq::new(1, |_k: int| t_inv) + inv_a_j2 + t_seq);
+    }
+    let pos1_val = pos0 + b_j1.len() as int - b_j2.len() as int;
+    assert(pos1 == pos1_val);
     assert(pos1 + r2.len() as int == pos0 + r1.len() as int);
     assert(w1.subrange(pos0 + r1.len() as int, w1.len() as int) =~= w_right);
     assert(w_end =~= w1.subrange(0, pos1) + w_right);
-    if b_j1.len() == b_j2.len() {
-        assert(pos1 == pos0);
-        assert(w1.subrange(0, pos1) =~= w_left);
-        assert(w_end =~= w);
-        lemma_equiv_refl(data.base, w);
-    } else if b_j1.len() > b_j2.len() {
-        let delta = (b_j1.len() - b_j2.len()) as int;
-        let extra = b_j1.subrange(0, delta);
-        assert(w1.subrange(0, pos0) =~= w_left);
-        assert(w1.subrange(pos0, pos1) =~= b_j1.subrange(0, delta));
-        assert(w1.subrange(0, pos1) =~= w_left + extra);
-        assert(w_end =~= w_left + (extra + w_right));
-        assert(b_j1 =~= extra + b_j2);
-        lemma_subrange_word_valid(b_j1, 0, delta, n);
-        lemma_left_cancel(data.base, extra, b_j2);
-        lemma_insert_trivial_equiv(data.base, w_left, w_right, extra);
-    } else {
-        let delta = (b_j2.len() - b_j1.len()) as int;
-        let left_trim = w_left.subrange(0, pos0 - delta);
-        assert(w1.subrange(0, pos1) =~= left_trim);
-        assert(w_end =~= left_trim + w_right);
-        let extra = w_left.subrange(pos0 - delta, pos0);
-        assert(w_left =~= left_trim + extra);
-        assert(w =~= left_trim + (extra + w_right));
-        assert(b_j2 =~= extra + b_j1);
-        lemma_subrange_word_valid(w_left, pos0 - delta, pos0, n);
-        lemma_left_cancel(data.base, extra, b_j1);
-        lemma_remove_trivial_equiv(data.base, left_trim, w_right, extra);
-    }
+    assert(w1.subrange(pos1, pos1 + r2.len() as int) =~= r2);
+    crate::britton_proof_helpers::lemma_ii_word_shift(
+        data.base, n, w, w_left, w_right, w_end,
+        w1, r1, r2, b_j1, b_j2, pos0,
+    );
 }
 
 /// Case (d): RelatorInsert(HNN) + RelatorDelete → w ≡ w_end in G.
@@ -2697,7 +2676,7 @@ proof fn lemma_single_segment(
 // ============================================================
 
 /// Subrange of a word_valid word is word_valid.
-proof fn lemma_subrange_word_valid(w: Word, lo: int, hi: int, n: nat)
+pub proof fn lemma_subrange_word_valid(w: Word, lo: int, hi: int, n: nat)
     requires
         word_valid(w, n),
         0 <= lo <= hi <= w.len(),

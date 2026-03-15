@@ -83,6 +83,9 @@ pub mod benign;
 pub mod britton_proof;
 
 #[cfg(verus_keep_ghost)]
+pub mod britton_proof_helpers;
+
+#[cfg(verus_keep_ghost)]
 pub mod higman_operations;
 
 pub mod runtime;
