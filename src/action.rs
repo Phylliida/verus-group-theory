@@ -344,6 +344,9 @@ proof fn lemma_coset_action_symbol(t: CosetTable, p: Presentation, s: Symbol, c:
         apply_action_symbol(coset_table_action(t, p), s, c)
             == t.table[c as int][symbol_to_column(s) as int].unwrap(),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_consistent);
+    reveal(coset_table_complete);
     let a = coset_table_action(t, p);
     let col = symbol_to_column(s);
     match s {
@@ -423,6 +426,7 @@ pub proof fn lemma_coset_action_traces(
             == trace_word(t, c, w).unwrap(),
     decreases w.len(),
 {
+    reveal(coset_table_wf);
     let a = coset_table_action(t, p);
     lemma_valid_word_columns(w, p.num_generators);
     lemma_trace_complete(t, c, w);
@@ -469,6 +473,9 @@ pub proof fn lemma_coset_action_permutations(t: CosetTable, p: Presentation, g: 
             t.num_cosets,
         ),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_consistent);
+    reveal(coset_table_complete);
     let a = coset_table_action(t, p);
     let perm = a.perm_images[g as int];
     let n = t.num_cosets;
@@ -549,6 +556,8 @@ pub proof fn lemma_coset_action_valid_left(t: CosetTable, p: Presentation)
     ensures
         action_valid_left(coset_table_action(t, p)),
 {
+    reveal(relator_closed);
+    reveal(presentation_valid);
     let a = coset_table_action(t, p);
 
     // Permutations

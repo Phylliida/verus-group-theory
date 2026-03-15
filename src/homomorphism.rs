@@ -153,6 +153,7 @@ proof fn lemma_inverted_relator_image_is_identity(h: HomomorphismData, relator_i
             empty_word(),
         ),
 {
+    reveal(presentation_valid);
     let orig_r = h.source.relators[relator_index as int];
     let hom_orig = apply_hom(h, orig_r);
 
@@ -431,6 +432,7 @@ proof fn lemma_hom_preserves_relator_insert(
                 DerivationStep::RelatorInsert { position, relator_index, inverted }).unwrap()),
         ),
 {
+    reveal(presentation_valid);
     let r = get_relator(h.source, relator_index, inverted);
     let prefix = w.subrange(0, position);
     let suffix = w.subrange(position, w.len() as int);
@@ -560,6 +562,7 @@ pub proof fn lemma_identity_hom_valid(p: Presentation)
     ensures
         is_valid_homomorphism(identity_hom(p)),
 {
+    reveal(presentation_valid);
     let h = identity_hom(p);
     assert(h.generator_images.len() == p.num_generators);
 

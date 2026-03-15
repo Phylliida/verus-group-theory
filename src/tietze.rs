@@ -137,6 +137,7 @@ proof fn lemma_derivation_replace_new_relator(
         equiv_in_presentation(p, w_start, w_end),
     decreases steps.len(),
 {
+    reveal(presentation_valid);
     let p2 = add_relator(p, r);
     if steps.len() == 0 {
         assert(w_start == w_end);
@@ -318,6 +319,7 @@ proof fn lemma_derivation_replace_removed_relator(
         equiv_in_presentation(remove_relator(p, idx), w_start, w_end),
     decreases steps.len(),
 {
+    reveal(presentation_valid);
     let p2 = remove_relator(p, idx);
     // Prove presentation_valid(p2) — p2 has a subset of p's relators
     assert(presentation_valid(p2)) by {

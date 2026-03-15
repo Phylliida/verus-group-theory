@@ -120,6 +120,7 @@ pub proof fn lemma_cyclic_valid(n: nat)
     ensures
         presentation_valid(cyclic_presentation(n)),
 {
+    reveal(presentation_valid);
     let p = cyclic_presentation(n);
     assert(p.relators.len() == 1);
     lemma_generator_power_valid(0, n, 1);
@@ -133,6 +134,7 @@ pub proof fn lemma_dihedral_valid(n: nat)
     ensures
         presentation_valid(dihedral_presentation(n)),
 {
+    reveal(presentation_valid);
     let p = dihedral_presentation(n);
     assert(p.relators.len() == 3);
 
@@ -161,6 +163,7 @@ pub proof fn lemma_free_group_no_relators(n: nat)
         free_presentation(n).relators.len() == 0,
         presentation_valid(free_presentation(n)),
 {
+    reveal(presentation_valid);
 }
 
 /// In Z_n, a^(kn) ≡ ε for any k >= 1.
@@ -174,6 +177,7 @@ pub proof fn lemma_cyclic_generator_order(n: nat, k: nat)
 {
     let p = cyclic_presentation(n);
     if k == 1 {
+        assert(k * n == n) by(nonlinear_arith) requires k == 1nat, n > 0nat, {}
         // a^n is the relator, so a^n ≡ ε
         assert(p.relators[0] == generator_power(0, n));
         lemma_relator_is_identity(p, 0);

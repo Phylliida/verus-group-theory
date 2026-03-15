@@ -67,6 +67,8 @@ pub proof fn lemma_trace_complete(t: CosetTable, c: nat, w: Word)
         trace_word(t, c, w).unwrap() < t.num_cosets,
     decreases w.len(),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_complete);
     if w.len() > 0 {
         let col = symbol_to_column(w.first());
         let d = t.table[c as int][col as int].unwrap();
@@ -107,6 +109,7 @@ pub proof fn lemma_trace_single(t: CosetTable, c: nat, s: Symbol)
     ensures
         trace_word(t, c, seq![s]) == Some(t.table[c as int][symbol_to_column(s) as int].unwrap()),
 {
+    reveal(coset_table_complete);
     let w: Word = seq![s];
     let col = symbol_to_column(s);
     assert(w.len() == 1);
@@ -132,11 +135,13 @@ pub proof fn lemma_trace_inverse_pair(t: CosetTable, c: nat, s: Symbol)
 {
     let col = symbol_to_column(s);
     let inv_s = inverse_symbol(s);
+    assert(t.table[c as int][col as int] is Some) by { reveal(coset_table_complete); }
     let d = t.table[c as int][col as int].unwrap();
+    assert(d < t.num_cosets) by { reveal(coset_table_wf); }
 
     lemma_inverse_column_symbol(s);
     let inv_col = symbol_to_column(inv_s);
-    assert(t.table[d as int][inv_col as int] == Some(c));
+    assert(t.table[d as int][inv_col as int] == Some(c)) by { reveal(coset_table_consistent); }
 
     // [s, inv_s] = [s] ++ [inv_s]
     assert(seq![s, inv_s] =~= seq![s] + seq![inv_s]);
@@ -247,6 +252,8 @@ pub proof fn lemma_trace_inverse_word(t: CosetTable, start: nat, w: Word)
         trace_word(t, trace_word(t, start, w).unwrap(), inverse_word(w)) == Some(start),
     decreases w.len(),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_consistent);
     if w.len() == 0 {
         assert(inverse_word(w) =~= empty_word());
         lemma_trace_empty(t, start);
@@ -292,6 +299,8 @@ proof fn lemma_trace_inverse_relator(t: CosetTable, p: Presentation, c: nat, rel
     ensures
         trace_word(t, c, inverse_word(p.relators[rel_idx as int])) == Some(c),
 {
+    reveal(relator_closed);
+    reveal(presentation_valid);
     let r = p.relators[rel_idx as int];
     // trace(c, r) = Some(c) by relator_closed
     assert(trace_word(t, c, r) == Some(c));
@@ -345,6 +354,7 @@ pub proof fn lemma_trace_relator_insert(
         trace_word(t, c, w) == trace_word(t, c, inserted)
     }),
 {
+    reveal(relator_closed);
     let r = get_relator(p, rel_idx, inverted);
     let prefix = w.subrange(0, pos);
     let suffix = w.subrange(pos, w.len() as int);
@@ -392,6 +402,7 @@ pub proof fn lemma_trace_relator_delete(
         trace_word(t, c, w) == trace_word(t, c, deleted)
     }),
 {
+    reveal(relator_closed);
     let r = get_relator(p, rel_idx, inverted);
     let rlen = r.len();
     let prefix = w.subrange(0, pos);
@@ -483,6 +494,7 @@ proof fn lemma_step_preserves_word_valid(
     ensures
         word_valid(w_next, p.num_generators),
 {
+    reveal(presentation_valid);
     let n = p.num_generators;
     match step {
         DerivationStep::FreeReduce { position } => {

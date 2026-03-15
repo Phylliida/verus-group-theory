@@ -18,6 +18,7 @@ pub struct Presentation {
 }
 
 /// All symbols in a relator use valid generators.
+#[verifier::opaque]
 pub open spec fn presentation_valid(p: Presentation) -> bool {
     forall|i: int| #![trigger p.relators[i]]
         0 <= i < p.relators.len() ==> word_valid(p.relators[i], p.num_generators)
@@ -274,6 +275,7 @@ pub proof fn lemma_step_preserves_word_valid_pres(
     ensures
         word_valid(w_next, p.num_generators),
 {
+    reveal(presentation_valid);
     let n = p.num_generators;
     match step {
         DerivationStep::FreeReduce { position } => {
