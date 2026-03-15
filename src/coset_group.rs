@@ -202,6 +202,7 @@ proof fn lemma_trace_to_rep(
         equiv_in_presentation(p, concat(reps(a), w), reps(trace_word(t, a, w).unwrap())),
     decreases w.len(),
 {
+    reveal(coset_table_wf);
     let c = trace_word(t, a, w).unwrap();
     if w.len() == 0 {
         assert(concat(reps(a), w) =~= reps(a));

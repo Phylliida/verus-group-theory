@@ -159,6 +159,7 @@ pub proof fn lemma_hnn_conjugation(data: HNNData, i: int)
             data.associations[i].1,
         ),
 {
+    reveal(presentation_valid);
     let hp = hnn_presentation(data);
     let bp = data.base;
     let (a_i, b_i) = data.associations[i];

@@ -47,6 +47,7 @@ pub open spec fn tree_rep(
 }
 
 /// Well-formedness of the spanning tree structure.
+#[verifier::opaque]
 pub open spec fn tree_wf(
     t: CosetTable,
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
@@ -182,6 +183,7 @@ pub proof fn lemma_tree_rep_properties(
             ==> #[trigger] symbol_to_column(tree_rep(parent, depth, d)[k]) < 2 * t.num_gens,
     decreases depth(d)
 {
+    reveal(tree_wf);
     let rep = tree_rep(parent, depth, d);
     if d == 0 {
         // tree_rep(parent, depth, 0) = empty_word() by definition
@@ -274,6 +276,8 @@ pub proof fn lemma_tree_edge_trivial(
     ensures
         schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), c, s),
 {
+    reveal(tree_wf);
+    reveal(coset_table_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let col = symbol_to_column(s);
     let d = t.table[c as int][col as int].unwrap();
@@ -318,6 +322,7 @@ pub proof fn lemma_telescoping(
         }),
     decreases w.len()
 {
+    reveal(coset_table_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     lemma_valid_word_columns(w, t.num_gens);
     lemma_trace_complete(t, c, w);
@@ -441,6 +446,7 @@ proof fn lemma_schreier_product_word_valid(
         word_valid(schreier_product(t, reps, c, w), n),
     decreases w.len()
 {
+    reveal(coset_table_wf);
     if w.len() == 0 {
     } else {
         let s = w.first();
@@ -495,6 +501,7 @@ pub proof fn lemma_trivial_product(
         equiv_in_presentation(p, schreier_product(t, reps, c, w), empty_word()),
     decreases w.len()
 {
+    reveal(coset_table_wf);
     if w.len() == 0 {
         lemma_equiv_refl(p, empty_word());
     } else {
@@ -737,6 +744,7 @@ proof fn lemma_relator_subword_trivial(
         }),
     decreases to - from
 {
+    reveal(coset_table_wf);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     lemma_valid_word_columns(r, t.num_gens);
 
@@ -812,7 +820,6 @@ pub proof fn lemma_non_tree_edge_trivial(
     requires
         tree_wf(t, parent, depth),
         coset_table_wf(t),
-        coset_table_consistent(t),
         coset_table_complete(t),
         relator_closed(t, p),
         presentation_valid(p),
@@ -834,6 +841,7 @@ pub proof fn lemma_non_tree_edge_trivial(
         schreier_gen_equiv(t, p, |d: nat| tree_rep(parent, depth, d), non_tree_edges[k].0, non_tree_edges[k].1),
 {
     reveal(certificate_wf);
+    reveal(presentation_valid);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let ck = non_tree_edges[k].0;
     let sk = non_tree_edges[k].1;
@@ -902,6 +910,8 @@ proof fn lemma_non_tree_step1_sp_trivial(
         }),
 {
     reveal(certificate_wf);
+    reveal(presentation_valid);
+    reveal(relator_closed);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
@@ -967,6 +977,7 @@ proof fn lemma_step2_prefix_trivial(
         }),
 {
     reveal(certificate_wf);
+    reveal(presentation_valid);
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
 
@@ -1027,6 +1038,7 @@ proof fn lemma_step2_suffix_trivial(
         }),
 {
     reveal(certificate_wf);
+    reveal(presentation_valid);
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
 
@@ -1053,9 +1065,7 @@ proof fn lemma_non_tree_step2_extract_gen(
     requires
         tree_wf(t, parent, depth),
         coset_table_wf(t),
-        coset_table_consistent(t),
         coset_table_complete(t),
-        relator_closed(t, p),
         presentation_valid(p),
         t.num_gens == p.num_generators,
         t.num_cosets > 0,
@@ -1084,6 +1094,7 @@ proof fn lemma_non_tree_step2_extract_gen(
         }),
 {
     reveal(certificate_wf);
+    reveal(presentation_valid);
     let reps = |d: nat| -> Word { tree_rep(parent, depth, d) };
     let (r_idx, start, pos) = certificates[k];
     let r = p.relators[r_idx];
@@ -1117,7 +1128,6 @@ pub proof fn lemma_schreier_trivial_from_witness(
     requires
         tree_wf(t, parent, depth),
         coset_table_wf(t),
-        coset_table_consistent(t),
         coset_table_complete(t),
         relator_closed(t, p),
         presentation_valid(p),

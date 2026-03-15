@@ -11,7 +11,8 @@ verus! {
 
 /// All non-tree edges up to `bound` are trivial (strong induction).
 /// Isolated in its own module so Z3 doesn't see bodies of the ~18 other
-/// proof functions in schreier_proofs.rs.
+/// proof functions in schreier_proofs.rs, and certificate_wf is opaque
+/// so Z3 never unfolds its 3 nested quantifiers during recursion.
 pub proof fn lemma_all_non_tree_trivial(
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
     depth: spec_fn(nat) -> nat,
@@ -23,7 +24,6 @@ pub proof fn lemma_all_non_tree_trivial(
     requires
         tree_wf(t, parent, depth),
         coset_table_wf(t),
-        coset_table_consistent(t),
         coset_table_complete(t),
         relator_closed(t, p),
         presentation_valid(p),

@@ -33,7 +33,6 @@ pub proof fn lemma_construct_schreier_system(
 )
     requires
         coset_table_wf(t),
-        coset_table_consistent(t),
         coset_table_complete(t),
         relator_closed(t, p),
         t.num_gens == p.num_generators,

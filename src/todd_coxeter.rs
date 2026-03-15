@@ -33,6 +33,7 @@ pub open spec fn inverse_column(col: nat) -> nat {
 }
 
 /// A coset table is well-formed: dimensions match and values in range.
+#[verifier::opaque]
 pub open spec fn coset_table_wf(t: CosetTable) -> bool {
     let num_cols = 2 * t.num_gens;
     t.table.len() == t.num_cosets
@@ -47,6 +48,7 @@ pub open spec fn coset_table_wf(t: CosetTable) -> bool {
 }
 
 /// Inverse consistency: if table[c][col] = Some(d), then table[d][inv_col] = Some(c).
+#[verifier::opaque]
 pub open spec fn coset_table_consistent(t: CosetTable) -> bool {
     let num_cols = 2 * t.num_gens;
     coset_table_wf(t)
@@ -75,6 +77,7 @@ pub open spec fn trace_word(t: CosetTable, coset: nat, w: Word) -> Option<nat>
 }
 
 /// All relators trace back to the starting coset (closed table).
+#[verifier::opaque]
 pub open spec fn relator_closed(t: CosetTable, p: Presentation) -> bool {
     forall|c: int, r: int| #![trigger t.table[c as int], p.relators[r]]
         0 <= c < t.num_cosets && 0 <= r < p.relators.len() ==>
@@ -720,7 +723,7 @@ pub fn check_rt_complete_exec(rt: &RuntimeCosetTable) -> (result: bool)
     ensures
         result ==> coset_table_complete(rt_to_spec_table(*rt)),
 {
-    proof { lemma_overflow_bounds(rt.num_cosets, rt.num_gens); }
+    proof { reveal(coset_table_complete); lemma_overflow_bounds(rt.num_cosets, rt.num_gens); }
     let num_cols: usize = 2 * rt.num_gens;
     // Scan using nested loops to avoid needing active_size multiplication
     let mut c: usize = 0;
@@ -942,6 +945,8 @@ proof fn lemma_rt_consistent_implies_spec(rt: RuntimeCosetTable)
     ensures
         coset_table_consistent(rt_to_spec_table(rt)),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_consistent);
     lemma_overflow_bounds(rt.num_cosets, rt.num_gens);
     let spec_t = rt_to_spec_table(rt);
 
@@ -1095,8 +1100,10 @@ pub fn check_rt_relator_closed_exec(
         result ==> relator_closed(
             rt_to_spec_table(*rt),
             rt_presentation_view(rt.num_gens, relators@),
+
         ),
 {
+    proof { reveal(relator_closed); }
     let mut ri: usize = 0;
     while ri < relators.len()
         invariant

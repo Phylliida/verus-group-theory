@@ -10,6 +10,7 @@ use crate::todd_coxeter::*;
 verus! {
 
 /// Every entry in the coset table is defined (no None entries).
+#[verifier::opaque]
 pub open spec fn coset_table_complete(t: CosetTable) -> bool {
     forall|c: int, col: int|
         0 <= c < t.num_cosets && 0 <= col < 2 * t.num_gens ==>
@@ -57,6 +58,11 @@ pub proof fn lemma_cyclic_is_finite(n: nat)
     ensures
         is_finite_of_order(cyclic_presentation(n), n),
 {
+    reveal(coset_table_wf);
+    reveal(coset_table_consistent);
+    reveal(coset_table_complete);
+    reveal(relator_closed);
+    reveal(presentation_valid);
     let p = cyclic_presentation(n);
 
     // Build the coset table

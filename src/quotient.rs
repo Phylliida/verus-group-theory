@@ -166,6 +166,7 @@ pub proof fn lemma_add_relators_valid(p: Presentation, rs: Seq<Word>)
         presentation_valid(add_relators(p, rs)),
     decreases rs.len(),
 {
+    reveal(presentation_valid);
     if rs.len() == 0 {
     } else {
         let p1 = add_relator(p, rs.first());
