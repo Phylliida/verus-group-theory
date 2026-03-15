@@ -229,6 +229,30 @@ proof fn lemma_apply_embedding_single(images: Seq<Word>, i: nat)
     assert(apply_embedding(images, empty_word()) =~= empty_word());
 }
 
+/// Helper: apply_embedding of a two-symbol word [s1, s2].
+proof fn lemma_apply_embedding_two(images: Seq<Word>, s1: Symbol, s2: Symbol)
+    requires
+        (generator_index(s1) as int) < images.len(),
+        (generator_index(s2) as int) < images.len(),
+    ensures
+        apply_embedding(images, seq![s1, s2]) =~=
+            concat(apply_embedding_symbol(images, s1),
+                   apply_embedding_symbol(images, s2)),
+{
+    let w: Word = seq![s1, s2];
+    assert(w.len() == 2);
+    assert(w.first() == s1);
+    assert(w.drop_first() =~= seq![s2]);
+    let tail = w.drop_first();
+    assert(tail.first() == s2);
+    assert(tail.drop_first() =~= Seq::<Symbol>::empty());
+    assert(apply_embedding(images, empty_word()) =~= empty_word());
+    assert(apply_embedding(images, tail) =~=
+        concat(apply_embedding_symbol(images, s2), empty_word()));
+    assert(concat(apply_embedding_symbol(images, s2), empty_word())
+        =~= apply_embedding_symbol(images, s2));
+}
+
 /// The isomorphism condition implies: if a_i = ε, then b_i ≡ ε in G.
 pub proof fn lemma_empty_association_implies_trivial(
     data: HNNData, i: int,
@@ -645,6 +669,94 @@ proof fn lemma_insert_trivial_equiv(
     assert(concat(empty_word(), right) =~= right);
     // Now: equiv(right, concat(u, right))
     lemma_equiv_concat_right(p, left, right, concat(u, right));
+}
+
+/// Right cancellation: if concat(x, y) ≡ x in G, then y ≡ ε.
+proof fn lemma_right_cancel(
+    p: Presentation, x: Word, y: Word,
+)
+    requires
+        equiv_in_presentation(p, concat(x, y), x),
+        word_valid(x, p.num_generators),
+        word_valid(y, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, y, empty_word()),
+{
+    let inv_x = inverse_word(x);
+    lemma_inverse_word_valid(x, p.num_generators);
+
+    // Step 1: concat(inv(x), concat(x, y)) ≡ concat(inv(x), x)
+    lemma_equiv_concat_right(p, inv_x, concat(x, y), x);
+    // Step 2: concat(inv(x), x) ≡ ε
+    lemma_word_inverse_left(p, x);
+    // Step 3: concat(inv(x), concat(x, y)) ≡ ε
+    lemma_equiv_transitive(p,
+        concat(inv_x, concat(x, y)),
+        concat(inv_x, x),
+        empty_word());
+    // Step 4: Seq associativity
+    assert(concat(inv_x, concat(x, y))
+        =~= concat(concat(inv_x, x), y));
+    // So: concat(concat(inv(x), x), y) ≡ ε
+    // Step 5: Remove trivial prefix, get concat(concat(inv(x), x), y) ≡ y
+    lemma_remove_trivial_equiv(p, empty_word(), y, concat(inv_x, x));
+    assert(concat(empty_word(), concat(concat(inv_x, x), y))
+        =~= concat(concat(inv_x, x), y));
+    assert(concat(empty_word(), y) =~= y);
+    // Step 6: symmetric on step 5 to get y ≡ concat(concat(inv(x), x), y)
+    lemma_concat_word_valid(inv_x, x, p.num_generators);
+    lemma_concat_word_valid(concat(inv_x, x), y, p.num_generators);
+    lemma_equiv_symmetric(p,
+        concat(concat(inv_x, x), y), y);
+    // Step 7: y ≡ concat(concat(inv(x),x), y) ≡ ε
+    lemma_equiv_transitive(p, y,
+        concat(concat(inv_x, x), y),
+        empty_word());
+}
+
+/// Left cancellation: if concat(x, y) ≡ y in G, then x ≡ ε.
+proof fn lemma_left_cancel(
+    p: Presentation, x: Word, y: Word,
+)
+    requires
+        equiv_in_presentation(p, concat(x, y), y),
+        word_valid(x, p.num_generators),
+        word_valid(y, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, x, empty_word()),
+{
+    let inv_y = inverse_word(y);
+    lemma_inverse_word_valid(y, p.num_generators);
+
+    // Step 1: concat(concat(x, y), inv(y)) ≡ concat(y, inv(y))
+    lemma_equiv_concat_left(p, concat(x, y), y, inv_y);
+    // Step 2: concat(y, inv(y)) ≡ ε
+    lemma_word_inverse_right(p, y);
+    // Step 3: concat(concat(x, y), inv(y)) ≡ ε
+    lemma_equiv_transitive(p,
+        concat(concat(x, y), inv_y),
+        concat(y, inv_y),
+        empty_word());
+    // Step 4: Seq associativity
+    assert(concat(concat(x, y), inv_y)
+        =~= concat(x, concat(y, inv_y)));
+    // So: concat(x, concat(y, inv(y))) ≡ ε
+    // Step 5: Remove trivial suffix, get concat(x, concat(y, inv(y))) ≡ x
+    lemma_remove_trivial_equiv(p, x, empty_word(), concat(y, inv_y));
+    assert(concat(x, concat(concat(y, inv_y), empty_word()))
+        =~= concat(x, concat(y, inv_y)));
+    assert(concat(x, empty_word()) =~= x);
+    // Step 6: symmetric on step 5 to get x ≡ concat(x, concat(y, inv(y)))
+    lemma_concat_word_valid(y, inv_y, p.num_generators);
+    lemma_concat_word_valid(x, concat(y, inv_y), p.num_generators);
+    lemma_equiv_symmetric(p,
+        concat(x, concat(y, inv_y)), x);
+    // Step 7: x ≡ concat(x, concat(y, inv(y))) ≡ ε
+    lemma_equiv_transitive(p, x,
+        concat(x, concat(y, inv_y)),
+        empty_word());
 }
 
 /// Case (a): FreeExpand(stable) + FreeReduce → w2 = w by stable count argument.
