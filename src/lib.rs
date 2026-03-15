@@ -70,4 +70,16 @@ pub mod schreier_induction;
 #[cfg(verus_keep_ghost)]
 pub mod group;
 
+#[cfg(verus_keep_ghost)]
+pub mod amalgamated_free_product;
+
+#[cfg(verus_keep_ghost)]
+pub mod britton;
+
+#[cfg(verus_keep_ghost)]
+pub mod benign;
+
+#[cfg(verus_keep_ghost)]
+pub mod higman_operations;
+
 pub mod runtime;
