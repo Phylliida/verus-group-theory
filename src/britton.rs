@@ -408,10 +408,16 @@ pub proof fn lemma_t_free_derivation_is_base(
 ///
 /// Equivalently: the natural inclusion G → G* = ⟨G, t | t⁻¹aᵢt = bᵢ⟩
 /// is injective (on the group level).
+///
+/// Requires `hnn_associations_isomorphic`: the map aᵢ ↦ bᵢ must extend
+/// to an isomorphism of the subgroups they generate. Without this,
+/// the inclusion G → G* may not be injective (see doc on
+/// `hnn_associations_isomorphic` for a counterexample).
 #[verifier::external_body]
 pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
         word_valid(w, data.base.num_generators),
         equiv_in_presentation(hnn_presentation(data), w, empty_word()),
     ensures
@@ -428,6 +434,7 @@ pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
 pub proof fn lemma_hnn_injective(data: HNNData, w1: Word, w2: Word)
     requires
         hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
         word_valid(w1, data.base.num_generators),
         word_valid(w2, data.base.num_generators),
         presentation_valid(data.base),
@@ -486,6 +493,7 @@ pub proof fn lemma_hnn_injective(data: HNNData, w1: Word, w2: Word)
 pub proof fn lemma_hnn_separates(data: HNNData, w1: Word, w2: Word)
     requires
         hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
         word_valid(w1, data.base.num_generators),
         word_valid(w2, data.base.num_generators),
         presentation_valid(data.base),
