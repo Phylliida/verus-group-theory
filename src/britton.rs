@@ -413,7 +413,6 @@ pub proof fn lemma_t_free_derivation_is_base(
 /// to an isomorphism of the subgroups they generate. Without this,
 /// the inclusion G → G* may not be injective (see doc on
 /// `hnn_associations_isomorphic` for a counterexample).
-#[verifier::external_body]
 pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -423,6 +422,7 @@ pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
     ensures
         equiv_in_presentation(data.base, w, empty_word()),
 {
+    crate::britton_proof::britton_lemma(data, w);
 }
 
 // ============================================================
