@@ -7239,6 +7239,414 @@ proof fn lemma_k3_ri_hnn_freeexpand_base(
     }
 }
 
+/// Inside-relator case for RelatorInsert(base) + non-inverted HNN relator.
+proof fn lemma_k3_relinsert_inside_noninv(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, ri0: nat, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        (ri0 as int) >= data.base.relators.len(),
+        (ri1 as int) < data.base.relators.len(),
+        ({
+            let hp = hnn_presentation(data);
+            let r0 = get_relator(hp, ri0, false);
+            &&& apply_step(hp, w, DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: false }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w_end)
+            &&& p0 < p1 < p0 + r0.len()
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r0 = get_relator(hp, ri0, false);
+    let r0_len = r0.len() as int;
+    let r1 = get_relator(hp, ri1, inv1);
+    let r1_len = r1.len() as int;
+    let j0 = (ri0 as int - data.base.relators.len()) as int;
+    assert(0 <= j0 < data.associations.len() as int);
+    let (a_j0, b_j0) = data.associations[j0];
+    let inv_bj0 = inverse_word(b_j0);
+    let p = data.base;
+
+    reveal(presentation_valid);
+
+    assert(w1 =~= w.subrange(0, p0) + r0 + w.subrange(p0, w.len() as int));
+    assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
+
+    // r1 is base
+    assert(get_relator(data.base, ri1, inv1) =~= r1) by {
+        assert(data.base.relators[ri1 as int] == hp.relators[ri1 as int]);
+    };
+    let base_r = data.base.relators[ri1 as int];
+    if inv1 {
+        lemma_inverse_word_valid(base_r, n);
+        lemma_base_word_characterization(inverse_word(base_r), n);
+    } else {
+        lemma_base_word_characterization(base_r, n);
+    }
+
+    lemma_base_word_characterization(a_j0, n);
+    lemma_base_word_characterization(b_j0, n);
+    lemma_inverse_word_valid(b_j0, n);
+    lemma_base_word_characterization(inverse_word(b_j0), n);
+
+    let w_L = w.subrange(0, p0);
+    let w_R = w.subrange(p0, w.len() as int);
+    assert(w =~= w_L + w_R);
+    lemma_base_word_valid_down(w, n);
+    lemma_subrange_word_valid(w, 0, p0, n);
+    lemma_subrange_word_valid(w, p0, w.len() as int, n);
+    lemma_base_word_characterization(w_L, n);
+    lemma_base_word_characterization(w_R, n);
+
+    lemma_hnn_relator_stable_positions(data, j0);
+    let aj0_len = a_j0.len() as int;
+    let p1_rel = (p1 - p0) as int;
+
+    if p1_rel <= 1 + aj0_len {
+        // Sub-case A: r1 in a_j0 region
+        let offset = (p1_rel - 1) as int;
+        let inter = a_j0.subrange(0, offset) + r1 + a_j0.subrange(offset, aj0_len);
+        let tail = inv_bj0;
+
+        // w2 decomposition
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == #[trigger] (w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail + w_R)[k]
+        by {
+            if k < p0 {
+            } else if k == p0 {
+            } else if k < p1 {
+            } else if k < p1 + r1_len {
+            } else if k <= p0 + 1 + aj0_len + r1_len {
+            } else if k == p0 + 1 + aj0_len + r1_len {
+            } else {
+            }
+        };
+        assert(w2 =~= w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail + w_R);
+
+        // inter is base and word_valid
+        assert forall|k: int| 0 <= k < inter.len() as int
+            implies symbol_valid(#[trigger] inter[k], n)
+        by {
+            if k < offset {
+                assert(inter[k] == a_j0[k]);
+            } else if k < offset + r1_len {
+                assert(inter[k] == r1[(k - offset) as int]);
+            } else {
+                assert(inter[k] == a_j0[(k - r1_len) as int]);
+            }
+        };
+        assert(word_valid(inter, n));
+        lemma_base_word_characterization(inter, n);
+
+        // inter ≡_G a_j0 via RelatorDelete
+        let delete_step = DerivationStep::RelatorDelete { position: offset, relator_index: ri1, inverted: inv1 };
+        assert(inter.subrange(offset, offset + r1_len) =~= r1);
+        assert(inter.subrange(0, offset) + inter.subrange(offset + r1_len, inter.len() as int) =~= a_j0);
+        assert(apply_step(data.base, inter, delete_step) == Some(a_j0));
+        lemma_single_step_equiv(data.base, inter, delete_step, a_j0);
+
+        // tail ≡_G inv(b_j0) by reflexivity
+        lemma_equiv_refl(data.base, inv_bj0);
+
+        // stable_letter_count(w2, n) == 2
+        lemma_base_implies_count_zero(w_L, n);
+        lemma_base_implies_count_zero(inter, n);
+        lemma_base_implies_count_zero(tail, n);
+        lemma_base_implies_count_zero(w_R, n);
+        lemma_stable_count_single(Symbol::Inv(n), n);
+        lemma_stable_count_single(Symbol::Gen(n), n);
+        lemma_stable_letter_count_concat(w_L, seq![Symbol::Inv(n)], n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)], inter, n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter, seq![Symbol::Gen(n)], n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)], tail, n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail, w_R, n);
+
+        lemma_k3_inside_step2_noninv(
+            data, w, w2, w_end, step2,
+            w_L, inter, tail, w_R, j0);
+    } else {
+        // Sub-case B: r1 in inv(b_j0) region
+        let offset = (p1_rel - 2 - aj0_len) as int;
+        let inter = a_j0;
+        let tail = inv_bj0.subrange(0, offset) + r1 + inv_bj0.subrange(offset, inv_bj0.len() as int);
+
+        // w2 decomposition
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == #[trigger] (w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail + w_R)[k]
+        by {
+            if k < p0 {
+            } else if k == p0 {
+            } else if k <= p0 + aj0_len {
+            } else if k == p0 + 1 + aj0_len {
+            } else if k < p1 {
+            } else if k < p1 + r1_len {
+            } else {
+            }
+        };
+        assert(w2 =~= w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail + w_R);
+
+        // tail is base and word_valid
+        assert forall|k: int| 0 <= k < tail.len() as int
+            implies symbol_valid(#[trigger] tail[k], n)
+        by {
+            if k < offset {
+                assert(tail[k] == inv_bj0[k]);
+            } else if k < offset + r1_len {
+                assert(tail[k] == r1[(k - offset) as int]);
+            } else {
+                assert(tail[k] == inv_bj0[(k - r1_len) as int]);
+            }
+        };
+        assert(word_valid(tail, n));
+        lemma_base_word_characterization(tail, n);
+
+        // inter ≡_G a_j0 by reflexivity
+        lemma_equiv_refl(data.base, a_j0);
+
+        // tail ≡_G inv(b_j0) via RelatorDelete
+        let delete_step = DerivationStep::RelatorDelete { position: offset, relator_index: ri1, inverted: inv1 };
+        assert(tail.subrange(offset, offset + r1_len) =~= r1);
+        assert(tail.subrange(0, offset) + tail.subrange(offset + r1_len, tail.len() as int) =~= inv_bj0);
+        assert(apply_step(data.base, tail, delete_step) == Some(inv_bj0));
+        lemma_single_step_equiv(data.base, tail, delete_step, inv_bj0);
+
+        // stable_letter_count(w2, n) == 2
+        lemma_base_implies_count_zero(w_L, n);
+        lemma_base_implies_count_zero(inter, n);
+        lemma_base_implies_count_zero(tail, n);
+        lemma_base_implies_count_zero(w_R, n);
+        lemma_stable_count_single(Symbol::Inv(n), n);
+        lemma_stable_count_single(Symbol::Gen(n), n);
+        lemma_stable_letter_count_concat(w_L, seq![Symbol::Inv(n)], n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)], inter, n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter, seq![Symbol::Gen(n)], n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)], tail, n);
+        lemma_stable_letter_count_concat(w_L + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + tail, w_R, n);
+
+        lemma_k3_inside_step2_noninv(
+            data, w, w2, w_end, step2,
+            w_L, inter, tail, w_R, j0);
+    }
+}
+
+/// Inside-relator case for RelatorInsert(base) + inverted HNN relator.
+proof fn lemma_k3_relinsert_inside_inv(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, ri0: nat, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        (ri0 as int) >= data.base.relators.len(),
+        (ri1 as int) < data.base.relators.len(),
+        ({
+            let hp = hnn_presentation(data);
+            let r0 = get_relator(hp, ri0, true);
+            &&& apply_step(hp, w, DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: true }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w_end)
+            &&& p0 < p1 < p0 + r0.len()
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r0 = get_relator(hp, ri0, true);
+    let r0_len = r0.len() as int;
+    let r1 = get_relator(hp, ri1, inv1);
+    let r1_len = r1.len() as int;
+    let j0 = (ri0 as int - data.base.relators.len()) as int;
+    assert(0 <= j0 < data.associations.len() as int);
+    let (a_j0, b_j0) = data.associations[j0];
+    let inv_aj0 = inverse_word(a_j0);
+    let p = data.base;
+
+    reveal(presentation_valid);
+
+    assert(w1 =~= w.subrange(0, p0) + r0 + w.subrange(p0, w.len() as int));
+    assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
+
+    // r1 is base
+    assert(get_relator(data.base, ri1, inv1) =~= r1) by {
+        assert(data.base.relators[ri1 as int] == hp.relators[ri1 as int]);
+    };
+    let base_r = data.base.relators[ri1 as int];
+    if inv1 {
+        lemma_inverse_word_valid(base_r, n);
+        lemma_base_word_characterization(inverse_word(base_r), n);
+    } else {
+        lemma_base_word_characterization(base_r, n);
+    }
+
+    lemma_base_word_characterization(a_j0, n);
+    lemma_base_word_characterization(b_j0, n);
+    lemma_inverse_word_valid(a_j0, n);
+    lemma_base_word_characterization(inverse_word(a_j0), n);
+
+    let w_L = w.subrange(0, p0);
+    let w_R = w.subrange(p0, w.len() as int);
+    assert(w =~= w_L + w_R);
+    lemma_base_word_valid_down(w, n);
+    lemma_subrange_word_valid(w, 0, p0, n);
+    lemma_subrange_word_valid(w, p0, w.len() as int, n);
+    lemma_base_word_characterization(w_L, n);
+    lemma_base_word_characterization(w_R, n);
+
+    lemma_hnn_relator_inverted_stable_positions(data, j0);
+    let bj0_len = b_j0.len() as int;
+    let aj0_len = a_j0.len() as int;
+    lemma_inverse_word_len(a_j0);
+    let p1_rel = (p1 - p0) as int;
+
+    if p1_rel <= bj0_len {
+        // Sub-case A: r1 in b_j0 region
+        let offset = p1_rel;
+        let head = b_j0.subrange(0, offset) + r1 + b_j0.subrange(offset, bj0_len);
+        let inter = inv_aj0;
+
+        // w2 decomposition
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == #[trigger] (w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + w_R)[k]
+        by {
+            if k < p0 {
+            } else if k < p1 {
+            } else if k < p1 + r1_len {
+            } else if k <= p0 + bj0_len + r1_len {
+            } else if k == p0 + bj0_len + r1_len {
+            } else if k <= p0 + bj0_len + r1_len + aj0_len {
+            } else if k == p0 + bj0_len + r1_len + aj0_len + 1 {
+            } else {
+            }
+        };
+        assert(w2 =~= w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + w_R);
+
+        // head is base and word_valid
+        assert forall|k: int| 0 <= k < head.len() as int
+            implies symbol_valid(#[trigger] head[k], n)
+        by {
+            if k < offset {
+                assert(head[k] == b_j0[k]);
+            } else if k < offset + r1_len {
+                assert(head[k] == r1[(k - offset) as int]);
+            } else {
+                assert(head[k] == b_j0[(k - r1_len) as int]);
+            }
+        };
+        assert(word_valid(head, n));
+        lemma_base_word_characterization(head, n);
+
+        // head ≡_G b_j0 via RelatorDelete
+        let delete_step = DerivationStep::RelatorDelete { position: offset, relator_index: ri1, inverted: inv1 };
+        assert(head.subrange(offset, offset + r1_len) =~= r1);
+        assert(head.subrange(0, offset) + head.subrange(offset + r1_len, head.len() as int) =~= b_j0);
+        assert(apply_step(data.base, head, delete_step) == Some(b_j0));
+        lemma_single_step_equiv(data.base, head, delete_step, b_j0);
+
+        // inter ≡_G inv(a_j0) by reflexivity
+        lemma_equiv_refl(data.base, inv_aj0);
+
+        // stable_letter_count(w2, n) == 2
+        lemma_base_implies_count_zero(w_L, n);
+        lemma_base_implies_count_zero(head, n);
+        lemma_base_implies_count_zero(inter, n);
+        lemma_base_implies_count_zero(w_R, n);
+        lemma_stable_count_single(Symbol::Inv(n), n);
+        lemma_stable_count_single(Symbol::Gen(n), n);
+        lemma_stable_letter_count_concat(w_L, head, n);
+        lemma_stable_letter_count_concat(w_L + head, seq![Symbol::Inv(n)], n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)], inter, n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)] + inter, seq![Symbol::Gen(n)], n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)], w_R, n);
+
+        lemma_k3_inside_step2_inv(
+            data, w, w2, w_end, step2,
+            w_L, head, inter, w_R, j0);
+    } else {
+        // Sub-case B: r1 in inv(a_j0) region
+        let offset = (p1_rel - bj0_len - 1) as int;
+        let head = b_j0;
+        let inter = inv_aj0.subrange(0, offset) + r1 + inv_aj0.subrange(offset, inv_aj0.len() as int);
+
+        // w2 decomposition
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == #[trigger] (w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + w_R)[k]
+        by {
+            if k < p0 {
+            } else if k < p0 + bj0_len {
+            } else if k == p0 + bj0_len {
+            } else if k < p1 {
+            } else if k < p1 + r1_len {
+            } else if k <= p0 + bj0_len + 1 + aj0_len + r1_len {
+            } else if k == p0 + bj0_len + 1 + aj0_len + r1_len {
+            } else {
+            }
+        };
+        assert(w2 =~= w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)] + w_R);
+
+        // inter is base and word_valid
+        assert forall|k: int| 0 <= k < inter.len() as int
+            implies symbol_valid(#[trigger] inter[k], n)
+        by {
+            if k < offset {
+                assert(inter[k] == inv_aj0[k]);
+            } else if k < offset + r1_len {
+                assert(inter[k] == r1[(k - offset) as int]);
+            } else {
+                assert(inter[k] == inv_aj0[(k - r1_len) as int]);
+            }
+        };
+        assert(word_valid(inter, n));
+        lemma_base_word_characterization(inter, n);
+
+        // head ≡_G b_j0 by reflexivity
+        lemma_equiv_refl(data.base, b_j0);
+
+        // inter ≡_G inv(a_j0) via RelatorDelete
+        let delete_step = DerivationStep::RelatorDelete { position: offset, relator_index: ri1, inverted: inv1 };
+        assert(inter.subrange(offset, offset + r1_len) =~= r1);
+        assert(inter.subrange(0, offset) + inter.subrange(offset + r1_len, inter.len() as int) =~= inv_aj0);
+        assert(apply_step(data.base, inter, delete_step) == Some(inv_aj0));
+        lemma_single_step_equiv(data.base, inter, delete_step, inv_aj0);
+
+        // stable_letter_count(w2, n) == 2
+        lemma_base_implies_count_zero(w_L, n);
+        lemma_base_implies_count_zero(head, n);
+        lemma_base_implies_count_zero(inter, n);
+        lemma_base_implies_count_zero(w_R, n);
+        lemma_stable_count_single(Symbol::Inv(n), n);
+        lemma_stable_count_single(Symbol::Gen(n), n);
+        lemma_stable_letter_count_concat(w_L, head, n);
+        lemma_stable_letter_count_concat(w_L + head, seq![Symbol::Inv(n)], n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)], inter, n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)] + inter, seq![Symbol::Gen(n)], n);
+        lemma_stable_letter_count_concat(w_L + head + seq![Symbol::Inv(n)] + inter + seq![Symbol::Gen(n)], w_R, n);
+
+        lemma_k3_inside_step2_inv(
+            data, w, w2, w_end, step2,
+            w_L, head, inter, w_R, j0);
+    }
+}
+
 /// k=3 case: step0 = RelatorInsert(HNN), step1 = RelatorInsert(base).
 /// Commutes base RelatorInsert to act first on w, then RelatorInsert(HNN).
 proof fn lemma_k3_ri_hnn_relinsert_base(
@@ -7380,7 +7788,20 @@ proof fn lemma_k3_ri_hnn_relinsert_base(
         lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
     } else {
         // Inside relator
-        assume(false);
+        let step0 = DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 };
+        let step1_ri = DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 };
+        lemma_step_preserves_word_valid(data, w, step0);
+        lemma_step_preserves_word_valid(data, w1, step1_ri);
+
+        if !inv0 {
+            lemma_k3_relinsert_inside_noninv(
+                data, w, w1, w2, w_end,
+                p0, ri0, p1, ri1, inv1, step2);
+        } else {
+            lemma_k3_relinsert_inside_inv(
+                data, w, w1, w2, w_end,
+                p0, ri0, p1, ri1, inv1, step2);
+        }
     }
 }
 
