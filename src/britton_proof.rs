@@ -2627,13 +2627,260 @@ proof fn lemma_single_segment_k2(
 // Part 5: Single segment lemma (general)
 // ============================================================
 
+/// k=3 case: step0 = FreeExpand(stable), step1 = FreeReduce.
+/// Commutes FreeReduce to act on base word w first, then applies k=2 lemma.
+proof fn lemma_k3_expand_freereduce(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, sym: Symbol, p1: int, step2: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        generator_index(sym) == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::FreeReduce { position: p1 }) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w_end)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // Structural facts
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+    assert(has_cancellation_at(w1, p1));
+    assert(w2 =~= w1.subrange(0, p1) + w1.subrange(p1 + 2, w1.len() as int));
+
+    // word_valid(w, n) from word_valid(w, n+1) + is_base_word
+    lemma_base_word_valid_down(w, n);
+
+    // === Eliminate p1 = p0: undoes expand, w2 = w (base), contradiction ===
+    if p1 == p0 {
+        assert(w2 =~= w.subrange(0, p0) + w.subrange(p0, w.len() as int));
+        assert(w2 =~= w);
+        assert(false);
+    }
+
+    if p1 < p0 {
+        // === Eliminate p1 = p0 - 1: stable-base pair can't cancel ===
+        if p1 == p0 - 1 {
+            // w1[p0-1] = w[p0-1] (base), w1[p0] = sym (stable)
+            // has_cancellation_at needs is_inverse_pair, which requires same gen_idx
+            assert(symbol_valid(w[(p0 - 1) as int], n));
+            assert(generator_index(w[(p0 - 1) as int]) < n);
+            match w[(p0 - 1) as int] {
+                Symbol::Gen(k) => {},
+                Symbol::Inv(k) => {},
+            }
+            assert(generator_index(inverse_symbol(w[(p0 - 1) as int])) < n);
+            assert(generator_index(sym) == n);
+            // inverse_symbol(w[p0-1]) can't equal sym (gen_idx < n vs == n)
+            assert(!is_inverse_pair(w1[p0 - 1], w1[p0]));
+            assert(false);
+        }
+
+        // === p1 <= p0 - 2: commute FreeReduce to the front ===
+        // w1[p1] = w[p1] and w1[p1+1] = w[p1+1] (before expansion)
+        assert(w1[p1] == w[p1]);
+        assert(w1[p1 + 1] == w[p1 + 1]);
+        assert(has_cancellation_at(w, p1));
+
+        let w_prime = reduce_at(w, p1);
+        let step1_base = DerivationStep::FreeReduce { position: p1 };
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+        // w' is base: reduced pair is base (gen_idx < n), so stable count unchanged
+        lemma_stable_count_reduce(w, p1, n);
+        assert(generator_index(w[p1]) < n);
+        assert(stable_letter_count(w_prime, n) == 0nat);
+
+        // w' is word_valid(n+1)
+        lemma_step_preserves_word_valid(data, w, step1_base);
+
+        // FreeExpand(p0-2, sym) on w' gives w2
+        let p0_adj = (p0 - 2) as int;
+        let step0_adj = DerivationStep::FreeExpand { position: p0_adj, symbol: sym };
+
+        // Position validity
+        assert(p0_adj >= 0);
+        assert(w_prime.len() == w.len() - 2);
+        assert(p0_adj <= w_prime.len() as int);
+
+        // Show apply_step(hp, w', step0_adj) == Some(w2)
+        let expand_result = w_prime.subrange(0, p0_adj) + pair
+            + w_prime.subrange(p0_adj, w_prime.len() as int);
+
+        // Prove expand_result =~= w2 element-by-element
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == expand_result[k]
+        by {
+            if k < p1 {
+                // Both = w[k]
+            } else if k < p0_adj {
+                // w2[k] = w1[k+2] = w[k+2]; expand_result[k] = w'[k] = w[k+2]
+            } else if k == p0_adj {
+                // w2[k] = w1[p0] = sym; expand_result[k] = pair[0] = sym
+            } else if k == p0_adj + 1 {
+                // w2[k] = w1[p0+1] = inv(sym); expand_result[k] = pair[1] = inv(sym)
+            } else {
+                // w2[k] = w1[k+2] = w[k]; expand_result[k] = w'[k-2] = w[k]
+            }
+        };
+        assert(w2.len() == expand_result.len());
+        assert(w2 =~= expand_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        // Construct 2-step derivation and unfold derivation_produces
+        let k2_steps: Seq<DerivationStep> = seq![step0_adj, step2];
+        assert(k2_steps.len() == 2);
+        assert(k2_steps.first() == step0_adj);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+        // Unfold derivation_produces for 2-step sequence (unwrap trick)
+        let k2_tail = k2_steps.drop_first();
+        assert(k2_tail.first() == step2);
+        let w_end_k2 = apply_step(hp, w2, k2_tail.first()).unwrap();
+        assert(derivation_produces(hp, k2_tail.drop_first(), w_end_k2) == Some(w_end)) by {
+            assert(k2_tail.drop_first().len() == 0);
+        };
+        assert(w_end_k2 == w_end);
+        assert(derivation_produces(hp, k2_steps, w_prime) == Some(w_end));
+
+        // w' is base, w2 is non-base → k=2 segment
+        lemma_single_segment_k2(data, k2_steps, w_prime, w_end);
+
+        // w ≡_G w' via base FreeReduce step
+        lemma_single_step_equiv(data.base, w, step1_base, w_prime);
+
+        // Chain: w ≡_G w' ≡_G w_end
+        lemma_equiv_transitive(data.base, w, w_prime, w_end);
+    } else {
+        // === p1 > p0 ===
+
+        // === Eliminate p1 = p0 + 1: stable-base pair can't cancel ===
+        if p1 == p0 + 1 {
+            // w1[p0+1] = inv(sym) (stable), w1[p0+2] = w[p0] (base)
+            // is_inverse_pair(inv(sym), w[p0]) requires inverse_symbol(inv(sym)) == w[p0]
+            // = sym == w[p0]. But gen_idx(w[p0]) < n and gen_idx(sym) = n.
+            assert(symbol_valid(w[p0], n));
+            assert(generator_index(w[p0]) < n);
+            assert(generator_index(sym) == n);
+            match sym {
+                Symbol::Gen(idx) => {
+                    match w[p0] {
+                        Symbol::Gen(k) => { assert(k < n); assert(Symbol::Inv(idx) != Symbol::Gen(k)); },
+                        Symbol::Inv(k) => { assert(k < n); assert(Symbol::Inv(idx) != Symbol::Inv(k)); },
+                    }
+                },
+                Symbol::Inv(idx) => {
+                    match w[p0] {
+                        Symbol::Gen(k) => { assert(k < n); assert(Symbol::Gen(idx) != Symbol::Gen(k)); },
+                        Symbol::Inv(k) => { assert(k < n); assert(Symbol::Gen(idx) != Symbol::Inv(k)); },
+                    }
+                },
+            }
+            assert(!is_inverse_pair(w1[p0 + 1], w1[p0 + 2]));
+            assert(false);
+        }
+
+        // === p1 >= p0 + 2: commute FreeReduce to the front ===
+        // w1[p1] = w[p1-2] and w1[p1+1] = w[p1-1] (after expansion, shifted by 2)
+        assert(w1[p1] == w[(p1 - 2) as int]);
+        assert(w1[p1 + 1] == w[(p1 - 1) as int]);
+        let p1_adj = (p1 - 2) as int;
+        assert(has_cancellation_at(w, p1_adj));
+
+        let w_prime = reduce_at(w, p1_adj);
+        let step1_base = DerivationStep::FreeReduce { position: p1_adj };
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+        // w' is base
+        lemma_stable_count_reduce(w, p1_adj, n);
+        assert(generator_index(w[p1_adj]) < n);
+        assert(stable_letter_count(w_prime, n) == 0nat);
+
+        // w' is word_valid(n+1)
+        lemma_step_preserves_word_valid(data, w, step1_base);
+
+        // FreeExpand(p0, sym) on w' gives w2
+        let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+
+        // Position validity: p0 <= w.len() and w'.len() = w.len()-2, but p1_adj >= p0
+        // so reduce is AFTER p0, meaning w'[0..p0] = w[0..p0]. So p0 <= w'.len().
+        assert(p0 >= 0);
+        assert(w_prime.len() == w.len() - 2);
+        assert(p0 <= w_prime.len() as int);
+
+        // Show apply_step(hp, w', step0_adj) == Some(w2)
+        let expand_result = w_prime.subrange(0, p0) + pair
+            + w_prime.subrange(p0, w_prime.len() as int);
+
+        // Prove expand_result =~= w2 element-by-element
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == expand_result[k]
+        by {
+            if k < p0 {
+                // w2[k] = w1[k] = w[k] (k < p0 < p1)
+                // expand_result[k] = w'[k] = w[k] (k < p0 <= p1_adj)
+            } else if k == p0 {
+                // w2[k] = w1[p0] = sym (p0 < p1)
+            } else if k == p0 + 1 {
+                // w2[k] = w1[p0+1] = inv(sym) (p0+1 < p1)
+            } else if k < p1 {
+                // p0+2 <= k < p1
+                // w2[k] = w1[k] (k < p1, not shifted); w1[k] = w[k-2] (k >= p0+2)
+                // expand_result[k] = w'[k-2]; w'[k-2] = w[k-2] (k-2 < p1_adj = p1-2)
+            } else {
+                // k >= p1
+                // w2[k] = w1[k+2] (shifted by reduce_at at p1)
+                // w1[k+2] = w[k] (k+2 >= p0+2 + 2, so w1[k+2] = w[k+2-2] = w[k])
+                // expand_result[k] = w'[k-2]; w'[k-2] = w[k] (k-2 >= p1-2 = p1_adj)
+            }
+        };
+        assert(w2.len() == expand_result.len());
+        assert(w2 =~= expand_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        // Construct 2-step derivation and unfold derivation_produces
+        let k2_steps: Seq<DerivationStep> = seq![step0_adj, step2];
+        assert(k2_steps.len() == 2);
+        assert(k2_steps.first() == step0_adj);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+        // Unfold derivation_produces for 2-step sequence (unwrap trick)
+        let k2_tail = k2_steps.drop_first();
+        assert(k2_tail.first() == step2);
+        let w_end_k2 = apply_step(hp, w2, k2_tail.first()).unwrap();
+        assert(derivation_produces(hp, k2_tail.drop_first(), w_end_k2) == Some(w_end)) by {
+            assert(k2_tail.drop_first().len() == 0);
+        };
+        assert(w_end_k2 == w_end);
+        assert(derivation_produces(hp, k2_steps, w_prime) == Some(w_end));
+
+        // w' is base, w2 is non-base → k=2 segment
+        lemma_single_segment_k2(data, k2_steps, w_prime, w_end);
+
+        // w ≡_G w' via base FreeReduce step
+        lemma_single_step_equiv(data.base, w, step1_base, w_prime);
+
+        // Chain: w ≡_G w' ≡_G w_end
+        lemma_equiv_transitive(data.base, w, w_prime, w_end);
+    }
+}
+
 /// Hard case of single segment: k ≥ 3, ALL intermediates non-base.
 /// This means the first base intermediate is at position k (= w_end).
 ///
-/// Strategy: for k=3, the middle step is neutral (doesn't change stable count).
-/// For k≥4, find a peak and eliminate it.
-///
-/// Currently: assume(false) — to be filled in with peak elimination.
+/// Strategy: for k=3, dispatch on step types and commute neutral step to front.
+/// For k≥4: assume(false) (future: peak elimination).
 proof fn lemma_single_segment_hard(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
@@ -2660,7 +2907,70 @@ proof fn lemma_single_segment_hard(
     ensures
         equiv_in_presentation(data.base, w, w_end),
 {
-    assume(false); // TODO: peak elimination for k≥3
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    if steps.len() == 3 {
+        let step0 = steps[0];
+        let step1 = steps[1];
+        let step2 = steps[2];
+        let w1 = apply_step(hp, w, step0).unwrap();
+
+        // Unfold derivation_produces step by step for 3-step sequence
+        // Level 1: steps → rest01
+        let rest01 = steps.drop_first();
+        assert(rest01.len() == 2);
+        assert(rest01.first() == step1);
+        assert(derivation_produces(hp, rest01, w1) == Some(w_end));
+
+        // Level 2: rest01 → rest2 (use unwrap trick from lemma_single_segment_k2)
+        let w2 = apply_step(hp, w1, rest01.first()).unwrap();
+        let rest2 = rest01.drop_first();
+        assert(rest2.len() == 1);
+        assert(rest2.first() == step2);
+
+        // Level 3: rest2 → empty
+        let w_end_inner = apply_step(hp, w2, rest2.first()).unwrap();
+        assert(derivation_produces(hp, rest2.drop_first(), w_end_inner) == Some(w_end)) by {
+            assert(rest2.drop_first().len() == 0);
+        };
+        assert(w_end_inner == w_end);
+        assert(apply_step(hp, w2, step2) == Some(w_end));
+
+        // w2 is non-base (from the all-intermediates condition)
+        assert(derivation_word_at(hp, steps, w, 2nat) == w2) by {
+            assert(derivation_word_at(hp, steps, w, 2nat) ==
+                derivation_word_at(hp, rest01, w1, 1nat));
+            assert(apply_step(hp, w1, rest01.first()).is_some());
+            lemma_word_at_one(hp, rest01, w1);
+        };
+        assert(!is_base_word(w2, n));
+
+        // Classify step0
+        lemma_base_word_valid_down(w, n);
+        lemma_base_to_nonbase_step_type(data, w, w1, step0);
+
+        match step0 {
+            DerivationStep::FreeExpand { position: p0, symbol: sym } => {
+                match step1 {
+                    DerivationStep::FreeReduce { position: p1 } => {
+                        lemma_k3_expand_freereduce(
+                            data, w, w1, w2, w_end, p0, sym, p1, step2,
+                        );
+                    },
+                    _ => { assume(false); } // other neutral steps: future work
+                }
+            },
+            DerivationStep::RelatorInsert { .. } => {
+                assume(false); // RelatorInsert + neutral: future work
+            },
+            _ => {
+                // Unreachable by lemma_base_to_nonbase_step_type
+            },
+        }
+    } else {
+        assume(false); // k >= 4: future work (peak elimination)
+    }
 }
 
 /// The single segment lemma: if a derivation from base w to base w_end
