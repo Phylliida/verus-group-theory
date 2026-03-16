@@ -269,7 +269,7 @@ pub fn inverse_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
 }
 
 /// Helper: inverse_word element access.
-proof fn lemma_inverse_word_element(w: Word, k: int)
+pub proof fn lemma_inverse_word_element(w: Word, k: int)
     requires
         0 <= k < w.len(),
     ensures

@@ -3215,6 +3215,198 @@ proof fn lemma_k3_freeexpand_gen_contra(
 }
 
 
+/// Inverted HNN relator sub-case of inv_iso: r2 = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)].
+/// Proves a_j = [sym1, inv(sym1)] from inverse_word structure, then uses isomorphism.
+proof fn lemma_k3_inv_iso_inverted_reldelete(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, idx: nat, sym1: Symbol,
+    p2: int, ri2: nat, j: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        idx == data.base.num_generators,
+        generator_index(sym1) < data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            let n = data.base.num_generators;
+            let sym = Symbol::Inv(idx);
+            let p1 = p0 + 1;
+            let step2 = DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: true };
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::FreeExpand { position: p1, symbol: sym1 }) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w_end)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        j == (ri2 as int - data.base.relators.len()) as int,
+        0 <= j < data.associations.len() as int,
+        word_valid(w, data.base.num_generators),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let sym = Symbol::Inv(idx);
+    let (a_j, b_j) = data.associations[j];
+    let r2 = get_relator(hp, ri2, true);
+
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+    assert(w2 =~= w1.subrange(0, p0 + 1) + pair1 + w1.subrange(p0 + 1, w1.len() as int));
+
+    lemma_hnn_relator_inverted_stable_positions(data, j);
+
+    let stable_pos = p2 + b_j.len() as int;
+    assert(r2[b_j.len() as int] == stable_letter_inv(data));
+    assert(stable_letter_inv(data) == Symbol::Inv(n));
+    assert(w2[stable_pos] == r2[b_j.len() as int]);
+    assert(w2[stable_pos] == Symbol::Inv(n));
+
+    // stable_pos must be p0
+    if stable_pos != p0 {
+        if stable_pos < p0 {
+            assert(w2[stable_pos] == w[stable_pos]);
+            assert(symbol_valid(w[stable_pos], n));
+            assert(generator_index(w2[stable_pos]) < n);
+            assert(false);
+        } else if stable_pos == p0 + 1 {
+            assert(w2[stable_pos] == sym1);
+            assert(generator_index(sym1) < n);
+            assert(false);
+        } else if stable_pos == p0 + 2 {
+            assert(w2[stable_pos] == inverse_symbol(sym1));
+            assert(generator_index(inverse_symbol(sym1)) < n) by {
+                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+            };
+            assert(false);
+        } else if stable_pos == p0 + 3 {
+            assert(w2[stable_pos] == Symbol::Gen(n));
+            assert(Symbol::Gen(n) == Symbol::Inv(n));
+            assert(false);
+        } else {
+            assert(w2[stable_pos] == w[(stable_pos - 4) as int]);
+            assert(symbol_valid(w[(stable_pos - 4) as int], n));
+            assert(generator_index(w2[stable_pos]) < n);
+            assert(false);
+        }
+    }
+    assert(stable_pos == p0);
+    assert(p2 == p0 - b_j.len() as int);
+
+    // |a_j| = 2
+    if a_j.len() != 2 {
+        let sp2 = p0 + a_j.len() as int + 1;
+        assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
+        assert(stable_letter(data) == Symbol::Gen(n));
+        assert(w2[sp2] == r2[(b_j.len() + a_j.len() + 1) as int]);
+        assert(w2[sp2] == Symbol::Gen(n));
+        if sp2 < p0 + 3 {
+            if sp2 == p0 + 1 {
+                assert(w2[sp2] == sym1);
+                assert(generator_index(sym1) < n);
+                assert(false);
+            } else {
+                assert(sp2 == p0 + 2);
+                assert(w2[sp2] == inverse_symbol(sym1));
+                assert(generator_index(inverse_symbol(sym1)) < n) by {
+                    match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                };
+                assert(false);
+            }
+        } else {
+            assert(sp2 > p0 + 3);
+            assert(w2[sp2] == w[(sp2 - 4) as int]);
+            assert(symbol_valid(w[(sp2 - 4) as int], n));
+            assert(false);
+        }
+    }
+    assert(a_j.len() == 2);
+
+    // Derive a_j = [sym1, inv(sym1)] from inverse_word
+    assert(a_j =~= seq![sym1, inverse_symbol(sym1)]) by {
+        lemma_inverse_word_len(a_j);
+        let inv_aj = inverse_word(a_j);
+        assert(inv_aj.len() == 2);
+        assert(r2[(b_j.len() + 1) as int] == w2[(p0 + 1) as int]);
+        assert(w2[(p0 + 1) as int] == sym1);
+        assert(r2[(b_j.len() + 2) as int] == w2[(p0 + 2) as int]);
+        assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+        crate::runtime::lemma_inverse_word_element(a_j, 0int);
+        crate::runtime::lemma_inverse_word_element(a_j, 1int);
+        assert(inv_aj[0int] == inverse_symbol(a_j[1int]));
+        assert(inv_aj[1int] == inverse_symbol(a_j[0int]));
+        assert(inv_aj[0int] == sym1);
+        assert(inv_aj[1int] == inverse_symbol(sym1));
+        assert(inverse_symbol(sym1) == a_j[1int]) by {
+            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        assert(a_j[0int] == inverse_symbol(inverse_symbol(sym1)));
+        assert(inverse_symbol(inverse_symbol(sym1)) == sym1) by {
+            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+    };
+
+    // a_j ≡_G ε
+    assert(is_inverse_pair(sym1, inverse_symbol(sym1))) by {
+        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+    };
+    assert(has_cancellation_at(a_j, 0int));
+    let a_reduce_step = DerivationStep::FreeReduce { position: 0int };
+    assert(reduce_at(a_j, 0int) =~= empty_word()) by {
+        assert(a_j.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+        assert(a_j.subrange(2, 2int) =~= Seq::<Symbol>::empty());
+    };
+    assert(apply_step(data.base, a_j, a_reduce_step) == Some(empty_word()));
+    lemma_single_step_equiv(data.base, a_j, a_reduce_step, empty_word());
+
+    // b_j ≡_G ε
+    lemma_trivial_association_implies_trivial(data, j);
+
+    let bj_len = b_j.len() as int;
+    assert(r2.len() == 2 + a_j.len() + b_j.len());
+    assert(p2 == p0 - bj_len);
+
+    let w_left = w.subrange(0, p0 - bj_len);
+    let w_right = w.subrange(p0, w.len() as int);
+    assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
+    assert(p2 + r2.len() as int == p0 + 4);
+    assert(w2.subrange(0, p2) =~= w_left);
+    assert forall|k: int| 0 <= k < w.len() - p0
+        implies #[trigger] w2[(p0 + 4 + k) as int] == w[(p0 + k) as int]
+    by {};
+    assert(w2.subrange(p0 + 4, w2.len() as int) =~= w_right);
+    assert(w_end =~= w_left + w_right);
+
+    // w[p0-|b_j|..p0] = b_j
+    assert forall|k: int| 0 <= k < bj_len
+        implies w[(p0 - bj_len + k) as int] == #[trigger] b_j[k]
+    by {
+        assert(w2[(p2 + k) as int] == r2[k]);
+        assert(p2 + k < p0);
+        assert(w2[(p2 + k) as int] == w[(p2 + k) as int]);
+        let inv_r_full = b_j + Seq::new(1, |_i: int| stable_letter_inv(data))
+            + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data));
+        assert(r2 =~= inv_r_full);
+        assert(r2[k] == (b_j + (Seq::new(1, |_i: int| stable_letter_inv(data))
+            + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data))))[k]);
+    };
+    let w_mid = w.subrange(p0 - bj_len, p0);
+    assert(w_mid =~= b_j);
+
+    // w = w_left ++ b_j ++ w_right
+    assert(w =~= w_left + w.subrange(p0 - bj_len, w.len() as int));
+    assert(w.subrange(p0 - bj_len, w.len() as int) =~= w_mid + w_right);
+    assert(w =~= w_left + (b_j + w_right));
+
+    lemma_remove_trivial_equiv(data.base, w_left, w_right, b_j);
+}
+
 /// k=3 FreeExpand(Inv(n)) + FreeExpand(base) at p0+1: isomorphism argument.
 /// w2 has Inv(n) at p0, Gen(n) at p0+3. step2 must be RelatorDelete(HNN).
 proof fn lemma_k3_freeexpand_inv_iso(
@@ -3463,152 +3655,7 @@ proof fn lemma_k3_freeexpand_inv_iso(
 
                 lemma_remove_trivial_equiv(data.base, w_left, w_right, inv_bj);
             } else {
-                // Inverted HNN relator: r2 = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
-                lemma_hnn_relator_inverted_stable_positions(data, j);
-
-                let stable_pos = p2 + b_j.len() as int;
-                assert(r2[b_j.len() as int] == stable_letter_inv(data));
-                assert(stable_letter_inv(data) == Symbol::Inv(n));
-                assert(w2[stable_pos] == r2[b_j.len() as int]);
-                assert(w2[stable_pos] == Symbol::Inv(n));
-
-                // stable_pos must be p0
-                if stable_pos != p0 {
-                    if stable_pos < p0 {
-                        assert(w2[stable_pos] == w[stable_pos]);
-                        assert(symbol_valid(w[stable_pos], n));
-                        assert(generator_index(w2[stable_pos]) < n);
-                        assert(false);
-                    } else if stable_pos == p0 + 1 {
-                        assert(w2[stable_pos] == sym1);
-                        assert(generator_index(sym1) < n);
-                        assert(false);
-                    } else if stable_pos == p0 + 2 {
-                        assert(w2[stable_pos] == inverse_symbol(sym1));
-                        assert(generator_index(inverse_symbol(sym1)) < n) by {
-                            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-                        };
-                        assert(false);
-                    } else if stable_pos == p0 + 3 {
-                        assert(w2[stable_pos] == Symbol::Gen(n));
-                        assert(Symbol::Gen(n) == Symbol::Inv(n));
-                        assert(false);
-                    } else {
-                        assert(w2[stable_pos] == w[(stable_pos - 4) as int]);
-                        assert(symbol_valid(w[(stable_pos - 4) as int], n));
-                        assert(generator_index(w2[stable_pos]) < n);
-                        assert(false);
-                    }
-                }
-                assert(stable_pos == p0);
-                assert(p2 == p0 - b_j.len() as int);
-
-                // |a_j| = 2
-                if a_j.len() != 2 {
-                    let sp2 = p0 + a_j.len() as int + 1;
-                    assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
-                    assert(stable_letter(data) == Symbol::Gen(n));
-                    assert(w2[sp2] == r2[(b_j.len() + a_j.len() + 1) as int]);
-                    assert(w2[sp2] == Symbol::Gen(n));
-                    if sp2 < p0 + 3 {
-                        if sp2 == p0 + 1 {
-                            assert(w2[sp2] == sym1);
-                            assert(generator_index(sym1) < n);
-                            assert(false);
-                        } else {
-                            assert(sp2 == p0 + 2);
-                            assert(w2[sp2] == inverse_symbol(sym1));
-                            assert(generator_index(inverse_symbol(sym1)) < n) by {
-                                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-                            };
-                            assert(false);
-                        }
-                    } else {
-                        assert(sp2 > p0 + 3);
-                        assert(w2[sp2] == w[(sp2 - 4) as int]);
-                        assert(symbol_valid(w[(sp2 - 4) as int], n));
-                        assert(false);
-                    }
-                }
-                assert(a_j.len() == 2);
-
-                // Derive a_j = [sym1, inv(sym1)] from inverse_word
-                assert(a_j =~= seq![sym1, inverse_symbol(sym1)]) by {
-                    lemma_inverse_word_len(a_j);
-                    let inv_aj = inverse_word(a_j);
-                    assert(inv_aj.len() == 2);
-                    assert(r2[(b_j.len() + 1) as int] == w2[(p0 + 1) as int]);
-                    assert(w2[(p0 + 1) as int] == sym1);
-                    assert(r2[(b_j.len() + 2) as int] == w2[(p0 + 2) as int]);
-                    assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
-                    assert(inv_aj[0int] == inverse_symbol(a_j[(a_j.len() - 1) as int]));
-                    assert(inv_aj[1int] == inverse_symbol(a_j[0int]));
-                    assert(inv_aj[0int] == sym1);
-                    assert(inv_aj[1int] == inverse_symbol(sym1));
-                    assert(a_j[1int] == inverse_symbol(inv_aj[0int]));
-                    assert(inverse_symbol(sym1) == a_j[1int]) by {
-                        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-                    };
-                    assert(a_j[0int] == inverse_symbol(inv_aj[1int]));
-                    assert(a_j[0int] == inverse_symbol(inverse_symbol(sym1)));
-                    assert(inverse_symbol(inverse_symbol(sym1)) == sym1) by {
-                        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-                    };
-                };
-
-                // a_j ≡_G ε
-                assert(is_inverse_pair(sym1, inverse_symbol(sym1))) by {
-                    match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-                };
-                assert(has_cancellation_at(a_j, 0int));
-                let a_reduce_step = DerivationStep::FreeReduce { position: 0int };
-                assert(reduce_at(a_j, 0int) =~= empty_word()) by {
-                    assert(a_j.subrange(0, 0int) =~= Seq::<Symbol>::empty());
-                    assert(a_j.subrange(2, 2int) =~= Seq::<Symbol>::empty());
-                };
-                assert(apply_step(data.base, a_j, a_reduce_step) == Some(empty_word()));
-                lemma_single_step_equiv(data.base, a_j, a_reduce_step, empty_word());
-
-                // b_j ≡_G ε
-                lemma_trivial_association_implies_trivial(data, j);
-
-                let bj_len = b_j.len() as int;
-                assert(r2.len() == 2 + a_j.len() + b_j.len());
-                assert(p2 == p0 - bj_len);
-
-                let w_left = w.subrange(0, p0 - bj_len);
-                let w_right = w.subrange(p0, w.len() as int);
-                assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
-                assert(p2 + r2.len() as int == p0 + 4);
-                assert(w2.subrange(0, p2) =~= w_left);
-                assert forall|k: int| 0 <= k < w.len() - p0
-                    implies #[trigger] w2[(p0 + 4 + k) as int] == w[(p0 + k) as int]
-                by {};
-                assert(w2.subrange(p0 + 4, w2.len() as int) =~= w_right);
-                assert(w_end =~= w_left + w_right);
-
-                // w[p0-|b_j|..p0] = b_j
-                assert forall|k: int| 0 <= k < bj_len
-                    implies w[(p0 - bj_len + k) as int] == #[trigger] b_j[k]
-                by {
-                    assert(w2[(p2 + k) as int] == r2[k]);
-                    assert(p2 + k < p0);
-                    assert(w2[(p2 + k) as int] == w[(p2 + k) as int]);
-                    let inv_r_full = b_j + Seq::new(1, |_i: int| stable_letter_inv(data))
-                        + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data));
-                    assert(r2 =~= inv_r_full);
-                    assert(r2[k] == (b_j + (Seq::new(1, |_i: int| stable_letter_inv(data))
-                        + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data))))[k]);
-                };
-                let w_mid = w.subrange(p0 - bj_len, p0);
-                assert(w_mid =~= b_j);
-
-                // w = w_left ++ b_j ++ w_right
-                assert(w =~= w_left + w.subrange(p0 - bj_len, w.len() as int));
-                assert(w.subrange(p0 - bj_len, w.len() as int) =~= w_mid + w_right);
-                assert(w =~= w_left + (b_j + w_right));
-
-                lemma_remove_trivial_equiv(data.base, w_left, w_right, b_j);
+                lemma_k3_inv_iso_inverted_reldelete(data, w, w1, w2, w_end, p0, idx, sym1, p2, ri2, j);
             }
         },
     }
