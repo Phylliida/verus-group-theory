@@ -440,6 +440,191 @@ pub proof fn lemma_trivial_association_implies_trivial(
     // By isomorphism: a_i ≡ ε ↔ b_i ≡ ε
 }
 
+/// If x ≡_G y then inverse_word(x) ≡_G inverse_word(y).
+proof fn lemma_inverse_word_congruence(
+    p: Presentation, x: Word, y: Word,
+)
+    requires
+        equiv_in_presentation(p, x, y),
+        word_valid(x, p.num_generators),
+        word_valid(y, p.num_generators),
+        presentation_valid(p),
+    ensures
+        equiv_in_presentation(p, inverse_word(x), inverse_word(y)),
+{
+    let inv_y = inverse_word(y);
+    lemma_inverse_word_valid(y, p.num_generators);
+    // concat(x, inv_y) ≡ concat(y, inv_y) ≡ ε
+    lemma_equiv_concat_left(p, x, y, inv_y);
+    lemma_word_inverse_right(p, y);
+    lemma_equiv_transitive(p, concat(x, inv_y), concat(y, inv_y), empty_word());
+    // identity_split: inv_y ≡ inv(x)
+    lemma_identity_split(p, x, inv_y);
+    // symmetric: inv(x) ≡ inv(y)
+    lemma_inverse_word_valid(x, p.num_generators);
+    lemma_equiv_symmetric(p, inv_y, inverse_word(x));
+}
+
+/// Isomorphism maps equivalence: if a_{j2} ≡_G a_{j1}, then b_{j2} ≡_G b_{j1}.
+/// Uses the HNN isomorphism condition with the word [Gen(j2), Inv(j1)].
+proof fn lemma_isomorphism_maps_equivalence(
+    data: HNNData, j1: int, j2: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= j1 < data.associations.len(),
+        0 <= j2 < data.associations.len(),
+        equiv_in_presentation(data.base, data.associations[j2].0, data.associations[j1].0),
+    ensures
+        equiv_in_presentation(data.base, data.associations[j2].1, data.associations[j1].1),
+{
+    let k = data.associations.len();
+    let n = data.base.num_generators;
+    let p = data.base;
+    let a_words = Seq::new(k, |i: int| data.associations[i].0);
+    let b_words = Seq::new(k, |i: int| data.associations[i].1);
+    let (a_j1, b_j1) = data.associations[j1];
+    let (a_j2, b_j2) = data.associations[j2];
+
+    // Build test word [Gen(j2), Inv(j1)]
+    let s1 = Symbol::Gen(j2 as nat);
+    let s2 = Symbol::Inv(j1 as nat);
+    let w: Word = seq![s1, s2];
+    assert(word_valid(w, k as nat)) by {
+        assert(w[0int] == s1);
+        assert(w[1int] == s2);
+        assert(symbol_valid(s1, k as nat));
+        assert(symbol_valid(s2, k as nat));
+    };
+
+    // A-embedding: concat(a_{j2}, inv(a_{j1}))
+    lemma_apply_embedding_two(a_words, s1, s2);
+    assert(a_words[j2] == a_j2);
+    assert(a_words[j1] == a_j1);
+    assert(apply_embedding(a_words, w) =~= concat(a_j2, inverse_word(a_j1)));
+
+    // concat(a_{j2}, inv(a_{j1})) ≡_G ε
+    lemma_inverse_word_valid(a_j1, n);
+    lemma_equiv_concat_left(p, a_j2, a_j1, inverse_word(a_j1));
+    lemma_word_inverse_right(p, a_j1);
+    lemma_equiv_transitive(p,
+        concat(a_j2, inverse_word(a_j1)),
+        concat(a_j1, inverse_word(a_j1)),
+        empty_word());
+
+    // B-embedding: concat(b_{j2}, inv(b_{j1}))
+    lemma_apply_embedding_two(b_words, s1, s2);
+    assert(b_words[j2] == b_j2);
+    assert(b_words[j1] == b_j1);
+    assert(apply_embedding(b_words, w) =~= concat(b_j2, inverse_word(b_j1)));
+
+    // By isomorphism: concat(b_{j2}, inv(b_{j1})) ≡_G ε
+    // Now derive b_{j2} ≡_G b_{j1}
+    let inv_bj1 = inverse_word(b_j1);
+    lemma_inverse_word_valid(b_j1, n);
+
+    // concat(concat(b_j2, inv_bj1), b_j1) ≡_G concat(ε, b_j1) =~= b_j1
+    lemma_equiv_concat_left(p, concat(b_j2, inv_bj1), empty_word(), b_j1);
+    assert(concat(empty_word(), b_j1) =~= b_j1);
+    assert(concat(concat(b_j2, inv_bj1), b_j1)
+        =~= concat(b_j2, concat(inv_bj1, b_j1)));
+
+    // concat(b_j2, concat(inv_bj1, b_j1)) ≡_G b_j2
+    lemma_word_inverse_left(p, b_j1);
+    lemma_equiv_concat_right(p, b_j2, concat(inv_bj1, b_j1), empty_word());
+    assert(concat(b_j2, empty_word()) =~= b_j2);
+
+    // Chain: b_j2 ≡_G concat(b_j2, concat(inv_bj1, b_j1)) ≡_G b_j1
+    lemma_concat_word_valid(inv_bj1, b_j1, n);
+    lemma_concat_word_valid(b_j2, concat(inv_bj1, b_j1), n);
+    lemma_equiv_symmetric(p, concat(b_j2, concat(inv_bj1, b_j1)), b_j2);
+    lemma_equiv_transitive(p,
+        b_j2,
+        concat(b_j2, concat(inv_bj1, b_j1)),
+        b_j1);
+}
+
+/// Isomorphism maps inverse equivalence: if a_{j2} ≡_G inv(a_{j1}), then b_{j2} ≡_G inv(b_{j1}).
+/// Uses the HNN isomorphism condition with the word [Gen(j2), Gen(j1)].
+proof fn lemma_isomorphism_maps_inverse_equivalence(
+    data: HNNData, j1: int, j2: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= j1 < data.associations.len(),
+        0 <= j2 < data.associations.len(),
+        equiv_in_presentation(data.base, data.associations[j2].0, inverse_word(data.associations[j1].0)),
+    ensures
+        equiv_in_presentation(data.base, data.associations[j2].1, inverse_word(data.associations[j1].1)),
+{
+    let k = data.associations.len();
+    let n = data.base.num_generators;
+    let p = data.base;
+    let a_words = Seq::new(k, |i: int| data.associations[i].0);
+    let b_words = Seq::new(k, |i: int| data.associations[i].1);
+    let (a_j1, b_j1) = data.associations[j1];
+    let (a_j2, b_j2) = data.associations[j2];
+
+    // Build test word [Gen(j2), Gen(j1)]
+    let s1 = Symbol::Gen(j2 as nat);
+    let s2 = Symbol::Gen(j1 as nat);
+    let w: Word = seq![s1, s2];
+    assert(word_valid(w, k as nat)) by {
+        assert(w[0int] == s1);
+        assert(w[1int] == s2);
+        assert(symbol_valid(s1, k as nat));
+        assert(symbol_valid(s2, k as nat));
+    };
+
+    // A-embedding: concat(a_{j2}, a_{j1})
+    lemma_apply_embedding_two(a_words, s1, s2);
+    assert(a_words[j2] == a_j2);
+    assert(a_words[j1] == a_j1);
+    assert(apply_embedding(a_words, w) =~= concat(a_j2, a_j1));
+
+    // concat(a_{j2}, a_{j1}) ≡_G ε
+    // From a_{j2} ≡_G inv(a_{j1}): concat(inv(a_{j1}), a_{j1}) ≡_G ε
+    lemma_equiv_concat_left(p, a_j2, inverse_word(a_j1), a_j1);
+    lemma_word_inverse_left(p, a_j1);
+    lemma_equiv_transitive(p,
+        concat(a_j2, a_j1),
+        concat(inverse_word(a_j1), a_j1),
+        empty_word());
+
+    // B-embedding: concat(b_{j2}, b_{j1})
+    lemma_apply_embedding_two(b_words, s1, s2);
+    assert(b_words[j2] == b_j2);
+    assert(b_words[j1] == b_j1);
+    assert(apply_embedding(b_words, w) =~= concat(b_j2, b_j1));
+
+    // By isomorphism: concat(b_{j2}, b_{j1}) ≡_G ε
+    // Derive b_{j2} ≡_G inv(b_{j1})
+    let inv_bj1 = inverse_word(b_j1);
+    lemma_inverse_word_valid(b_j1, n);
+
+    // concat(concat(b_j2, b_j1), inv_bj1) ≡_G concat(ε, inv_bj1) =~= inv_bj1
+    lemma_equiv_concat_left(p, concat(b_j2, b_j1), empty_word(), inv_bj1);
+    assert(concat(empty_word(), inv_bj1) =~= inv_bj1);
+    assert(concat(concat(b_j2, b_j1), inv_bj1)
+        =~= concat(b_j2, concat(b_j1, inv_bj1)));
+
+    // concat(b_j2, concat(b_j1, inv_bj1)) ≡_G b_j2
+    lemma_word_inverse_right(p, b_j1);
+    lemma_equiv_concat_right(p, b_j2, concat(b_j1, inv_bj1), empty_word());
+    assert(concat(b_j2, empty_word()) =~= b_j2);
+
+    // Chain: b_j2 ≡_G concat(b_j2, concat(b_j1, inv_bj1)) ≡_G inv_bj1
+    lemma_concat_word_valid(b_j1, inv_bj1, n);
+    lemma_concat_word_valid(b_j2, concat(b_j1, inv_bj1), n);
+    lemma_equiv_symmetric(p, concat(b_j2, concat(b_j1, inv_bj1)), b_j2);
+    lemma_equiv_transitive(p,
+        b_j2,
+        concat(b_j2, concat(b_j1, inv_bj1)),
+        inv_bj1);
+}
+
 // ============================================================
 // Part 4: Stable letter count under steps
 // ============================================================
