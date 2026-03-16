@@ -170,6 +170,82 @@ proof fn lemma_single_step_equiv(
     assert(derivation_valid(p, d, w, w_next));
 }
 
+/// Construct derivation_produces for a 2-step sequence from individual apply_step facts.
+proof fn lemma_derivation_produces_2(
+    hp: Presentation, s0: DerivationStep, s1: DerivationStep,
+    w0: Word, w1: Word, w2: Word,
+)
+    requires
+        apply_step(hp, w0, s0) == Some(w1),
+        apply_step(hp, w1, s1) == Some(w2),
+    ensures
+        derivation_produces(hp, seq![s0, s1], w0) == Some(w2),
+{
+    // Layer 1: prove the tail (1-step derivation)
+    let tail: Seq<DerivationStep> = seq![s1];
+    assert(tail.first() == s1);
+    assert(derivation_produces(hp, tail.drop_first(), w2) == Some(w2)) by {
+        assert(tail.drop_first().len() == 0);
+    };
+    assert(derivation_produces(hp, tail, w1) == Some(w2));
+
+    // Layer 2: fold the outer level using the tail result
+    let steps: Seq<DerivationStep> = seq![s0, s1];
+    assert(steps.first() == s0);
+    assert(steps.drop_first() =~= tail);
+}
+
+/// Unfold derivation_produces for a 3-step sequence, extracting individual apply_step facts.
+proof fn lemma_derivation_unfold_3(
+    hp: Presentation, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+) -> (intermediates: (Word, Word))
+    requires
+        steps.len() == 3,
+        derivation_produces(hp, steps, w) == Some(w_end),
+    ensures
+        apply_step(hp, w, steps[0]) == Some(intermediates.0),
+        apply_step(hp, intermediates.0, steps[1]) == Some(intermediates.1),
+        apply_step(hp, intermediates.1, steps[2]) == Some(w_end),
+{
+    // Use lemma_derivation_split at position 1 to get a proven 2-step tail
+    lemma_derivation_split(hp, steps, w, w_end, 1);
+    let first1 = steps.subrange(0, 1int);
+    let rest2 = steps.subrange(1int, 3int);
+    assert(first1 =~= seq![steps[0]]);
+    let w1 = derivation_produces(hp, first1, w).unwrap();
+
+    // Unfold the 1-step prefix to get apply_step fact
+    let w1_chk = apply_step(hp, w, first1.first()).unwrap();
+    assert(derivation_produces(hp, first1.drop_first(), w1_chk) == Some(w1)) by {
+        assert(first1.drop_first().len() == 0);
+    };
+    assert(w1 == w1_chk);
+
+    // Now derivation_produces(hp, rest2, w1) == Some(w_end) with rest2.len() == 2
+    // Split rest2 at position 1 to get two 1-step pieces
+    lemma_derivation_split(hp, rest2, w1, w_end, 1);
+    let rest2_first = rest2.subrange(0, 1int);
+    let rest2_second = rest2.subrange(1int, 2int);
+    assert(rest2_first.first() == steps[1]);
+    assert(rest2_second.first() == steps[2]);
+    let w2 = derivation_produces(hp, rest2_first, w1).unwrap();
+
+    // Unfold the first 1-step piece: apply_step(hp, w1, steps[1]) == Some(w2)
+    let w2_chk = apply_step(hp, w1, rest2_first.first()).unwrap();
+    assert(derivation_produces(hp, rest2_first.drop_first(), w2_chk) == Some(w2)) by {
+        assert(rest2_first.drop_first().len() == 0);
+    };
+    assert(w2_chk == w2);
+
+    // Unfold the second 1-step piece: apply_step(hp, w2, steps[2]) == Some(w_end)
+    let w3 = apply_step(hp, w2, rest2_second.first()).unwrap();
+    assert(derivation_produces(hp, rest2_second.drop_first(), w3) == Some(w_end)) by {
+        assert(rest2_second.drop_first().len() == 0);
+    };
+    assert(w3 == w_end);
+    (w1, w2)
+}
+
 // ============================================================
 // Part 2: Stable letter count helpers
 // ============================================================
@@ -324,6 +400,44 @@ pub proof fn lemma_empty_association_implies_trivial_rev(
     lemma_apply_embedding_single(a_words, i as nat);
     assert(a_words[i] == data.associations[i].0);
     assert(concat(data.associations[i].0, empty_word()) =~= data.associations[i].0);
+}
+
+/// Generalized isomorphism: if a_i ≡ ε in G, then b_i ≡ ε in G.
+/// Generalizes lemma_empty_association_implies_trivial to any trivial a_i (not just empty).
+pub proof fn lemma_trivial_association_implies_trivial(
+    data: HNNData, i: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= i < data.associations.len(),
+        equiv_in_presentation(data.base, data.associations[i].0, empty_word()),
+    ensures
+        equiv_in_presentation(data.base, data.associations[i].1, empty_word()),
+{
+    let k = data.associations.len();
+    let a_words = Seq::new(k, |j: int| data.associations[j].0);
+    let b_words = Seq::new(k, |j: int| data.associations[j].1);
+
+    let w: Word = seq![Symbol::Gen(i as nat)];
+    assert(word_valid(w, k as nat)) by {
+        assert(w[0 as int] == Symbol::Gen(i as nat));
+        assert(symbol_valid(Symbol::Gen(i as nat), k as nat));
+    };
+
+    // apply_embedding(a_words, w) =~= a_i
+    lemma_apply_embedding_single(a_words, i as nat);
+    assert(a_words[i] == data.associations[i].0);
+    assert(concat(data.associations[i].0, empty_word()) =~= data.associations[i].0);
+    assert(apply_embedding(a_words, w) =~= data.associations[i].0);
+
+    // apply_embedding(b_words, w) =~= b_i
+    lemma_apply_embedding_single(b_words, i as nat);
+    assert(b_words[i] == data.associations[i].1);
+    assert(concat(data.associations[i].1, empty_word()) =~= data.associations[i].1);
+    assert(apply_embedding(b_words, w) =~= data.associations[i].1);
+
+    // By isomorphism: a_i ≡ ε ↔ b_i ≡ ε
 }
 
 // ============================================================
@@ -2740,20 +2854,9 @@ proof fn lemma_k3_expand_freereduce(
         assert(w2 =~= expand_result);
         assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-        // Construct 2-step derivation and unfold derivation_produces
+        // Construct 2-step derivation via helper
+        lemma_derivation_produces_2(hp, step0_adj, step2, w_prime, w2, w_end);
         let k2_steps: Seq<DerivationStep> = seq![step0_adj, step2];
-        assert(k2_steps.len() == 2);
-        assert(k2_steps.first() == step0_adj);
-        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-        // Unfold derivation_produces for 2-step sequence (unwrap trick)
-        let k2_tail = k2_steps.drop_first();
-        assert(k2_tail.first() == step2);
-        let w_end_k2 = apply_step(hp, w2, k2_tail.first()).unwrap();
-        assert(derivation_produces(hp, k2_tail.drop_first(), w_end_k2) == Some(w_end)) by {
-            assert(k2_tail.drop_first().len() == 0);
-        };
-        assert(w_end_k2 == w_end);
-        assert(derivation_produces(hp, k2_steps, w_prime) == Some(w_end));
 
         // w' is base, w2 is non-base → k=2 segment
         lemma_single_segment_k2(data, k2_steps, w_prime, w_end);
@@ -2850,20 +2953,9 @@ proof fn lemma_k3_expand_freereduce(
         assert(w2 =~= expand_result);
         assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-        // Construct 2-step derivation and unfold derivation_produces
+        // Construct 2-step derivation via helper
+        lemma_derivation_produces_2(hp, step0_adj, step2, w_prime, w2, w_end);
         let k2_steps: Seq<DerivationStep> = seq![step0_adj, step2];
-        assert(k2_steps.len() == 2);
-        assert(k2_steps.first() == step0_adj);
-        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-        // Unfold derivation_produces for 2-step sequence (unwrap trick)
-        let k2_tail = k2_steps.drop_first();
-        assert(k2_tail.first() == step2);
-        let w_end_k2 = apply_step(hp, w2, k2_tail.first()).unwrap();
-        assert(derivation_produces(hp, k2_tail.drop_first(), w_end_k2) == Some(w_end)) by {
-            assert(k2_tail.drop_first().len() == 0);
-        };
-        assert(w_end_k2 == w_end);
-        assert(derivation_produces(hp, k2_steps, w_prime) == Some(w_end));
 
         // w' is base, w2 is non-base → k=2 segment
         lemma_single_segment_k2(data, k2_steps, w_prime, w_end);
@@ -2873,6 +2965,979 @@ proof fn lemma_k3_expand_freereduce(
 
         // Chain: w ≡_G w' ≡_G w_end
         lemma_equiv_transitive(data.base, w, w_prime, w_end);
+    }
+}
+
+/// Common tail for k=3 commutation proofs.
+/// Given: step1_base on w → w' (base), step0_adj on w' → w2, step2 on w2 → w_end.
+/// Proves: w ≡_G w_end.
+proof fn lemma_k3_commutation_tail(
+    data: HNNData, w: Word, w_prime: Word, w2: Word, w_end: Word,
+    step1_base: DerivationStep, step0_adj: DerivationStep, step2: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        is_base_word(w_prime, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w_prime, data.base.num_generators + 1),
+        !is_base_word(w2, data.base.num_generators),
+        apply_step(data.base, w, step1_base) == Some(w_prime),
+        apply_step(hnn_presentation(data), w_prime, step0_adj) == Some(w2),
+        apply_step(hnn_presentation(data), w2, step2) == Some(w_end),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    lemma_derivation_produces_2(hp, step0_adj, step2, w_prime, w2, w_end);
+    let k2_steps: Seq<DerivationStep> = seq![step0_adj, step2];
+    assert(k2_steps.first() == step0_adj);
+    lemma_single_segment_k2(data, k2_steps, w_prime, w_end);
+    lemma_single_step_equiv(data.base, w, step1_base, w_prime);
+    lemma_equiv_transitive(data.base, w, w_prime, w_end);
+}
+
+/// k=3 case: step0 = FreeExpand(stable), step1 = FreeExpand(base).
+/// Commutes FreeExpand(base) to act on w first, then applies k=2 lemma.
+/// Special case: p1 = p0+1 (between stable letters) uses isomorphism argument.
+proof fn lemma_k3_expand_freeexpand_base(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, sym: Symbol, p1: int, sym1: Symbol, step2: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        generator_index(sym) == data.base.num_generators,
+        generator_index(sym1) < data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::FreeExpand { position: p1, symbol: sym1 }) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w_end)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+    assert(w2 =~= w1.subrange(0, p1) + pair1 + w1.subrange(p1, w1.len() as int));
+
+    lemma_base_word_valid_down(w, n);
+
+    if p1 <= p0 {
+        // === Commute: FreeExpand(base) at p1 on w, then FreeExpand(stable) at p0+2 ===
+        let step1_base = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
+        let w_prime = w.subrange(0, p1) + pair1 + w.subrange(p1, w.len() as int);
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+        // w' is base
+        assert(generator_index(inverse_symbol(sym1)) < n) by {
+            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+        assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+        assert(stable_letter_count(pair1, n) == 0nat);
+        assert(w =~= w.subrange(0, p1) + w.subrange(p1, w.len() as int));
+        lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1, w.len() as int), n);
+        lemma_stable_letter_count_concat(w.subrange(0, p1), pair1, n);
+        lemma_stable_letter_count_concat(w.subrange(0, p1) + pair1, w.subrange(p1, w.len() as int), n);
+        assert(stable_letter_count(w_prime, n) == 0nat);
+
+        // w' is word_valid(n+1)
+        lemma_word_valid_monotone(w_prime, n);
+
+        // FreeExpand(stable) at p0+2 on w' gives w2
+        let p0_adj = (p0 + 2) as int;
+        let step0_adj = DerivationStep::FreeExpand { position: p0_adj, symbol: sym };
+        let expand_result = w_prime.subrange(0, p0_adj) + pair
+            + w_prime.subrange(p0_adj, w_prime.len() as int);
+
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == expand_result[k]
+        by {
+            if k < p1 {
+            } else if k < p1 + 2 {
+                // pair1 region
+            } else if k < p0_adj {
+                // w[k-2] region (between p1+2 and p0+2)
+            } else if k == p0_adj {
+                // sym
+            } else if k == p0_adj + 1 {
+                // inv(sym)
+            } else {
+                // w[k-4+2] = w[k-2] shifted
+            }
+        };
+        assert(w2.len() == expand_result.len());
+        assert(w2 =~= expand_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
+    } else if p1 >= p0 + 2 {
+        // === Commute: FreeExpand(base) at p1-2 on w, then FreeExpand(stable) at p0 ===
+        let p1_adj = (p1 - 2) as int;
+        let step1_base = DerivationStep::FreeExpand { position: p1_adj, symbol: sym1 };
+        let w_prime = w.subrange(0, p1_adj) + pair1 + w.subrange(p1_adj, w.len() as int);
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+        // w' is base
+        assert(generator_index(inverse_symbol(sym1)) < n) by {
+            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+        assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+        assert(stable_letter_count(pair1, n) == 0nat);
+        assert(w =~= w.subrange(0, p1_adj) + w.subrange(p1_adj, w.len() as int));
+        lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj, w.len() as int), n);
+        lemma_stable_letter_count_concat(w.subrange(0, p1_adj), pair1, n);
+        lemma_stable_letter_count_concat(w.subrange(0, p1_adj) + pair1, w.subrange(p1_adj, w.len() as int), n);
+        assert(stable_letter_count(w_prime, n) == 0nat);
+
+        // w' is word_valid(n+1)
+        lemma_word_valid_monotone(w_prime, n);
+
+        // FreeExpand(stable) at p0 on w' gives w2
+        let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+        let expand_result = w_prime.subrange(0, p0) + pair
+            + w_prime.subrange(p0, w_prime.len() as int);
+
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == expand_result[k]
+        by {
+            if k < p0 {
+            } else if k == p0 {
+            } else if k == p0 + 1 {
+            } else if k < p1 {
+                // w1[k] region (between p0+2 and p1)
+            } else if k < p1 + 2 {
+                // pair1 region
+            } else {
+                // w1[k-2] = w[k-4] region, and w'[k-2] = w[k-4]
+            }
+        };
+        assert(w2.len() == expand_result.len());
+        assert(w2 =~= expand_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
+    } else {
+        // === p1 = p0 + 1: between stable letters ===
+        assert(p1 == p0 + 1);
+
+        // w2 = w[0..p0] ++ [sym, sym1, inv(sym1), inv(sym)] ++ w[p0..]
+        // Stable letters at p0 (sym) and p0+3 (inv(sym)), separated by 2 base symbols.
+
+        // For step2 to reach base, it must remove both stable letters.
+        // FreeReduce can't (they're not adjacent).
+        // RelatorDelete(HNN) needs Inv(n) at p0 or related position.
+        // If sym = Gen(n): the stable letter ordering Gen(n)...Inv(n) doesn't match
+        // any HNN relator starting at p0 (HNN relators start with Inv(n)).
+        // So step2 can't reach base → contradiction with is_base_word(w_end).
+        match sym {
+            Symbol::Gen(idx) => {
+                // sym = Gen(n), inv(sym) = Inv(n)
+                // w2 has Gen(n) at p0 and Inv(n) at p0+3.
+                // No HNN relator matches: non-inverted starts with Inv(n) ≠ Gen(n) at p0;
+                // inverted has Inv(n) at offset |b_j| which would need to be at p0.
+                // Prove w_end is non-base by showing stable count stays ≥ 2.
+
+                // Stable letters in w2 are exactly at p0 and p0+3, not adjacent.
+                // FreeReduce: can only reduce base pairs (stable not adjacent), count stays 2.
+                // FreeExpand/RelatorInsert: preserves non-base.
+                // RelatorDelete: deleted region can't contain both stable letters (wrong ordering).
+
+                // For FreeReduce: has_cancellation_at needs adjacent inverse pair.
+                // At no position q do we have gen_idx(w2[q]) == n and gen_idx(w2[q+1]) == n
+                // with q+1 == q+1 (adjacent). Only stable positions are p0 and p0+3 (gap of 3).
+                // So any FreeReduce at position q where gen_idx(w2[q]) == n would need
+                // w2[q+1] to also have gen_idx == n. But the next stable letter is 3 away.
+
+                // Use count argument: w2 has count 2. Any step on w2 that produces base
+                // must reduce count to 0. But:
+                // - FreeReduce removes 0 or 2 stable; if 2, needs adjacent stable pair (none)
+                // - FreeExpand adds ≥ 0; count goes up or stays same
+                // - RelatorInsert adds ≥ 0; count goes up or stays same
+                // - RelatorDelete removes ≤ 2 stable; if 2, need the relator to span both;
+                //   but both stable letters are at p0 and p0+3 with Gen(n) first,
+                //   and no HNN relator puts Gen(n) before Inv(n) in that pattern.
+                //
+                // Simplest: show w_end has stable count > 0 for each step2 case.
+
+                lemma_expand_stable_gives_count_2(w, p0 as nat, sym, n);
+
+                match step2 {
+                    DerivationStep::FreeExpand { position: p2, symbol: sym2 } => {
+                        lemma_insert_preserves_nonbase(w2, Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2)), p2, n);
+                        assert(false);
+                    },
+                    DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 } => {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        lemma_insert_preserves_nonbase(w2, r2, p2, n);
+                        assert(false);
+                    },
+                    DerivationStep::FreeReduce { position: p2 } => {
+                        // has_cancellation_at(w2, p2): w2[p2] and w2[p2+1] are inverse pair
+                        // same gen_idx. If gen_idx == n, both stable, must be adjacent.
+                        // But stable positions are p0 and p0+3.
+                        // p2 == p0 → w2[p0+1] = sym1 has gen_idx < n ≠ n. Not inverse pair of Gen(n).
+                        // p2 == p0+2 → w2[p0+2] = inv(sym1), w2[p0+3] = Inv(n). gen_idx < n ≠ n. Not pair.
+                        // Any other p2: both w2[p2], w2[p2+1] are base (gen_idx < n).
+                        // So FreeReduce always reduces a base pair. count stays 2.
+                        lemma_stable_count_reduce(w2, p2, n);
+                        // gen_idx(w2[p2]) < n (they form an inverse pair, same gen_idx)
+                        // If gen_idx(w2[p2]) == n, then p2 == p0 or p2+1 == p0 or p2 == p0+3 or p2+1 == p0+3
+                        if generator_index(w2[p2]) == n {
+                            // w2[p2] is stable. p2 = p0 or p2 = p0+3 (only stable positions).
+                            // is_inverse_pair: gen_idx(w2[p2]) == gen_idx(w2[p2+1]) == n
+                            assert(generator_index(w2[p2 + 1]) == n);
+                            // p2+1 must also be a stable position: p0 or p0+3
+                            // But w2 only has stable at p0 and p0+3.
+                            assert(w2[p0] == sym);
+                            assert(generator_index(sym) == n);
+                            assert(w2[(p0 + 1) as int] == sym1);
+                            assert(generator_index(sym1) < n);
+                            assert(w2[(p0 + 3) as int] == inverse_symbol(sym));
+                            assert(generator_index(inverse_symbol(sym)) == n) by {
+                                match sym { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                            };
+                            // w2[p0+2] = inv(sym1), gen_idx < n
+                            assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+                            assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                            };
+                            // If p2 == p0: w2[p0+1] = sym1, gen_idx < n ≠ n.
+                            // If p2 == p0+3-1 = p0+2: w2[p0+2] = inv(sym1), gen_idx < n.
+                            //   And w2[p0+3] = inv(sym), gen_idx = n. Not same.
+                            // If p2 == p0+3: w2[p0+4] = w[p0], gen_idx < n.
+                            if p2 == p0 {
+                                assert(generator_index(w2[(p0 + 1) as int]) < n);
+                                assert(false);
+                            } else if p2 == p0 + 3 {
+                                assert(generator_index(w2[(p0 + 4) as int]) < n) by {
+                                    assert(w2[(p0 + 4) as int] == w[p0]);
+                                    assert(symbol_valid(w[p0], n));
+                                };
+                                assert(false);
+                            } else {
+                                // p2 is not a stable position → w2[p2] has gen_idx < n
+                                if p2 < p0 {
+                                    assert(w2[p2] == w[p2]);
+                                    assert(symbol_valid(w[p2], n));
+                                } else if p2 == p0 + 1 {
+                                    assert(w2[p2] == sym1);
+                                } else if p2 == p0 + 2 {
+                                    assert(w2[p2] == inverse_symbol(sym1));
+                                } else {
+                                    // p2 > p0+3
+                                    assert(w2[p2] == w[(p2 - 4) as int]);
+                                    assert(symbol_valid(w[(p2 - 4) as int], n));
+                                }
+                                assert(generator_index(w2[p2]) < n);
+                                assert(false);
+                            }
+                        }
+                        assert(stable_letter_count(w_end, n) == 2nat);
+                        assert(false);
+                    },
+                    DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        assert(w2.subrange(p2, p2 + r2.len() as int) =~= r2);
+                        assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
+
+                        // count(w_end) = count(w2) - count(r2)
+                        lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+                        assert(stable_letter_count(w2.subrange(p2, p2 + r2.len() as int), n)
+                            == stable_letter_count(r2, n));
+                        lemma_stable_letter_count_concat(
+                            w2.subrange(0, p2),
+                            w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+
+                        // r2 has at most 2 stable letters (base: 0, HNN: 2)
+                        // So count(w_end) = 2 - count(r2) where count(r2) ∈ {0, 2}
+                        // count(w_end) ∈ {0, 2}
+                        // If count(r2) = 0: count(w_end) = 2 > 0 → not base
+                        // If count(r2) = 2: w_end is base. But then the deleted relator
+                        //   contained both stable letters. The stable letters are Gen(n) at p0
+                        //   and Inv(n) at p0+3. The HNN relator has Inv(n) first, Gen(n) second.
+                        //   So the relator's first stable letter (Inv(n)) must align with Gen(n),
+                        //   but Inv(n) ≠ Gen(n). Contradiction.
+                        if stable_letter_count(r2, n) == 0 {
+                            assert(stable_letter_count(w_end, n) == 2nat);
+                            assert(false);
+                        }
+                        // count(r2) >= 1. The only relators with stable letters are HNN relators.
+                        // For r2 to have stable letters, ri2 must be HNN (ri2 >= base.relators.len()).
+                        // The deleted region [p2, p2+|r2|) must contain at least one stable letter.
+                        // Since r2 matches w2[p2..p2+|r2|], and r2 has a stable letter,
+                        // w2 must have a stable letter in [p2, p2+|r2|). The only stable
+                        // positions in w2 are p0 and p0+3. So the region contains p0 or p0+3.
+                        // Since the HNN relator has exactly 2 stable letters, and w2 only has
+                        // 2 total, the deleted region must contain both.
+                        //
+                        // The HNN relator has stable letters at relative positions d1 and d2
+                        // with d2-d1 = |a_j|+1 ≥ 1. For these to align with p0 and p0+3:
+                        //   p2+d1 = p0 and p2+d2 = p0+3 → d2-d1 = 3 → |a_j| = 2.
+                        //
+                        // For non-inverted: r2[d1] = Inv(n) must match w2[p0] = Gen(n).
+                        // Inv(n) ≠ Gen(n). Contradiction.
+                        //
+                        // For inverted: r2[d1] = Inv(n) at position |b_j| must match w2[p0] = Gen(n).
+                        // Inv(n) ≠ Gen(n). Contradiction.
+                        //
+                        // So count(r2) ≥ 1 leads to contradiction. Combined with count(r2) = 0
+                        // above, all cases lead to false. But we need to prove this formally.
+                        // Just assert false from the is_base_word(w_end) contradiction:
+                        // count(w_end) = 2 - count(r2). If count(r2) = 0: count = 2 > 0.
+                        // If count(r2) >= 1: count(w_end) <= 1. But is_base_word(w_end)
+                        // means count = 0. So count(r2) = 2 exactly, and count(w_end) = 0.
+                        // But the deleted region must contain both stable letters, and
+                        // the relator's stable letters don't match w2's stable letters.
+                        // For now, use stable_count(w_end) > 0.
+                        // count(r2) ≤ 2 since w2 has only 2 stable letters and r2 matches a substring.
+                        // If count(r2) = 1: count(w_end) = 1. But is_base_word requires count = 0.
+                        // If count(r2) = 2: count(w_end) = 0. is_base_word ✓. But the relator
+                        //   has stable letters that must match w2's Gen(n) and Inv(n), impossible.
+                        // Simply: since count(r2) ≥ 1, and we showed count(r2) = 0 → false,
+                        // all paths lead to false.
+                        assert(stable_letter_count(w_end, n) > 0nat || stable_letter_count(r2, n) >= 1nat);
+                        // Actually let's just prove count(w_end) > 0 directly.
+                        // count(w_end) = count(w2) - count(matched substring)
+                        // = 2 - count(w2.subrange(p2, p2+|r2|))
+                        // The matched substring = r2 = get_relator(hp, ri2, inv2).
+                        // If it contains 0 stable: count(w_end) = 2. > 0. ✓
+                        // If it contains 1 stable: impossible since r2 symbols match w2 symbols,
+                        //   and an HNN relator always has 2 stable letters.
+                        // If it contains 2 stable: the substring spans both p0 and p0+3.
+                        //   r2[p0-p2] = w2[p0] = Gen(n), but the relator's stable letter at that
+                        //   position should be Inv(n) (for non-inverted HNN) or Inv(n) (for inverted).
+                        //   Gen(n) ≠ Inv(n). Contradiction.
+                        // For now we handle the main case simply.
+                        if stable_letter_count(w_end, n) > 0nat {
+                            assert(false);
+                        }
+                        // count(w_end) = 0, so is_base_word. But count(r2) = 2.
+                        // The deleted region contains both stable letters.
+                        // p0 and p0+3 are in [p2, p2+|r2|).
+                        // r2[p0-p2] = w2[p0] = Gen(n).
+                        // But r2 = get_relator(hp, ri2, inv2), and the stable letters in r2
+                        // are Inv(n) (for both inverted and non-inverted HNN relators, the
+                        // FIRST stable letter is always Inv(n) = stable_letter_inv(data)).
+                        // So r2[p0-p2] should be Inv(n) if p0-p2 is the first stable position.
+                        // But r2[p0-p2] = Gen(n) ≠ Inv(n). Contradiction.
+
+                        // Need to identify which relator: ri2 >= base.relators.len() (HNN)
+                        // because base relators have count = 0 but count(r2) = 2.
+                        if (ri2 as int) < data.base.relators.len() {
+                            reveal(presentation_valid);
+                            let base_r = data.base.relators[ri2 as int];
+                            assert(hp.relators[ri2 as int] == base_r);
+                            if inv2 {
+                                lemma_inverse_word_valid(base_r, n);
+                                lemma_base_word_characterization(inverse_word(base_r), n);
+                            } else {
+                                lemma_base_word_characterization(base_r, n);
+                            }
+                            assert(stable_letter_count(r2, n) == 0nat);
+                            assert(false);
+                        }
+                        // ri2 is HNN. Both stable letters in deleted region.
+                        // r2[p0-p2] = w2[p0] = Gen(n) = Symbol::Gen(n).
+                        // But the HNN relator's first stable letter is Inv(n).
+                        assert(w2[p0] == sym);
+                        assert(sym == Symbol::Gen(idx));
+                        assert(r2[(p0 - p2) as int] == w2[p0]);
+                        assert(r2[(p0 - p2) as int] == Symbol::Gen(n));
+
+                        let j = (ri2 as int - data.base.relators.len()) as int;
+                        assert(0 <= j < data.associations.len());
+                        if !inv2 {
+                            lemma_hnn_relator_stable_positions(data, j);
+                            // r2[0] = Inv(n). First stable at 0.
+                            // r2 matches w2[p2..]. Stable in r2 at 0 and |a_j|+1.
+                            // These must align with p0 and p0+3.
+                            // r2[0] = Inv(n) at w2[p2]. If p2 == p0: r2[0] = w2[p0] but r2[0] = Inv(n) and w2[p0] = Gen(n). Contradiction.
+                            // If p2 < p0: r2[p0-p2] = w2[p0] = Gen(n). But for r2[p0-p2] to be Gen(n), p0-p2 = |a_j|+1 (the second stable position). Then the first stable (Inv(n)) is at w2[p2] which must have gen_idx = n. So p2 must be a stable position in w2. p2 < p0 means w2[p2] is base (gen_idx < n). But Inv(n) has gen_idx = n. Contradiction.
+                            if p2 <= p0 {
+                                // r2[p0-p2] should match w2[p0] = Gen(n)
+                                // In r2, Gen(n) is at position |a_j|+1. So p0-p2 = a_j.len()+1.
+                                // Then Inv(n) is at position 0, matching w2[p2].
+                                // If p2 < p0: w2[p2] is base content. But Inv(n) has gen_idx = n. Contradiction.
+                                if p2 < p0 {
+                                    assert(w2[p2] == w[p2]);
+                                    assert(symbol_valid(w[p2], n));
+                                    assert(generator_index(w2[p2]) < n);
+                                    assert(r2[0int] == stable_letter_inv(data));
+                                    assert(generator_index(r2[0int]) == n);
+                                    assert(w2[p2] == r2[0int]);
+                                    assert(false);
+                                }
+                                // p2 == p0: r2[0] = Inv(n) must match w2[p0] = Gen(n). Contradiction.
+                                assert(p2 == p0);
+                                assert(r2[0int] == stable_letter_inv(data));
+                                assert(stable_letter_inv(data) == Symbol::Inv(n));
+                                assert(w2[p0] == Symbol::Gen(n));
+                                assert(r2[0int] == w2[p0]);
+                                assert(Symbol::Inv(n) == Symbol::Gen(n));
+                                assert(false);
+                            } else {
+                                // p2 > p0: deleted region starts after p0.
+                                // But we need p0 in [p2, p2+|r2|) for the region to contain the
+                                // stable letter at p0. Since p2 > p0, p0 < p2, so p0 not in [p2, ...).
+                                // Then the deleted region doesn't contain the stable at p0.
+                                // But it must contain it (count(r2) = 2, count(w2) = 2, count(w_end) = 0).
+                                // Contradiction via: if p0 not in deleted region, then w_end still has
+                                // Gen(n) at position p0 (adjusted for deletion).
+                                // stable_count(w_end) >= 1 > 0.
+                                // Use subrange count: w2.subrange(0, p2) contains p0 → has a stable letter.
+                                assert(p0 < p2);
+                                assert(w2[p0] == Symbol::Gen(n));
+                                assert(generator_index(w2[p0]) == n);
+                                // w_end = w2[0..p2] ++ w2[p2+|r2|..]
+                                // w2[0..p2] contains position p0 with Gen(n).
+                                // So stable_count(w2[0..p2], n) >= 1.
+                                lemma_stable_count_single(w2[p0], n);
+                                // w2[0..p2] contains w2[p0] = Gen(n)
+                                // stable_count(w2[0..p2]) >= 1
+                                lemma_stable_count_subrange(w2, 0, p2, n);
+                                lemma_stable_letter_count_concat(
+                                    w2.subrange(0, p2),
+                                    w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+                                assert(stable_letter_count(w_end, n) >= stable_letter_count(w2.subrange(0, p2), n));
+                                assert(stable_letter_count(w2.subrange(0, p2), n) >= 1nat);
+                                assert(false);
+                            }
+                        } else {
+                            // Inverted HNN relator
+                            lemma_hnn_relator_inverted_stable_positions(data, j);
+                            let (a_j, b_j) = data.associations[j];
+                            // Inv(n) at position |b_j|, Gen(n) at position |b_j|+|a_j|+1.
+                            // Need both to align with p0 and p0+3.
+                            // r2[|b_j|] = Inv(n) must match w2[p2+|b_j|].
+                            // r2[|b_j|+|a_j|+1] = Gen(n) must match w2[p2+|b_j|+|a_j|+1].
+                            // For these to hit p0 and p0+3:
+                            //   p2+|b_j| = p0, p2+|b_j|+|a_j|+1 = p0+3.
+                            // But Inv(n) at p0 should match w2[p0] = Gen(n). Inv(n) ≠ Gen(n). Contradiction.
+                            //
+                            // Or the other way: p2+|b_j| = p0+3, p2+|b_j|+|a_j|+1 = ???
+                            // p0+3 is Inv(n). r2[|b_j|] = Inv(n). Match! But then p2+|b_j|+|a_j|+1 = p0+3+|a_j|+1.
+                            // This must be within the word, and Gen(n) at this position. But p0+3+|a_j|+1 > p0+3
+                            // and all positions > p0+3 in w2 are base. Gen(n) ≠ base. Contradiction.
+                            //
+                            // Or the deleted region might not contain both stable letters.
+                            // Then count(w_end) > 0. Same conclusion.
+                            //
+                            // Simplify: the first stable letter in r2 is Inv(n) at position |b_j|.
+                            // This matches w2[p2+|b_j|]. For this to be a stable letter in w2:
+                            // p2+|b_j| = p0 or p2+|b_j| = p0+3.
+                            // If p2+|b_j| = p0: w2[p0] = Gen(n), r2[|b_j|] = Inv(n). Gen(n) ≠ Inv(n). Contradiction.
+                            // If p2+|b_j| = p0+3: w2[p0+3] = Inv(n), r2[|b_j|] = Inv(n). Match.
+                            //   Then Gen(n) at r2[|b_j|+|a_j|+1] is at w2[p0+3+|a_j|+1].
+                            //   All positions > p0+3 in w2 are base (gen_idx < n). Contradiction.
+                            // If p2+|b_j| is not p0 or p0+3: w2[p2+|b_j|] is base, gen_idx < n.
+                            //   But r2[|b_j|] = Inv(n), gen_idx = n. Doesn't match. Contradiction.
+                            let stable_pos1 = p2 + b_j.len() as int;
+                            assert(r2[b_j.len() as int] == stable_letter_inv(data));
+                            assert(stable_letter_inv(data) == Symbol::Inv(n));
+                            assert(w2[stable_pos1] == r2[b_j.len() as int]);
+                            assert(w2[stable_pos1] == Symbol::Inv(n));
+                            // w2[stable_pos1] must have gen_idx == n
+                            // So stable_pos1 must be p0 or p0+3.
+                            if stable_pos1 == p0 {
+                                // w2[p0] = Gen(n), but w2[stable_pos1] = Inv(n). Contradiction.
+                                assert(w2[p0] == Symbol::Gen(n));
+                                assert(Symbol::Inv(n) == Symbol::Gen(n));
+                                assert(false);
+                            } else if stable_pos1 == p0 + 3 {
+                                // Second stable: Gen(n) at r2[|b_j|+|a_j|+1] = w2[p0+3+|a_j|+1]
+                                let stable_pos2 = p0 + 3 + a_j.len() as int + 1;
+                                assert(stable_pos2 > p0 + 3);
+                                // w2[stable_pos2] should be Gen(n) from the relator.
+                                // But stable_pos2 > p0+3, so w2[stable_pos2] = w[stable_pos2 - 4]
+                                // (offset by 4 from the [sym, sym1, inv(sym1), inv(sym)] insertion)
+                                // which is base content. gen_idx < n.
+                                assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
+                                assert(stable_letter(data) == Symbol::Gen(n));
+                                assert(w2[stable_pos2] == r2[(b_j.len() + a_j.len() + 1) as int]);
+                                assert(w2[stable_pos2] == Symbol::Gen(n));
+                                // But w2[stable_pos2] = w[stable_pos2 - 4] for stable_pos2 > p0+3
+                                assert(w2[stable_pos2] == w[(stable_pos2 - 4) as int]);
+                                assert(symbol_valid(w[(stable_pos2 - 4) as int], n));
+                                assert(generator_index(w[(stable_pos2 - 4) as int]) < n);
+                                assert(false);
+                            } else {
+                                // stable_pos1 is not a stable position in w2
+                                // So w2[stable_pos1] has gen_idx < n.
+                                if stable_pos1 < p0 {
+                                    assert(w2[stable_pos1] == w[stable_pos1]);
+                                    assert(symbol_valid(w[stable_pos1], n));
+                                } else if stable_pos1 == p0 + 1 {
+                                    assert(w2[stable_pos1] == sym1);
+                                    assert(generator_index(sym1) < n);
+                                } else if stable_pos1 == p0 + 2 {
+                                    assert(w2[stable_pos1] == inverse_symbol(sym1));
+                                    assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                    };
+                                } else {
+                                    // stable_pos1 > p0+3
+                                    assert(w2[stable_pos1] == w[(stable_pos1 - 4) as int]);
+                                    assert(symbol_valid(w[(stable_pos1 - 4) as int], n));
+                                }
+                                assert(generator_index(w2[stable_pos1]) < n);
+                                // But we asserted w2[stable_pos1] = Inv(n) which has gen_idx = n.
+                                assert(false);
+                            }
+                        }
+                    },
+                }
+            },
+            Symbol::Inv(idx) => {
+                // sym = Inv(n), inv(sym) = Gen(n)
+                // w2 = w[0..p0] ++ [Inv(n), sym1, inv(sym1), Gen(n)] ++ w[p0..]
+                // This CAN lead to a valid step2 = RelatorDelete(HNN).
+                // Use isomorphism argument.
+
+                // step2 must be RelatorDelete(HNN) at p0 (or nearby).
+                // The HNN relator (non-inverted) [Inv(n), a_j, Gen(n), inv(b_j)] matches
+                // starting at p0 with a_j = [sym1, inv(sym1)] and inv(b_j) = w[p0..p0+|b_j|].
+
+                // For step2, match to extract the details.
+                match step2 {
+                    DerivationStep::FreeExpand { position: p2, symbol: sym2 } => {
+                        lemma_insert_preserves_nonbase(w2, Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2)), p2, n);
+                        assert(false);
+                    },
+                    DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 } => {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        lemma_insert_preserves_nonbase(w2, r2, p2, n);
+                        assert(false);
+                    },
+                    DerivationStep::FreeReduce { position: p2 } => {
+                        // Same argument as Gen case: stable letters not adjacent.
+                        lemma_stable_count_reduce(w2, p2, n);
+                        if generator_index(w2[p2]) == n {
+                            // stable positions: p0 (Inv(n)) and p0+3 (Gen(n)), not adjacent.
+                            assert(w2[p0] == Symbol::Inv(n));
+                            assert(w2[(p0 + 1) as int] == sym1);
+                            assert(generator_index(sym1) < n);
+                            assert(w2[(p0 + 3) as int] == Symbol::Gen(n));
+                            assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+                            assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                            };
+                            if p2 == p0 {
+                                assert(generator_index(w2[(p0 + 1) as int]) < n);
+                                assert(false);
+                            } else if p2 == p0 + 3 {
+                                assert(generator_index(w2[(p0 + 4) as int]) < n) by {
+                                    assert(w2[(p0 + 4) as int] == w[p0]);
+                                    assert(symbol_valid(w[p0], n));
+                                };
+                                assert(false);
+                            } else if p2 < p0 {
+                                assert(w2[p2] == w[p2]);
+                                assert(symbol_valid(w[p2], n));
+                                assert(generator_index(w2[p2]) < n);
+                                assert(false);
+                            } else if p2 == p0 + 1 {
+                                assert(w2[p2] == sym1);
+                                assert(false);
+                            } else if p2 == p0 + 2 {
+                                assert(generator_index(w2[p2]) < n);
+                                assert(false);
+                            } else {
+                                assert(w2[p2] == w[(p2 - 4) as int]);
+                                assert(symbol_valid(w[(p2 - 4) as int], n));
+                                assert(generator_index(w2[p2]) < n);
+                                assert(false);
+                            }
+                        }
+                        assert(stable_letter_count(w_end, n) == 2nat);
+                        assert(false);
+                    },
+                    DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
+                        let r2 = get_relator(hp, ri2, inv2);
+
+                        // Must be HNN relator (base relator has count 0, can't reach base)
+                        if (ri2 as int) < data.base.relators.len() {
+                            reveal(presentation_valid);
+                            let base_r = data.base.relators[ri2 as int];
+                            assert(hp.relators[ri2 as int] == base_r);
+                            if inv2 {
+                                lemma_inverse_word_valid(base_r, n);
+                                lemma_base_word_characterization(inverse_word(base_r), n);
+                            } else {
+                                lemma_base_word_characterization(base_r, n);
+                            }
+                            // count(r2) = 0 → count(w_end) = 2 > 0 → not base
+                            lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+                            lemma_stable_letter_count_concat(
+                                w2.subrange(0, p2),
+                                w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+                            assert(stable_letter_count(w_end, n) == 2nat);
+                            assert(false);
+                        }
+
+                        // HNN relator. Extract index j.
+                        let j = (ri2 as int - data.base.relators.len()) as int;
+                        assert(0 <= j < data.associations.len());
+                        let (a_j, b_j) = data.associations[j];
+
+                        if !inv2 {
+                            // r2 = [Inv(n), a_j, Gen(n), inv(b_j)]
+                            lemma_hnn_relator_stable_positions(data, j);
+
+                            // r2[0] = Inv(n). Must match w2[p2].
+                            // For p2 = p0: r2[0] = Inv(n) = w2[p0] = Inv(n). ✓
+                            // Then r2[|a_j|+1] = Gen(n) must match w2[p0+|a_j|+1].
+                            // We need p0+|a_j|+1 = p0+3, so |a_j| = 2.
+                            // Then a_j matches w2[p0+1..p0+3] = [sym1, inv(sym1)].
+                            // And inv(b_j) matches w2[p0+4..p0+4+|b_j|] = w[p0..p0+|b_j|].
+
+                            assert(r2[0int] == stable_letter_inv(data));
+                            assert(stable_letter_inv(data) == Symbol::Inv(n));
+                            assert(w2[p2] == r2[0int]);
+
+                            // p2 must be p0 (where Inv(n) is in w2)
+                            if p2 != p0 {
+                                // w2[p2] = Inv(n) but p2 ≠ p0. Only other stable is p0+3 = Gen(n).
+                                if p2 < p0 {
+                                    assert(w2[p2] == w[p2]);
+                                    assert(symbol_valid(w[p2], n));
+                                    assert(generator_index(w2[p2]) < n);
+                                    assert(false);
+                                } else if p2 == p0 + 1 {
+                                    assert(w2[p2] == sym1);
+                                    assert(generator_index(sym1) < n);
+                                    assert(false);
+                                } else if p2 == p0 + 2 {
+                                    assert(w2[p2] == inverse_symbol(sym1));
+                                    assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                    };
+                                    assert(false);
+                                } else if p2 == p0 + 3 {
+                                    assert(w2[p2] == Symbol::Gen(n));
+                                    assert(Symbol::Gen(n) == Symbol::Inv(n));
+                                    assert(false);
+                                } else {
+                                    assert(w2[p2] == w[(p2 - 4) as int]);
+                                    assert(symbol_valid(w[(p2 - 4) as int], n));
+                                    assert(generator_index(w2[p2]) < n);
+                                    assert(false);
+                                }
+                            }
+                            assert(p2 == p0);
+
+                            // |a_j| = 2
+                            // r2[|a_j|+1] = Gen(n) must match w2[p0+|a_j|+1]
+                            // w2[p0+|a_j|+1] must be Gen(n) (stable). Only Gen(n) in w2 is at p0+3.
+                            // So p0+|a_j|+1 = p0+3, |a_j| = 2.
+                            if a_j.len() != 2 {
+                                let sp2 = (p0 + a_j.len() as int + 1) as int;
+                                assert(r2[(a_j.len() + 1) as int] == stable_letter(data));
+                                assert(stable_letter(data) == Symbol::Gen(n));
+                                assert(w2[sp2] == r2[(a_j.len() + 1) as int]);
+                                assert(w2[sp2] == Symbol::Gen(n));
+                                // sp2 must be p0+3 (only Gen(n) position). But sp2 = p0+|a_j|+1 ≠ p0+3.
+                                if sp2 < p0 + 3 {
+                                    // sp2 ∈ {p0+1, p0+2} (since |a_j| ∈ {0, 1})
+                                    if sp2 == p0 + 1 {
+                                        assert(w2[(p0 + 1) as int] == sym1);
+                                        assert(generator_index(sym1) < n);
+                                        assert(false);
+                                    } else {
+                                        assert(sp2 == p0 + 2);
+                                        assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+                                        assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                        };
+                                        assert(false);
+                                    }
+                                } else {
+                                    // sp2 > p0+3: w2[sp2] = w[sp2-4], base content.
+                                    assert(sp2 > p0 + 3);
+                                    assert(w2[sp2] == w[(sp2 - 4) as int]);
+                                    assert(symbol_valid(w[(sp2 - 4) as int], n));
+                                    assert(generator_index(w2[sp2]) < n);
+                                    assert(false);
+                                }
+                            }
+                            assert(a_j.len() == 2);
+
+                            // a_j = [sym1, inv(sym1)]
+                            // r2[1] = a_j[0] = w2[p0+1] = sym1
+                            // r2[2] = a_j[1] = w2[p0+2] = inv(sym1)
+                            assert(r2[1int] == w2[(p0 + 1) as int]);
+                            assert(w2[(p0 + 1) as int] == sym1);
+                            assert(r2[2int] == w2[(p0 + 2) as int]);
+                            assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+
+                            // Now: a_j ≡_G ε because a_j = [sym1, inv(sym1)] is a free inverse pair
+                            // Construct: FreeReduce at position 0 on a_j gives ε
+                            assert(a_j =~= seq![sym1, inverse_symbol(sym1)]);
+                            assert(is_inverse_pair(sym1, inverse_symbol(sym1))) by {
+                                match sym1 {
+                                    Symbol::Gen(k) => {},
+                                    Symbol::Inv(k) => {},
+                                }
+                            };
+                            assert(has_cancellation_at(a_j, 0int));
+                            let a_reduce_step = DerivationStep::FreeReduce { position: 0int };
+                            assert(reduce_at(a_j, 0int) =~= empty_word()) by {
+                                assert(a_j.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+                                assert(a_j.subrange(2, 2int) =~= Seq::<Symbol>::empty());
+                            };
+                            assert(apply_step(data.base, a_j, a_reduce_step) == Some(empty_word()));
+                            lemma_single_step_equiv(data.base, a_j, a_reduce_step, empty_word());
+
+                            // By isomorphism: a_j ≡ ε → b_j ≡ ε
+                            lemma_trivial_association_implies_trivial(data, j);
+
+                            // inv(b_j) ≡ ε
+                            lemma_inverse_of_identity(data.base, b_j);
+                            lemma_inverse_word_valid(b_j, n);
+
+                            // w_end = w[0..p0] ++ w[p0+|b_j|..]
+                            lemma_inverse_word_len(b_j);
+                            let bj_len = b_j.len() as int;
+                            let inv_bj = inverse_word(b_j);
+                            assert(r2.len() == 4 + bj_len) by {
+                                assert(r2.len() == 2 + a_j.len() + b_j.len());
+                            };
+
+                            // w_end = w2[0..p0] ++ w2[p0+4+bj_len..]
+                            assert(w_end =~= w2.subrange(0, p0) + w2.subrange(p0 + 4 + bj_len, w2.len() as int));
+                            let w_left = w.subrange(0, p0);
+                            let w_right = w.subrange(p0 + bj_len, w.len() as int);
+                            assert(w2.subrange(0, p0) =~= w_left);
+                            // w2[p0+4+k] = w[p0+k] for k >= 0
+                            assert forall|k: int| 0 <= k < w.len() - p0
+                                implies #[trigger] w2[(p0 + 4 + k) as int] == w[(p0 + k) as int]
+                            by {};
+                            assert(w2.subrange(p0 + 4 + bj_len, w2.len() as int) =~= w_right);
+                            assert(w_end =~= w_left + w_right);
+
+                            // w[p0..p0+bj_len] = inv(b_j)
+                            // r2 = [Inv(n), sym1, inv(sym1), Gen(n)] ++ inv_bj
+                            // r2[4+k] = inv_bj[k] for 0 <= k < bj_len
+                            // r2[4+k] = w2[p0+4+k] = w[p0+k]
+                            assert forall|k: int| 0 <= k < bj_len
+                                implies w[(p0 + k) as int] == #[trigger] inv_bj[k]
+                            by {
+                                assert(w2[(p0 + 4 + k) as int] == r2[(4 + k) as int]);
+                                assert(w2[(p0 + 4 + k) as int] == w[(p0 + k) as int]);
+                            };
+                            let w_mid = w.subrange(p0, p0 + bj_len);
+                            assert(w_mid =~= inv_bj);
+
+                            // w = w_left ++ inv_bj ++ w_right
+                            assert(w =~= w_left + w.subrange(p0, w.len() as int));
+                            assert(w.subrange(p0, w.len() as int) =~= w_mid + w_right);
+                            assert(w =~= w_left + (inv_bj + w_right));
+
+                            // w ≡_G w_end by removing trivial inv(b_j)
+                            lemma_remove_trivial_equiv(data.base, w_left, w_right, inv_bj);
+                        } else {
+                            // Inverted HNN relator case
+                            // r2 = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
+                            lemma_hnn_relator_inverted_stable_positions(data, j);
+
+                            // Similar analysis: Inv(n) at position |b_j| must match a stable letter in w2.
+                            // Only Inv(n) in w2 is at p0. So p2+|b_j| = p0.
+                            let stable_pos = p2 + b_j.len() as int;
+                            assert(r2[b_j.len() as int] == stable_letter_inv(data));
+                            assert(stable_letter_inv(data) == Symbol::Inv(n));
+                            assert(w2[stable_pos] == r2[b_j.len() as int]);
+                            assert(w2[stable_pos] == Symbol::Inv(n));
+
+                            // stable_pos must be p0
+                            if stable_pos != p0 {
+                                if stable_pos < p0 {
+                                    assert(w2[stable_pos] == w[stable_pos]);
+                                    assert(symbol_valid(w[stable_pos], n));
+                                    assert(generator_index(w2[stable_pos]) < n);
+                                    assert(false);
+                                } else if stable_pos == p0 + 1 {
+                                    assert(w2[stable_pos] == sym1);
+                                    assert(generator_index(sym1) < n);
+                                    assert(false);
+                                } else if stable_pos == p0 + 2 {
+                                    assert(w2[stable_pos] == inverse_symbol(sym1));
+                                    assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                        match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                    };
+                                    assert(false);
+                                } else if stable_pos == p0 + 3 {
+                                    assert(w2[stable_pos] == Symbol::Gen(n));
+                                    assert(Symbol::Gen(n) == Symbol::Inv(n));
+                                    assert(false);
+                                } else {
+                                    assert(w2[stable_pos] == w[(stable_pos - 4) as int]);
+                                    assert(symbol_valid(w[(stable_pos - 4) as int], n));
+                                    assert(generator_index(w2[stable_pos]) < n);
+                                    assert(false);
+                                }
+                            }
+                            assert(stable_pos == p0);
+                            assert(p2 == p0 - b_j.len() as int);
+
+                            // |a_j| = 2 (same analysis)
+                            if a_j.len() != 2 {
+                                let sp2 = p0 + a_j.len() as int + 1;
+                                assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
+                                assert(stable_letter(data) == Symbol::Gen(n));
+                                assert(w2[sp2] == r2[(b_j.len() + a_j.len() + 1) as int]);
+                                assert(w2[sp2] == Symbol::Gen(n));
+                                if sp2 < p0 + 3 {
+                                    if sp2 == p0 + 1 {
+                                        assert(w2[sp2] == sym1);
+                                        assert(generator_index(sym1) < n);
+                                        assert(false);
+                                    } else {
+                                        assert(sp2 == p0 + 2);
+                                        assert(w2[sp2] == inverse_symbol(sym1));
+                                        assert(generator_index(inverse_symbol(sym1)) < n) by {
+                                            match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                        };
+                                        assert(false);
+                                    }
+                                } else {
+                                    assert(sp2 > p0 + 3);
+                                    assert(w2[sp2] == w[(sp2 - 4) as int]);
+                                    assert(symbol_valid(w[(sp2 - 4) as int], n));
+                                    assert(false);
+                                }
+                            }
+                            assert(a_j.len() == 2);
+
+                            // inv(a_j) = [sym1, inv(sym1)] (same as a_j for inverse pairs)
+                            // r2 positions |b_j|+1 and |b_j|+2 match w2[p0+1] and w2[p0+2]
+                            // b_j matches w2[p2..p2+|b_j|] = w2[p0-|b_j|..p0] = w[p0-|b_j|..p0]
+
+                            // a_j ≡_G ε: a_j is an inverse pair
+                            // inv(a_j) = w2[p0+1..p0+3] = [sym1, inv(sym1)]
+                            // a_j is such that inverse_word(a_j) = [sym1, inv(sym1)]
+                            // So a_j = inverse_word([sym1, inv(sym1)]) = [sym1, inv(sym1)]
+                            // (inverse_word reverses and inverts each: inv(inv(sym1)) = sym1, inv(sym1) = inv(sym1))
+                            // Wait: inverse_word([sym1, inv(sym1)]) = [inverse_symbol(inv(sym1)), inverse_symbol(sym1)]
+                            //     = [sym1, inv(sym1)] since inverse_symbol is involutory.
+                            // So a_j = [sym1, inv(sym1)] as well.
+
+                            // Actually we need a_j from the association, not directly.
+                            // We know inv(a_j) matches w2[p0+1..p0+3] = [sym1, inv(sym1)].
+                            // inverse_word(a_j) =~= [sym1, inv(sym1)] is what we get from r2 matching.
+                            // Then a_j = inverse_word(inverse_word(a_j)) = inverse_word([sym1, inv(sym1)])
+                            //     = [sym1, inv(sym1)] (as shown above).
+                            // So a_j = [sym1, inv(sym1)], same free inverse pair. a_j ≡_G ε.
+
+                            assert(a_j =~= seq![sym1, inverse_symbol(sym1)]) by {
+                                // r2 = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
+                                // r2[|b_j|+1] = inv(a_j)[0] = w2[p0+1] = sym1
+                                // r2[|b_j|+2] = inv(a_j)[1] = w2[p0+2] = inv(sym1)
+                                // So inv(a_j) = [sym1, inv(sym1)]
+                                // a_j has len 2, inv(a_j) has len 2.
+                                lemma_inverse_word_len(a_j);
+                                let inv_aj = inverse_word(a_j);
+                                assert(inv_aj.len() == 2);
+                                assert(r2[(b_j.len() + 1) as int] == w2[(p0 + 1) as int]);
+                                assert(w2[(p0 + 1) as int] == sym1);
+                                assert(r2[(b_j.len() + 2) as int] == w2[(p0 + 2) as int]);
+                                assert(w2[(p0 + 2) as int] == inverse_symbol(sym1));
+                                // a_j[0] = inverse_symbol(inv_aj[1]) = inverse_symbol(inv(sym1)) = sym1
+                                // a_j[1] = inverse_symbol(inv_aj[0]) = inverse_symbol(sym1)
+                                // Derive from inverse_word definition
+                                assert(inv_aj[0int] == inverse_symbol(a_j[(a_j.len() - 1) as int]));
+                                assert(inv_aj[1int] == inverse_symbol(a_j[0int]));
+                                assert(inv_aj[0int] == sym1);
+                                assert(inv_aj[1int] == inverse_symbol(sym1));
+                                // a_j[1] = inv_sym(inv_aj[0]) = inv_sym(sym1)
+                                assert(a_j[1int] == inverse_symbol(inv_aj[0int]));
+                                assert(inverse_symbol(sym1) == a_j[1int]) by {
+                                    match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                };
+                                // a_j[0] = inv_sym(inv_aj[1]) = inv_sym(inv(sym1)) = sym1
+                                assert(a_j[0int] == inverse_symbol(inv_aj[1int]));
+                                assert(a_j[0int] == inverse_symbol(inverse_symbol(sym1)));
+                                assert(inverse_symbol(inverse_symbol(sym1)) == sym1) by {
+                                    match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                                };
+                            };
+
+                            // a_j ≡_G ε
+                            assert(is_inverse_pair(sym1, inverse_symbol(sym1))) by {
+                                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                            };
+                            assert(has_cancellation_at(a_j, 0int));
+                            let a_reduce_step = DerivationStep::FreeReduce { position: 0int };
+                            assert(reduce_at(a_j, 0int) =~= empty_word()) by {
+                                assert(a_j.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+                                assert(a_j.subrange(2, 2int) =~= Seq::<Symbol>::empty());
+                            };
+                            assert(apply_step(data.base, a_j, a_reduce_step) == Some(empty_word()));
+                            lemma_single_step_equiv(data.base, a_j, a_reduce_step, empty_word());
+
+                            // b_j ≡_G ε
+                            lemma_trivial_association_implies_trivial(data, j);
+
+                            // w_end = w[0..p0-|b_j|] ++ w[p0..]
+                            let bj_len = b_j.len() as int;
+                            assert(r2.len() == 2 + a_j.len() + b_j.len());
+                            assert(p2 == p0 - bj_len);
+
+                            let w_left = w.subrange(0, p0 - bj_len);
+                            let w_right = w.subrange(p0, w.len() as int);
+                            assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
+                            assert(p2 + r2.len() as int == p0 + 4);
+                            assert(w2.subrange(0, p2) =~= w_left);
+                            assert forall|k: int| 0 <= k < w.len() - p0
+                                implies #[trigger] w2[(p0 + 4 + k) as int] == w[(p0 + k) as int]
+                            by {};
+                            assert(w2.subrange(p0 + 4, w2.len() as int) =~= w_right);
+                            assert(w_end =~= w_left + w_right);
+
+                            // w[p0-|b_j|..p0] = b_j
+                            assert forall|k: int| 0 <= k < bj_len
+                                implies w[(p0 - bj_len + k) as int] == #[trigger] b_j[k]
+                            by {
+                                assert(w2[(p2 + k) as int] == r2[k]);
+                                assert(p2 + k < p0);
+                                assert(w2[(p2 + k) as int] == w[(p2 + k) as int]);
+                                // r2[k] = b_j[k] for k < |b_j|
+                                let inv_r_full = b_j + Seq::new(1, |_i: int| stable_letter_inv(data))
+                                    + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data));
+                                assert(r2 =~= inv_r_full);
+                                assert(r2[k] == (b_j + (Seq::new(1, |_i: int| stable_letter_inv(data))
+                                    + inverse_word(a_j) + Seq::new(1, |_i: int| stable_letter(data))))[k]);
+                            };
+                            let w_mid = w.subrange(p0 - bj_len, p0);
+                            assert(w_mid =~= b_j);
+
+                            // w = w_left ++ b_j ++ w_right
+                            assert(w =~= w_left + w.subrange(p0 - bj_len, w.len() as int));
+                            assert(w.subrange(p0 - bj_len, w.len() as int) =~= w_mid + w_right);
+                            assert(w =~= w_left + (b_j + w_right));
+
+                            // w ≡_G w_end
+                            lemma_remove_trivial_equiv(data.base, w_left, w_right, b_j);
+                        }
+                    },
+                }
+            },
+        }
     }
 }
 
@@ -2916,31 +3981,20 @@ proof fn lemma_single_segment_hard(
         let step2 = steps[2];
         let w1 = apply_step(hp, w, step0).unwrap();
 
-        // Unfold derivation_produces step by step for 3-step sequence
-        // Level 1: steps → rest01
-        let rest01 = steps.drop_first();
-        assert(rest01.len() == 2);
-        assert(rest01.first() == step1);
-        assert(derivation_produces(hp, rest01, w1) == Some(w_end));
-
-        // Level 2: rest01 → rest2 (use unwrap trick from lemma_single_segment_k2)
-        let w2 = apply_step(hp, w1, rest01.first()).unwrap();
-        let rest2 = rest01.drop_first();
-        assert(rest2.len() == 1);
-        assert(rest2.first() == step2);
-
-        // Level 3: rest2 → empty
-        let w_end_inner = apply_step(hp, w2, rest2.first()).unwrap();
-        assert(derivation_produces(hp, rest2.drop_first(), w_end_inner) == Some(w_end)) by {
-            assert(rest2.drop_first().len() == 0);
-        };
-        assert(w_end_inner == w_end);
+        // Unfold the 3-step derivation into individual apply_step facts
+        let (w1_chk, w2_chk) = lemma_derivation_unfold_3(hp, steps, w, w_end);
+        assert(w1_chk == w1);
+        let w2 = w2_chk;
+        assert(apply_step(hp, w1, step1) == Some(w2));
         assert(apply_step(hp, w2, step2) == Some(w_end));
 
         // w2 is non-base (from the all-intermediates condition)
+        let rest01 = steps.drop_first();
         assert(derivation_word_at(hp, steps, w, 2nat) == w2) by {
             assert(derivation_word_at(hp, steps, w, 2nat) ==
                 derivation_word_at(hp, rest01, w1, 1nat));
+            assert(rest01.len() > 0);
+            assert(rest01.first() == step1);
             assert(apply_step(hp, w1, rest01.first()).is_some());
             lemma_word_at_one(hp, rest01, w1);
         };
