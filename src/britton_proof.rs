@@ -2627,15 +2627,50 @@ proof fn lemma_single_segment_k2(
 // Part 5: Single segment lemma (general)
 // ============================================================
 
+/// Hard case of single segment: k ≥ 3, ALL intermediates non-base.
+/// This means the first base intermediate is at position k (= w_end).
+///
+/// Strategy: for k=3, the middle step is neutral (doesn't change stable count).
+/// For k≥4, find a peak and eliminate it.
+///
+/// Currently: assume(false) — to be filled in with peak elimination.
+proof fn lemma_single_segment_hard(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 3,
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        !is_base_word(
+            apply_step(hnn_presentation(data), w, steps.first()).unwrap(),
+            data.base.num_generators,
+        ),
+        // ALL intermediates are non-base
+        ({
+            let hp = hnn_presentation(data);
+            let n = data.base.num_generators;
+            forall|j: nat| 1 <= j < steps.len()
+                ==> !is_base_word(derivation_word_at(hp, steps, w, j), n)
+        }),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    assume(false); // TODO: peak elimination for k≥3
+}
+
 /// The single segment lemma: if a derivation from base w to base w_end
-/// has all non-base intermediates, then w ≡ w_end in G.
+/// has w_1 non-base, then w ≡ w_end in G.
 ///
 /// Strategy: induction on steps.len().
 /// Base: steps.len() == 2 → lemma_single_segment_k2.
-/// Step: Find a peak (stable count up then down), eliminate it.
-///   - Peak elimination either:
-///     (a) removes 2 steps (w_{i+1} = w_{i-1}), giving shorter segment, or
-///     (b) introduces a base intermediate, splitting into two shorter segments.
+/// k > 2: Find first base intermediate after w_1.
+///   If found before w_end: split and recurse.
+///   If not (all intermediates non-base): delegate to lemma_single_segment_hard.
 proof fn lemma_single_segment(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
@@ -2656,18 +2691,221 @@ proof fn lemma_single_segment(
         // (For k > 2: all w_1,...,w_{k-1} are non-base — handled by induction)
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(),
+    decreases steps.len(), 0nat,
 {
-    if steps.len() == 2 {
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let k: nat = steps.len();
+
+    if k == 2 {
         lemma_single_segment_k2(data, steps, w, w_end);
     } else {
-        assume(false); // TODO: peak finding + elimination + recursion
-        // 1. Find a peak at position i (1 ≤ i < steps.len())
-        // 2. Eliminate the peak (case analysis on step types)
-        // 3. Result: shorter derivation from w to w_end, possibly
-        //    with a new base intermediate at position i
-        // 4. If new base intermediate: split into two single segments
-        // 5. Recurse on each (both shorter)
+        // k >= 3. Look at w_2.
+        let step0 = steps[0];
+        let step1 = steps[1];
+        let w1 = apply_step(hp, w, step0).unwrap();
+        let rest0 = steps.drop_first();
+        assert(rest0.first() == step1);
+
+        // Establish sub-derivation validity
+        assert(derivation_produces(hp, rest0, w1) == Some(w_end));
+
+        let w2 = apply_step(hp, w1, step1).unwrap();
+
+        // w1 and w2 are word_valid
+        lemma_step_preserves_word_valid(data, w, step0);
+        lemma_step_preserves_word_valid(data, w1, step1);
+
+        // Check if w_2 is base
+        lemma_word_at_one(hp, steps, w);
+        // derivation_word_at(hp, steps, w, 2) == w2
+        assert(derivation_word_at(hp, steps, w, 2nat) == w2) by {
+            assert(derivation_word_at(hp, steps, w, 2nat) ==
+                derivation_word_at(hp, rest0, w1, 1nat));
+            lemma_word_at_one(hp, rest0, w1);
+        };
+
+        if is_base_word(w2, n) {
+            // w_2 is base: split at position 2
+            // Left: steps[0..2] from base w to base w_2, k=2 segment
+            // Right: steps[2..] from base w_2 to base w_end
+            lemma_derivation_split(hp, steps, w, w_end, 2nat);
+            let left_steps = steps.subrange(0, 2int);
+            let right_steps = steps.subrange(2int, steps.len() as int);
+            lemma_word_at_produces(hp, steps, w, 2nat);
+
+            // Left: k=2 segment, w ≡_G w2
+            assert(left_steps.first() == steps[0]) by {
+                assert(left_steps[0] == steps[0]);
+            };
+            assert(left_steps.len() == 2);
+            lemma_single_segment_k2(data, left_steps, w, w2);
+
+            // Right: base→base derivation. Use britton_with_derivation_general
+            // for now, call recursively via lemma_base_derivation_equiv
+            lemma_base_derivation_equiv(data, right_steps, w2, w_end);
+
+            // Chain
+            lemma_equiv_transitive(data.base, w, w2, w_end);
+        } else {
+            // w_2 is non-base. Find first base intermediate in the
+            // sub-derivation from w_1 (rest0 = steps[1..]).
+            // Since w_end is base and w_2 is non-base, first base intermediate
+            // in rest0 from w_1 is at position >= 2 (since w_2 = word_at(rest0, w_1, 1) is non-base).
+            lemma_first_base_is_base(hp, rest0, w1, w_end, n);
+            let j = first_base_intermediate(hp, rest0, w1, n);
+            // j >= 2 since w_2 is non-base
+            assert(j >= 2) by {
+                lemma_word_at_one(hp, rest0, w1);
+                assert(derivation_word_at(hp, rest0, w1, 1nat) == w2);
+                if j == 1 {
+                    assert(is_base_word(derivation_word_at(hp, rest0, w1, j), n));
+                    assert(false);
+                }
+            };
+
+            let w_j1 = derivation_word_at(hp, rest0, w1, j);
+            // w_j1 is base
+
+            // In the original derivation, w_j1 is at position 1+j
+            // derivation_word_at(hp, steps, w, 1+j) == derivation_word_at(hp, rest0, w1, j) = w_j1
+            assert(derivation_word_at(hp, steps, w, (1 + j) as nat) == w_j1);
+
+            // Split the original derivation at position 1+j
+            let split_pos: nat = (1 + j) as nat;
+            lemma_derivation_split(hp, steps, w, w_end, split_pos);
+            let left_steps = steps.subrange(0, split_pos as int);
+            let right_steps = steps.subrange(split_pos as int, steps.len() as int);
+            lemma_word_at_produces(hp, steps, w, split_pos);
+
+            // w_j1 is word_valid
+            lemma_word_at_valid(data, steps, w, split_pos);
+
+            assert(left_steps.first() == steps[0]) by {
+                assert(left_steps[0] == steps[0]);
+            };
+
+            if split_pos < k {
+                // Left: strictly shorter single segment
+                lemma_single_segment(data, left_steps, w, w_j1);
+
+                // Right: base→base, strictly shorter
+                lemma_base_derivation_equiv(data, right_steps, w_j1, w_end);
+
+                // Chain
+                lemma_equiv_transitive(data.base, w, w_j1, w_end);
+            } else {
+                // split_pos == k, meaning w_j1 = w_end (first base intermediate is at the end)
+                // ALL intermediates w_1,...,w_{k-1} are non-base.
+                // This is the hard case: we can't split further.
+                // For now, handle k=3 specially.
+                assert(split_pos == k);
+                assert(left_steps =~= steps);
+                assert(w_j1 == w_end) by {
+                    lemma_word_at_produces(hp, steps, w, k);
+                    assert(derivation_produces(hp, steps, w) == Some(w_end));
+                    assert(derivation_produces(hp, steps.subrange(0, k as int), w) == Some(w_j1));
+                    assert(steps.subrange(0, k as int) =~= steps);
+                };
+
+                // Prove ALL intermediates are non-base
+                // j = first_base_intermediate(hp, rest0, w1, n) = k-1
+                // lemma_no_base_before_first on rest0 gives: for 1 <= m < j,
+                // derivation_word_at(hp, rest0, w1, m) is non-base.
+                // Translation: for 2 <= m_orig < k,
+                // derivation_word_at(hp, steps, w, m_orig) is non-base.
+                assert forall|m: nat| 1 <= m < steps.len()
+                    implies !is_base_word(derivation_word_at(hp, steps, w, m), n)
+                by {
+                    if m == 1 {
+                        lemma_word_at_one(hp, steps, w);
+                    } else {
+                        // m >= 2: word_at(steps, w, m) = word_at(rest0, w1, m-1)
+                        assert(derivation_word_at(hp, steps, w, m)
+                            == derivation_word_at(hp, rest0, w1, (m - 1) as nat));
+                        // 1 <= m-1 < k-1 = j = first_base_intermediate(hp, rest0, w1, n)
+                        lemma_no_base_before_first(hp, rest0, w1, w_end, n, (m - 1) as nat);
+                    }
+                };
+
+                // Delegate to the hard case helper
+                lemma_single_segment_hard(data, steps, w, w_end);
+            }
+        }
+    }
+}
+
+/// General base→base derivation equivalence.
+/// If a derivation in G* goes from base w to base w_end, then w ≡_G w_end.
+/// Uses mutual recursion with lemma_single_segment.
+proof fn lemma_base_derivation_equiv(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+    decreases steps.len(), 1nat,
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    if steps.len() == 0 {
+        assert(w =~= w_end);
+        lemma_equiv_refl(data.base, w);
+    } else {
+        let step0 = steps.first();
+        let w1 = apply_step(hp, w, step0).unwrap();
+        let rest = steps.drop_first();
+
+        lemma_step_preserves_word_valid(data, w, step0);
+
+        if is_base_word(w1, n) {
+            // Base-to-base step, valid in G
+            lemma_t_free_step_is_base_step(data, w, step0);
+            lemma_single_step_equiv(data.base, w, step0, w1);
+            lemma_base_derivation_equiv(data, rest, w1, w_end);
+            lemma_equiv_transitive(data.base, w, w1, w_end);
+        } else {
+            // w1 is non-base. Find first base intermediate.
+            lemma_first_base_is_base(hp, steps, w, w_end, n);
+            let k = first_base_intermediate(hp, steps, w, n);
+            lemma_word_at_one(hp, steps, w);
+            assert(k >= 2) by {
+                assert(!is_base_word(w1, n));
+                assert(derivation_word_at(hp, steps, w, 1nat) == w1);
+                if k == 1 {
+                    assert(is_base_word(derivation_word_at(hp, steps, w, k), n));
+                    assert(false);
+                }
+            };
+
+            let w_k = derivation_word_at(hp, steps, w, k);
+
+            // Split derivation at k
+            lemma_derivation_split(hp, steps, w, w_end, k);
+            let left_steps = steps.subrange(0, k as int);
+            let right_steps = steps.subrange(k as int, steps.len() as int);
+            lemma_word_at_produces(hp, steps, w, k);
+
+            // w_k is word_valid
+            lemma_word_at_valid(data, steps, w, k);
+
+            // Left: single segment from w to w_k
+            lemma_single_segment(data, left_steps, w, w_k);
+
+            // Right: shorter base→base derivation (k >= 2 so right is strictly shorter)
+            lemma_base_derivation_equiv(data, right_steps, w_k, w_end);
+
+            // Chain
+            lemma_equiv_transitive(data.base, w, w_k, w_end);
+        }
     }
 }
 
@@ -3106,7 +3344,7 @@ proof fn lemma_no_base_before_first(
 }
 
 /// Core: given a specific derivation from base w to ε, prove w ≡_G ε.
-/// Induction on derivation length.
+/// Delegates to lemma_base_derivation_equiv.
 proof fn britton_lemma_with_derivation(
     data: HNNData, steps: Seq<DerivationStep>, w: Word,
 )
@@ -3118,75 +3356,15 @@ proof fn britton_lemma_with_derivation(
         word_valid(w, data.base.num_generators + 1),
     ensures
         equiv_in_presentation(data.base, w, empty_word()),
-    decreases steps.len(),
 {
-    let hp = hnn_presentation(data);
-    let n = data.base.num_generators;
-
-    if steps.len() == 0 {
-        // w = ε
-        assert(w =~= empty_word());
-        lemma_equiv_refl(data.base, w);
-    } else {
-        let step0 = steps.first();
-        let w1 = apply_step(hp, w, step0).unwrap();
-        let rest = steps.drop_first();
-
-        // w1 is word_valid for n+1
-        lemma_step_preserves_word_valid(data, w, step0);
-
-        if is_base_word(w1, n) {
-            // Case 2: w1 is base. Step is base-to-base → valid in G.
-            lemma_t_free_step_is_base_step(data, w, step0);
-            lemma_single_step_equiv(data.base, w, step0, w1);
-
-            // Recurse on shorter derivation
-            britton_lemma_with_derivation(data, rest, w1);
-
-            // Chain: w ≡_G w1 ≡_G ε
-            lemma_equiv_transitive(data.base, w, w1, empty_word());
-        } else {
-            // Case 3: w1 is non-base. Find first base intermediate.
-            lemma_empty_is_base_word(n);
-            lemma_first_base_is_base(hp, steps, w, empty_word(), n);
-            let k = first_base_intermediate(hp, steps, w, n);
-            // k >= 2 since w1 is not base
-            // k >= 2 since w1 is not base
-            lemma_word_at_one(hp, steps, w);
-            assert(k >= 2) by {
-                assert(!is_base_word(w1, n));
-                assert(derivation_word_at(hp, steps, w, 1nat) == w1);
-                if k == 1 {
-                    assert(is_base_word(derivation_word_at(hp, steps, w, k), n));
-                    assert(false);
-                }
-            };
-
-            let w_k = derivation_word_at(hp, steps, w, k);
-
-            // Split derivation at k
-            lemma_derivation_split(hp, steps, w, empty_word(), k);
-            let left_steps = steps.subrange(0, k as int);
-            let right_steps = steps.subrange(k as int, steps.len() as int);
-            lemma_word_at_produces(hp, steps, w, k);
-            // left_steps derives w → w_k, right_steps derives w_k → ε
-
-            // w_k is word_valid
-            lemma_word_at_valid(data, steps, w, k);
-
-            // Right: w_k ≡_G ε by IH (right_steps.len() < steps.len())
-            britton_lemma_with_derivation(data, right_steps, w_k);
-
-            // Left: w ≡_G w_k by single segment lemma
-            // Need: all intermediates w_1,...,w_{k-1} are non-base
-            // w1 = derivation_word_at(hp, steps, w, 1) is !base (known)
-            // For 1 < j < k: lemma_no_base_before_first
-            lemma_single_segment(data, left_steps, w, w_k);
-
-            // Chain: w ≡_G w_k ≡_G ε
-            lemma_equiv_transitive(data.base, w, w_k, empty_word());
-        }
-    }
+    lemma_empty_is_base_word(data.base.num_generators);
+    // empty_word() is trivially word_valid
+    assert(word_valid(empty_word(), data.base.num_generators + 1)) by {
+        assert forall|i: int| 0 <= i < empty_word().len()
+            implies symbol_valid(#[trigger] empty_word()[i], data.base.num_generators + 1)
+        by {}
+    };
+    lemma_base_derivation_equiv(data, steps, w, empty_word());
 }
 
 /// Britton's Lemma: replaces the axiom.
