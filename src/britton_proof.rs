@@ -10947,6 +10947,7 @@ proof fn lemma_k3_rd_boundary_noninv(
             &&& apply_step(hp, w2, step2) == Some(w_end)
             // r1 starts inside inv(b_j) and extends past r0
             &&& p1 > p0
+            &&& p1 < p0 + r0.len()
             &&& p1 + r1.len() > p0 + r0.len()
             &&& p1 + r1.len() <= w1.len()
         }),
@@ -11161,18 +11162,12 @@ proof fn lemma_k3_rd_boundary_noninv(
                 assert(concat(tail, r1_in_r0) =~= inv_bj0);
                 lemma_identity_split(p, tail, r1_in_r0);
                 // r1_in_r0 ≡_G inv(tail)
-                // r1_in_wR ≡_G inv(r1_in_r0) ≡_G inv(inv(tail)) =~= tail
-                lemma_inverse_word_congruence(p, r1_in_wR, inverse_word(r1_in_r0));
-                // inv(r1_in_wR) ≡_G inv(inv(r1_in_r0))
-                // Actually let's chain differently:
-                // r1_in_r0 ≡_G inv(tail), so inv(r1_in_r0) ≡_G inv(inv(tail))
-                lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(tail));
-                // inv(r1_in_r0) ≡_G inv(inv(tail))
-                crate::word::lemma_inverse_involution(tail);
-                // inv(inv(tail)) =~= tail
-                // r1_in_wR ≡_G inv(r1_in_r0) [from identity_split above]
+                // Chain: inv(r1_in_r0) ≡_G inv(inv(tail)) =~= tail
+                // Then: r1_in_wR ≡_G inv(r1_in_r0) ≡_G tail
                 lemma_inverse_word_valid(r1_in_r0, n);
                 lemma_inverse_word_valid(tail, n);
+                lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(tail));
+                crate::word::lemma_inverse_involution(tail);
                 lemma_equiv_transitive(p, r1_in_wR, inverse_word(r1_in_r0), tail);
                 // r1_in_wR ≡_G tail
 
@@ -11903,9 +11898,9 @@ proof fn lemma_k3_rd_boundary_inv(
                 lemma_identity_split(p, r1_in_r0, head);
                 // r1_in_r0 ≡_G inv(r1_in_wL) [from above]
                 // head ≡_G inv(r1_in_r0) ≡_G inv(inv(r1_in_wL)) =~= r1_in_wL
-                lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(r1_in_wL));
                 lemma_inverse_word_valid(r1_in_r0, n);
                 lemma_inverse_word_valid(r1_in_wL, n);
+                lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(r1_in_wL));
                 crate::word::lemma_inverse_involution(r1_in_wL);
                 lemma_equiv_transitive(p, head, inverse_word(r1_in_r0), r1_in_wL);
                 // head ≡_G r1_in_wL
