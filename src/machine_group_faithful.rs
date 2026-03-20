@@ -141,29 +141,6 @@ pub proof fn lemma_trace_gives_equiv(
                 trace[trace.len() - 1].2,
             ),
         );
-
-        // Tail trace
-        let tail = trace.drop_first();
-        assert(tail.len() == trace.len() - 1);
-        assert(tail.len() >= 1);
-        assert(tail[0] == trace[1]);
-        assert(tail[tail.len() - 1] == trace[trace.len() - 1]);
-
-        // Inductive call on tail
-        lemma_trace_gives_equiv(data, tail);
-
-        // Transitivity
-        lemma_equiv_transitive(
-            machine_group_presentation(data),
-            config_word(data.num_states, s0, a0, b0),
-            config_word(data.num_states, s1, a1, b1),
-            config_word(
-                data.num_states,
-                trace[trace.len() - 1].0,
-                trace[trace.len() - 1].1,
-                trace[trace.len() - 1].2,
-            ),
-        );
     }
 }
 
