@@ -8907,7 +8907,8 @@ proof fn lemma_k3_freereduce_boundary_noninv_step2(
                         // [wp0] + w_R_short[0..overshoot] ≡_G [wp0] + [last_sym] ≡_G ε
                         // Because wp0 = inverse_symbol(last_sym), so [wp0, last_sym] is cancelling pair
                         lemma_subrange_word_valid(w_R_short, 0, overshoot, n);
-                        lemma_equiv_concat_left(p, w_R_short.subrange(0, overshoot), seq![last_sym], seq![wp0]);
+                        assert(word_valid(seq![wp0], n)) by { assert(symbol_valid(wp0, n)); };
+                        lemma_equiv_concat_right(p, seq![wp0], w_R_short.subrange(0, overshoot), seq![last_sym]);
                         // [wp0] + w_R_short[0..overshoot] ≡_G [wp0] + [last_sym]
                         // [wp0, last_sym] cancels
                         let cancel_word = seq![wp0] + seq![last_sym];
@@ -9050,6 +9051,11 @@ proof fn lemma_k3_freereduce_boundary_noninv_step2(
                     assert(concat(tail, concat(cancel_pair, empty_word())) =~= tail + cancel_pair);
                     assert(concat(tail, empty_word()) =~= tail);
                     // tail + cancel_pair ≡_G tail
+                    // Bridge: concat_left gave equiv(b_j2_content+[wp0], (tail+[last_sym])+[wp0])
+                    // and (tail+[last_sym])+[wp0] =~= tail+cancel_pair
+                    assert(equiv_in_presentation(p, b_j2_content + seq![wp0], tail + cancel_pair)) by {
+                        assert((tail + seq![last_sym]) + seq![wp0] =~= tail + cancel_pair);
+                    };
                     // So b_j2_content + [wp0] ≡_G tail + cancel_pair ≡_G tail
                     lemma_equiv_transitive(p, b_j2_content + seq![wp0], tail + cancel_pair, tail);
 
@@ -9443,8 +9449,8 @@ proof fn lemma_k3_freereduce_boundary_inv_step2(
                     // [wp_last] + w_R[0..bj2_len] ≡_G [wp_last] + [first_sym] + head
                     //    = [wp_last, first_sym] + head ≡_G ε + head = head
                     lemma_subrange_word_valid(w_R, 0, bj2_len, n);
-                    lemma_equiv_concat_left(p, w_R.subrange(0, bj2_len), seq![first_sym] + head, seq![wp_last]);
-                    lemma_equiv_refl(p, seq![wp_last]);
+                    assert(word_valid(seq![wp_last], n)) by { assert(symbol_valid(wp_last, n)); };
+                    lemma_equiv_concat_right(p, seq![wp_last], w_R.subrange(0, bj2_len), seq![first_sym] + head);
                     // [wp_last] + w_R[0..bj2_len] ≡_G [wp_last] + [first_sym] + head
 
                     // [wp_last, first_sym] cancels
@@ -9592,10 +9598,31 @@ proof fn lemma_k3_freereduce_boundary_inv_step2(
                         lemma_concat_word_valid(seq![first_sym], head_prefix, n);
                         lemma_left_cancel(p, seq![first_sym] + head_prefix, head.subrange(head_len - bj2_len, head_len));
                         // [first_sym] + head_prefix ≡_G ε
-                        crate::word::lemma_inverse_singleton(first_sym);
-                        assert(inverse_word(seq![first_sym]) =~= seq![wp_last]);
-                        lemma_identity_split(p, seq![first_sym], head_prefix);
-                        // head_prefix ≡_G inv([first_sym]) = [wp_last]
+                        // Also: [first_sym] + [wp_last] ≡_G ε (cancelling pair)
+                        let cancel_hp = seq![first_sym, wp_last];
+                        assert(cancel_hp =~= seq![first_sym] + seq![wp_last]);
+                        let cancel_hp_step = DerivationStep::FreeReduce { position: 0 };
+                        assert(has_cancellation_at(cancel_hp, 0)) by {
+                            assert(cancel_hp[0] == first_sym);
+                            assert(cancel_hp[1] == wp_last);
+                            match first_sym { Symbol::Gen(g) => {}, Symbol::Inv(g) => {} }
+                            match wp_last { Symbol::Gen(g) => {}, Symbol::Inv(g) => {} }
+                        };
+                        assert(apply_step(p, cancel_hp, cancel_hp_step) == Some(empty_word()));
+                        lemma_single_step_equiv(p, cancel_hp, cancel_hp_step, empty_word());
+                        // [first_sym]+[wp_last] ≡_G ε
+                        assert(equiv_in_presentation(p, seq![first_sym] + seq![wp_last], empty_word())) by {
+                            assert(concat(seq![first_sym], seq![wp_last]) =~= cancel_hp);
+                        };
+                        // Chain: [first_sym]+head_prefix ≡_G ε, ε ≡_G..., no —
+                        // use left_cancel_equiv: equiv([first_sym]+head_prefix, [first_sym]+[wp_last]) → head_prefix ≡_G [wp_last]
+                        assert(word_valid(seq![wp_last], n)) by { assert(symbol_valid(wp_last, n)); };
+                        crate::word::lemma_concat_word_valid(seq![first_sym], seq![wp_last], n);
+                        lemma_equiv_symmetric(p, seq![first_sym] + seq![wp_last], empty_word());
+                        lemma_equiv_transitive(p, seq![first_sym] + head_prefix, empty_word(), seq![first_sym] + seq![wp_last]);
+                        // [first_sym]+head_prefix ≡_G [first_sym]+[wp_last]
+                        lemma_concat_left_cancel_equiv(p, seq![first_sym], head_prefix, seq![wp_last]);
+                        // head_prefix ≡_G [wp_last]
                         lemma_equiv_symmetric(p, head_prefix, seq![wp_last]);
 
                         // w = w_L_short + [wp_last] + w_R ≡_G w_L_short + head_prefix + w_R = w_end
