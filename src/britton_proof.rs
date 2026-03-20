@@ -11382,10 +11382,10 @@ proof fn lemma_k3_rd_boundary_noninv_step2_rd_noninv(
         lemma_identity_split(p, suffix, r1_in_r0);
 
         // r1_in_wR ≡_G inv(r1_in_r0) ≡_G inv(inv(suffix)) =~= suffix
-        lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(suffix));
         lemma_inverse_word_valid(suffix, n);
-        crate::word::lemma_inverse_involution(suffix);
         lemma_inverse_word_valid(r1_in_r0, n);
+        lemma_inverse_word_congruence(p, r1_in_r0, inverse_word(suffix));
+        crate::word::lemma_inverse_involution(suffix);
         lemma_equiv_transitive(p, r1_in_wR, inverse_word(r1_in_r0), suffix);
 
         // w ≡_G w_end
@@ -11419,9 +11419,12 @@ proof fn lemma_k3_rd_boundary_noninv_step2_rd_noninv(
         // w_R_short[0..overshoot] ≡_G r1_in_r0
 
         // r1_in_wR ≡_G inv(r1_in_r0) ≡_G inv(w_R_short[0..overshoot])
-        lemma_inverse_word_congruence(p, w_R_short.subrange(0, overshoot), r1_in_r0);
-        // inv(w_R_short[0..overshoot]) ≡_G inv(r1_in_r0)
-        lemma_equiv_symmetric(p, inverse_word(w_R_short.subrange(0, overshoot)), inverse_word(r1_in_r0));
+        lemma_inverse_word_valid(r1_in_r0, n);
+        lemma_inverse_word_valid(w_R_short.subrange(0, overshoot), n);
+        // w_R_short[0..overshoot] ≡ r1_in_r0 → inv(w_R_short[0..overshoot]) ≡ inv(r1_in_r0)
+        lemma_equiv_symmetric(p, w_R_short.subrange(0, overshoot), r1_in_r0);
+        lemma_inverse_word_congruence(p, r1_in_r0, w_R_short.subrange(0, overshoot));
+        // inv(r1_in_r0) ≡ inv(w_R_short[0..overshoot])
         lemma_equiv_transitive(p, r1_in_wR, inverse_word(r1_in_r0), inverse_word(w_R_short.subrange(0, overshoot)));
         // r1_in_wR ≡_G inv(w_R_short[0..overshoot])
 
@@ -12055,10 +12058,24 @@ proof fn lemma_k3_rd_boundary_inv_step2_rd_noninv(
         }
     };
 
-    // inv(a_j2) in r2... wait, r2 is non-inverted: r2 = [Inv(n)] + a_j2 + [Gen(n)] + inv(b_j2)
+    // r2 is non-inverted: r2 = [Inv(n)] + a_j2 + [Gen(n)] + inv(b_j2)
     // a_j2 must match inter = inv(a_j0)
     let aj2_len = a_j2.len() as int;
-    assert(aj2_len == aj0_len);
+    // r2[aj2_len + 1] = Gen(n) must align with w2's Gen(n) at pos_gen_w2
+    assert(aj2_len == aj0_len) by {
+        if aj2_len != aj0_len {
+            let gen_pos_r2 = (aj2_len + 1) as int;
+            assert(r2[gen_pos_r2] == Symbol::Gen(n));
+            assert(w2[(p2 + gen_pos_r2) as int] == r2[gen_pos_r2]);
+            assert(w2[(pos_inv_w2 + aj2_len + 1) as int] == Symbol::Gen(n));
+            // The only Gen(n) in w2 is at pos_gen_w2 = pos_inv_w2 + 1 + aj0_len
+            if (pos_inv_w2 + aj2_len + 1) < pos_gen_w2 {
+                // position is in inter region, which is base
+            } else if (pos_inv_w2 + aj2_len + 1) > pos_gen_w2 {
+                // position is in w_R region, which is base
+            }
+        }
+    };
     assert(a_j2 =~= inter) by {
         assert forall|k: int| 0 <= k < aj2_len
             implies a_j2[k] == #[trigger] inter[k]
@@ -12128,11 +12145,20 @@ proof fn lemma_k3_rd_boundary_inv_step2_rd_noninv(
     lemma_inverse_word_valid(r1_in_wL, n);
     lemma_equiv_concat_left(p, r1_in_r0, inverse_word(r1_in_wL), head);
     // Not quite right... let me use the relator identity directly
-    // r1 = r1_in_wL + r1_in_r0 ≡_G ε (already established)
-    // So: (r1_in_wL + r1_in_r0) + head ≡_G ε + head = head
+    // Establish r1_in_wL + r1_in_r0 ≡_G ε:
+    // r1_in_r0 ≡_G inv(r1_in_wL) [given], so r1_in_wL + r1_in_r0 ≡_G r1_in_wL + inv(r1_in_wL) ≡_G ε
+    lemma_inverse_word_valid(r1_in_wL, n);
+    lemma_equiv_concat_right(p, r1_in_wL, r1_in_r0, inverse_word(r1_in_wL));
+    crate::presentation_lemmas::lemma_word_inverse_right(p, r1_in_wL);
     lemma_concat_word_valid(r1_in_wL, r1_in_r0, n);
+    lemma_concat_word_valid(r1_in_wL, inverse_word(r1_in_wL), n);
+    lemma_equiv_transitive(p,
+        r1_in_wL + r1_in_r0,
+        concat(r1_in_wL, inverse_word(r1_in_wL)),
+        empty_word());
+    // r1_in_wL + r1_in_r0 ≡_G ε
+    // So: (r1_in_wL + r1_in_r0) + head ≡_G ε + head = head
     lemma_remove_trivial_equiv(p, empty_word(), head, r1_in_wL + r1_in_r0);
-    // concat(ε, concat(r1_in_wL + r1_in_r0, head)) ≡_G concat(ε, head)
     assert(concat(empty_word(), concat(r1_in_wL + r1_in_r0, head)) =~= (r1_in_wL + r1_in_r0) + head);
     assert(concat(empty_word(), head) =~= head);
     // (r1_in_wL + r1_in_r0) + head ≡_G head
@@ -12248,8 +12274,24 @@ proof fn lemma_k3_rd_boundary_inv_step2_rd_inv(
         }
     };
 
-    // inv(a_j2) must match inter = inv(a_j0)
-    assert(aj2_len == aj0_len);
+    // inv(a_j2) must match inter = inv(a_j0), so aj2_len == aj0_len
+    // r2's Gen(n) is at position bj2_len + 1 + aj2_len, must align with w2's Gen(n) at pos_gen_w2
+    assert(aj2_len == aj0_len) by {
+        if aj2_len != aj0_len {
+            // r2[bj2_len + 1 + aj2_len] = Gen(n) at w2 position p2 + bj2_len + 1 + aj2_len
+            //   = pos_inv_w2 + 1 + aj2_len
+            let gen_pos = (pos_inv_w2 + 1 + aj2_len) as int;
+            assert(r2[(bj2_len + 1 + aj2_len) as int] == Symbol::Gen(n));
+            assert(w2[gen_pos] == r2[(bj2_len + 1 + aj2_len) as int]);
+            assert(w2[gen_pos] == Symbol::Gen(n));
+            // w2's Gen(n) is only at pos_gen_w2 = pos_inv_w2 + 1 + aj0_len
+            if gen_pos < pos_gen_w2 {
+                // in inter region, base
+            } else if gen_pos > pos_gen_w2 {
+                // in w_R region, base
+            }
+        }
+    };
     let inv_aj2 = inverse_word(a_j2);
     assert(inv_aj2 =~= inter) by {
         assert forall|k: int| 0 <= k < aj2_len
@@ -12312,9 +12354,13 @@ proof fn lemma_k3_rd_boundary_inv_step2_rd_inv(
         lemma_inverse_word_valid(r1_in_wL, n);
         lemma_concat_word_valid(inverse_word(r1_in_wL), head_prefix, n);
         lemma_concat_word_valid(r1_in_r0, head_prefix, n);
-        lemma_equiv_transitive(p,
+        // Chain: concat(inv(r1_in_wL), head_prefix) ≡ concat(r1_in_r0, head_prefix) ≡ ε
+        lemma_equiv_symmetric(p,
             concat(r1_in_r0, head_prefix),
+            concat(inverse_word(r1_in_wL), head_prefix));
+        lemma_equiv_transitive(p,
             concat(inverse_word(r1_in_wL), head_prefix),
+            concat(r1_in_r0, head_prefix),
             empty_word());
         // inv(r1_in_wL) + head_prefix ≡_G ε
         lemma_identity_split(p, inverse_word(r1_in_wL), head_prefix);
