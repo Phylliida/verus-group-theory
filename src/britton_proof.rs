@@ -11058,11 +11058,15 @@ proof fn lemma_k3_rd_boundary_noninv(
         };
     };
 
-    // r1 ≡_G ε
-    lemma_relator_is_identity(hp, ri1 as int);
-    assert(equiv_in_presentation(hp, r1, empty_word()));
-    // Restrict to base presentation
-    lemma_base_relator_equiv_in_base(data, r1, ri1, inv1);
+    // r1 ≡_G ε (in base presentation, since r1 is a base relator)
+    assert(hp.relators[ri1 as int] == p.relators[ri1 as int]);
+    assert(get_relator(p, ri1, inv1) =~= r1);
+    if inv1 {
+        lemma_relator_is_identity(p, ri1 as int);
+        lemma_inverse_of_identity(p, p.relators[ri1 as int]);
+    } else {
+        lemma_relator_is_identity(p, ri1 as int);
+    }
 
     // r1 = r1_in_r0 + r1_in_wR ≡_G ε → identity_split → r1_in_wR ≡_G inv(r1_in_r0)
     lemma_subrange_word_valid(inv_bj0, 0, offset, n);
@@ -11791,9 +11795,15 @@ proof fn lemma_k3_rd_boundary_inv(
         };
     };
 
-    // r1 ≡_G ε
-    lemma_relator_is_identity(hp, ri1 as int);
-    lemma_base_relator_equiv_in_base(data, r1, ri1, inv1);
+    // r1 ≡_G ε (in base presentation)
+    assert(hp.relators[ri1 as int] == p.relators[ri1 as int]);
+    assert(get_relator(p, ri1, inv1) =~= r1);
+    if inv1 {
+        lemma_relator_is_identity(p, ri1 as int);
+        lemma_inverse_of_identity(p, p.relators[ri1 as int]);
+    } else {
+        lemma_relator_is_identity(p, ri1 as int);
+    }
 
     // r1 = r1_in_wL + r1_in_r0 ≡_G ε → identity_split → r1_in_r0 ≡_G inv(r1_in_wL)
     lemma_subrange_word_valid(w_L, p1, p0, n);
@@ -12539,9 +12549,8 @@ proof fn lemma_k3_ri_hnn_reldelete_base(
             } else {
                 // r1 starts in inv(b_j) region and extends past r0 into w_R
                 // (boundary straddling — right boundary)
-                // p1 > pos_gen (since r1 can't touch Gen(n))
-                // p1 + r1_len > p0 + r0_len (extends past r0)
-                assume(false); // boundary case — TODO
+                lemma_k3_rd_boundary_noninv(
+                    data, w, w1, w2, w_end, p0, ri0, p1, ri1, inv1, step2, j0);
             }
         } else {
             // Inverted r0 = b_j + [Inv(n)] + inv(a_j) + [Gen(n)]
@@ -12583,7 +12592,8 @@ proof fn lemma_k3_ri_hnn_reldelete_base(
                 // r1 starts before r0 (p1 < p0) and extends into b_j
                 // p1 + r1_len <= pos_inv (can't touch Inv(n))
                 // (boundary straddling — left boundary)
-                assume(false); // boundary case — TODO
+                lemma_k3_rd_boundary_inv(
+                    data, w, w1, w2, w_end, p0, ri0, p1, ri1, inv1, step2, j0);
             }
         }
     }

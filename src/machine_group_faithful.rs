@@ -104,15 +104,43 @@ pub proof fn lemma_trace_gives_equiv(
         let (s0, a0, b0) = trace[0];
         let (s1, a1, b1) = trace[1];
 
-        // The proof of the step and tail trace requires instantiating
-        // is_valid_trace's inner quantifiers. Since these involve complex
-        // trigger patterns and existentials, we axiomatize the combined
-        // forward direction and prove it by induction in the caller.
-        //
-        // The key mathematical fact is straightforward:
-        // each step applies lemma_machine_step_gives_equiv, then transitivity.
-        // The verification difficulty is purely trigger-mechanical.
-        admit();
+        // From recursive is_valid_trace: trace_step_valid(data, trace[0], trace[1])
+        // and is_valid_trace(data, trace.drop_first())
+        assert(trace_step_valid(data, trace[0], trace[1]));
+        let tail = trace.drop_first();
+        assert(is_valid_trace(data, tail));
+        assert(tail[0] == trace[1]);
+        assert(tail[tail.len() - 1] == trace[trace.len() - 1]);
+
+        // Get the quadruple connecting trace[0] to trace[1]
+        let k: nat = choose|k: nat| (k as int) < data.quadruples.len() &&
+            s0 == data.quadruples[k as int].source_state &&
+            a0 % data.quadruples[k as int].modulus
+                == data.quadruples[k as int].residue &&
+            s1 == data.quadruples[k as int].target_state &&
+            a1 == apply_machine_mod_op(
+                data.quadruples[k as int].alpha_op, a0) &&
+            b1 == apply_machine_mod_op(
+                data.quadruples[k as int].beta_op, b0);
+
+        // Step: config_word(s0, a0, b0) ≡ config_word(s1, a1, b1)
+        lemma_machine_step_gives_equiv(data, k, s0, a0, b0);
+
+        // Inductive call on tail
+        lemma_trace_gives_equiv(data, tail);
+
+        // Transitivity
+        lemma_equiv_transitive(
+            machine_group_presentation(data),
+            config_word(data.num_states, s0, a0, b0),
+            config_word(data.num_states, s1, a1, b1),
+            config_word(
+                data.num_states,
+                trace[trace.len() - 1].0,
+                trace[trace.len() - 1].1,
+                trace[trace.len() - 1].2,
+            ),
+        );
 
         // Tail trace
         let tail = trace.drop_first();
@@ -120,37 +148,6 @@ pub proof fn lemma_trace_gives_equiv(
         assert(tail.len() >= 1);
         assert(tail[0] == trace[1]);
         assert(tail[tail.len() - 1] == trace[trace.len() - 1]);
-
-        // Tail states valid
-        assert forall|i: int| 0 <= i < tail.len()
-            implies (#[trigger] tail[i]).0 < data.num_states
-        by {
-            assert(tail[i] == trace[i + 1]);
-        }
-
-        // Tail consecutive pairs connected
-        assert forall|i: int| 0 <= i < tail.len() - 1
-            implies exists|kk: nat| (kk as int) < data.quadruples.len() &&
-                (#[trigger] tail[i]).0 == data.quadruples[kk as int].source_state &&
-                tail[i].1 % data.quadruples[kk as int].modulus
-                    == data.quadruples[kk as int].residue &&
-                (#[trigger] tail[i + 1]).0 == data.quadruples[kk as int].target_state &&
-                tail[i + 1].1 == apply_machine_mod_op(
-                    data.quadruples[kk as int].alpha_op, tail[i].1) &&
-                tail[i + 1].2 == apply_machine_mod_op(
-                    data.quadruples[kk as int].beta_op, tail[i].2)
-        by {
-            assert(tail[i] == trace[i + 1]);
-            assert(tail[i + 1] == trace[i + 2]);
-            // trace[i+1] and trace[i+2] are consecutive in the original trace
-            // at original index (i+1), and (i+1) < trace.len() - 1
-            assert((i + 1) < trace.len() - 1) by {
-                assert(i < tail.len() - 1);
-                assert(tail.len() == trace.len() - 1);
-            }
-        }
-
-        assert(is_valid_trace(data, tail));
 
         // Inductive call on tail
         lemma_trace_gives_equiv(data, tail);
