@@ -88,4 +88,10 @@ pub mod britton_proof_helpers;
 #[cfg(verus_keep_ghost)]
 pub mod higman_operations;
 
+#[cfg(verus_keep_ghost)]
+pub mod machine_group;
+
+#[cfg(verus_keep_ghost)]
+pub mod machine_group_faithful;
+
 pub mod runtime;
