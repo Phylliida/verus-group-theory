@@ -8549,6 +8549,7 @@ proof fn lemma_k3_freereduce_boundary_noninv(
 
 /// Non-inverted r2 RelatorDelete sub-case for boundary FreeReduce + non-inverted r0.
 #[verifier::spinoff_prover]
+#[verifier::rlimit(60)]
 proof fn lemma_k3_freereduce_noninv_step2_rd_noninv(
     data: HNNData, w: Word, w2: Word, w_end: Word,
     w_L: Word, inter: Word, tail: Word, w_R_short: Word,
@@ -8610,11 +8611,21 @@ proof fn lemma_k3_freereduce_noninv_step2_rd_noninv(
     lemma_base_word_characterization(a_j0, n);
     lemma_base_word_characterization(b_j0, n);
     lemma_inverse_word_valid(b_j0, n);
+    lemma_base_word_characterization(inv_bj0, n);
     lemma_base_word_characterization(a_j2, n);
     lemma_base_word_characterization(b_j2, n);
     lemma_inverse_word_valid(b_j2, n);
     lemma_inverse_word_valid(a_j2, n);
     assert(inv_bj0 =~= tail + seq![last_sym]);
+    lemma_equiv_refl(p, inv_bj0);
+
+    // Bridge: connect r2 to hnn_relator structural facts
+    assert(r2 =~= hnn_relator(data, j2)) by {
+        assert(hp.relators =~= data.base.relators + hnn_relators(data));
+        assert(hp.relators[(data.base.relators.len() + j2) as int]
+            == hnn_relators(data)[j2 as int]);
+        assert(hnn_relators(data)[j2 as int] == hnn_relator(data, j2));
+    };
 
     // Non-inverted r2 = [Inv(n)] + a_j2 + [Gen(n)] + inv(b_j2)
     lemma_hnn_relator_stable_positions(data, j2);
@@ -8753,6 +8764,8 @@ proof fn lemma_k3_freereduce_noninv_step2_rd_noninv(
         lemma_equiv_concat_left(p, w_L + seq![wp0], w_L + suffix, w_R_short);
         assert(w =~= w_L + seq![wp0] + w_R_short);
         assert(w_end =~= w_L + suffix + w_R_short);
+        assert(concat(w_L + seq![wp0], w_R_short) =~= w);
+        assert(concat(w_L + suffix, w_R_short) =~= w_end);
     } else {
         // r2 extends past tail into w_R_short
         let overshoot = (bj2_len - tail_len) as int;
@@ -8808,11 +8821,14 @@ proof fn lemma_k3_freereduce_noninv_step2_rd_noninv(
         assert(w_R_short =~= w_R_short.subrange(0, overshoot) + w_R_short.subrange(overshoot, w_R_short.len() as int));
         assert(w =~= w_L + (seq![wp0] + w_R_short.subrange(0, overshoot)) + w_R_short.subrange(overshoot, w_R_short.len() as int));
         lemma_remove_trivial_equiv(p, w_L, w_R_short.subrange(overshoot, w_R_short.len() as int), seq![wp0] + w_R_short.subrange(0, overshoot));
+        assert(concat(w_L, concat(seq![wp0] + w_R_short.subrange(0, overshoot), w_R_short.subrange(overshoot, w_R_short.len() as int))) =~= w);
+        assert(concat(w_L, w_R_short.subrange(overshoot, w_R_short.len() as int)) =~= w_end);
     }
 }
 
 /// Inverted r2 RelatorDelete sub-case for boundary FreeReduce + non-inverted r0.
 #[verifier::spinoff_prover]
+#[verifier::rlimit(60)]
 proof fn lemma_k3_freereduce_noninv_step2_rd_inv(
     data: HNNData, w: Word, w2: Word, w_end: Word,
     w_L: Word, inter: Word, tail: Word, w_R_short: Word,
@@ -8874,14 +8890,27 @@ proof fn lemma_k3_freereduce_noninv_step2_rd_inv(
     lemma_base_word_characterization(a_j0, n);
     lemma_base_word_characterization(b_j0, n);
     lemma_inverse_word_valid(b_j0, n);
+    lemma_base_word_characterization(inv_bj0, n);
     lemma_base_word_characterization(a_j2, n);
     lemma_base_word_characterization(b_j2, n);
     lemma_inverse_word_valid(b_j2, n);
     lemma_inverse_word_valid(a_j2, n);
     assert(inv_bj0 =~= tail + seq![last_sym]);
+    lemma_equiv_refl(p, inv_bj0);
+
+    // Bridge: connect r2 to hnn_relator structural facts
+    assert(r2 =~= inverse_word(hnn_relator(data, j2))) by {
+        assert(hp.relators =~= data.base.relators + hnn_relators(data));
+        assert(hp.relators[(data.base.relators.len() + j2) as int]
+            == hnn_relators(data)[j2 as int]);
+        assert(hnn_relators(data)[j2 as int] == hnn_relator(data, j2));
+    };
 
     // Inverted r2 = b_j2 + [Inv(n)] + inv(a_j2) + [Gen(n)]
     lemma_hnn_relator_inverted_stable_positions(data, j2);
+    let inv_r = inverse_word(hnn_relator(data, j2));
+    assert(r2 =~= inv_r);
+
     // Inv(n) at r2[b_j2.len()], Gen(n) at r2[b_j2.len()+1+a_j2.len()]
     // r2's Inv(n) must be at pos_inv: p2 + b_j2.len() = pos_inv → p2 = pos_inv - b_j2.len()
     // r2's Gen(n) at p2 + b_j2.len() + 1 + a_j2.len() = pos_inv + 1 + a_j2.len()
@@ -9013,7 +9042,21 @@ proof fn lemma_k3_freereduce_noninv_step2_rd_inv(
     assert(w =~= concat(w_L_prefix, concat(b_j2_content + seq![wp0], w_R_short)));
     assert(w_end =~= concat(w_L_prefix, concat(tail, w_R_short)));
     lemma_equiv_concat_right(p, w_L_prefix, b_j2_content + seq![wp0], tail);
+    // Now have: equiv(w_L_prefix + (b_j2_content+[wp0]), w_L_prefix + tail)
     lemma_equiv_concat_left(p, w_L_prefix + (b_j2_content + seq![wp0]), w_L_prefix + tail, w_R_short);
+    // Now have: equiv(concat(w_L_prefix + (b_j2_content+[wp0]), w_R_short), concat(w_L_prefix + tail, w_R_short))
+    // Need: equiv(w, w_end)
+    // w =~= w_L_prefix + b_j2_content + seq![wp0] + w_R_short
+    //   =~= concat(w_L_prefix, concat(b_j2_content + seq![wp0], w_R_short))
+    // But lemma_equiv_concat_left gave: equiv(concat(X, w_R_short), concat(Y, w_R_short))
+    // where X = w_L_prefix + (b_j2_content + [wp0]) and Y = w_L_prefix + tail
+    // concat(X, w_R_short) = (w_L_prefix + (b_j2_content + [wp0])) + w_R_short
+    // We need: this =~= w. Is it?
+    // w =~= w_L_prefix + b_j2_content + seq![wp0] + w_R_short
+    // X + w_R_short = (w_L_prefix + (b_j2_content + seq![wp0])) + w_R_short
+    // By associativity: these should be =~=.
+    assert(concat(w_L_prefix + (b_j2_content + seq![wp0]), w_R_short) =~= w);
+    assert(concat(w_L_prefix + tail, w_R_short) =~= w_end);
 }
 
 /// Step2 handler for the right-boundary FreeReduce + non-inverted r0 case.
@@ -9207,6 +9250,7 @@ proof fn lemma_k3_freereduce_boundary_noninv_step2(
                 assert(w2.subrange(p2, p2 + r2.len()) =~= r2);
                 assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
 
+                assert(ri2 == (data.base.relators.len() + j2) as nat);
                 if !inv2 {
                     lemma_k3_freereduce_noninv_step2_rd_noninv(
                         data, w, w2, w_end, w_L, inter, tail, w_R_short,
