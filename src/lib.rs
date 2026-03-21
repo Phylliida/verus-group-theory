@@ -86,6 +86,9 @@ pub mod britton_proof;
 pub mod britton_proof_helpers;
 
 #[cfg(verus_keep_ghost)]
+pub mod britton_proof_helpers2;
+
+#[cfg(verus_keep_ghost)]
 pub mod higman_operations;
 
 #[cfg(verus_keep_ghost)]
