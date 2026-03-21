@@ -8,6 +8,7 @@ use crate::hnn::*;
 use crate::britton::*;
 use crate::benign::*;
 use crate::tietze::*;
+use crate::britton_proof_helpers3::*;
 
 verus! {
 
@@ -671,7 +672,7 @@ pub proof fn lemma_stable_count_subrange(w: Word, lo: int, hi: int, n: nat)
 /// Stable count after FreeReduce: removes 2 symbols, count changes by
 /// -2 if both are stable, 0 otherwise (since they're an inverse pair,
 /// both have the same generator_index).
-proof fn lemma_stable_count_reduce(w: Word, pos: int, n: nat)
+pub proof fn lemma_stable_count_reduce(w: Word, pos: int, n: nat)
     requires
         has_cancellation_at(w, pos),
     ensures
@@ -710,7 +711,7 @@ proof fn lemma_stable_count_reduce(w: Word, pos: int, n: nat)
 }
 
 /// stable_letter_count = 0 + word_valid(n+1) implies is_base_word.
-proof fn lemma_zero_count_implies_base(w: Word, n: nat)
+pub proof fn lemma_zero_count_implies_base(w: Word, n: nat)
     requires
         stable_letter_count(w, n) == 0nat,
         word_valid(w, n + 1),
@@ -732,7 +733,7 @@ proof fn lemma_zero_count_implies_base(w: Word, n: nat)
 
 /// Converse of lemma_zero_count_implies_base: base word has stable count 0.
 /// Trivial since is_base_word is defined as stable_letter_count == 0.
-proof fn lemma_base_implies_count_zero(w: Word, n: nat)
+pub proof fn lemma_base_implies_count_zero(w: Word, n: nat)
     requires
         is_base_word(w, n),
     ensures
@@ -14583,8 +14584,23 @@ proof fn lemma_single_segment_hard(
                     let short: Seq<DerivationStep> = seq![step0, step3];
                     lemma_base_derivation_equiv(data, short, w, w_end);
                 } else {
-                    // Non-cancel: per-type commutation analysis needed
-                    assume(false);
+                    // Non-cancel: commute step2 past step1 to create base intermediate
+                    let (w1_prime, step2_adj, step1_adj) =
+                        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
+
+                    // Build 2-step derivation [step0, step2_adj] from w (base) to w1' (base)
+                    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w1_prime);
+                    let left_steps: Seq<DerivationStep> = seq![step0, step2_adj];
+                    lemma_base_derivation_equiv(data, left_steps, w, w1_prime);
+
+                    // Build 2-step derivation [step1_adj, step3] from w1' (base) to w_end (base)
+                    lemma_step_preserves_word_valid(data, w1_prime, step1_adj);
+                    lemma_derivation_produces_2(hp, step1_adj, step3, w1_prime, w3, w_end);
+                    let right_steps: Seq<DerivationStep> = seq![step1_adj, step3];
+                    lemma_base_derivation_equiv(data, right_steps, w1_prime, w_end);
+
+                    // Chain: w ≡ w1' ≡ w_end in base group
+                    lemma_equiv_transitive(data.base, w, w1_prime, w_end);
                 }
             } else {
                 // k >= 5 with c_2 = 4
