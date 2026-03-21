@@ -4723,120 +4723,195 @@ proof fn lemma_k3_relinsert_p1_gen_contra(
             assert(false);
         },
         DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
-            let r2 = get_relator(hp, ri2, inv2);
-            assert(w2.subrange(p2, p2 + r2.len() as int) =~= r2);
-            assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
+            lemma_k3_relinsert_p1_gen_contra_rd(data, w, w1, w2, w_end, p0, idx, ri1, inv1, p2, ri2, inv2);
+        },
+    }
+}
 
-            lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+/// Extracted RelatorDelete arm of lemma_k3_relinsert_p1_gen_contra.
+proof fn lemma_k3_relinsert_p1_gen_contra_rd(
+    data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
+    p0: int, idx: nat, ri1: nat, inv1: bool, p2: int, ri2: nat, inv2: bool,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        idx == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            let n = data.base.num_generators;
+            let sym = Symbol::Gen(idx);
+            let r1 = get_relator(hp, ri1, inv1);
+            &&& (ri1 as int) < data.base.relators.len()
+            &&& r1.len() > 0
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p0 + 1, relator_index: ri1, inverted: inv1 }) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w_end)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+    ensures
+        false,
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let sym = Symbol::Gen(idx);
+    let r1 = get_relator(hp, ri1, inv1);
+    let r1_len = r1.len() as int;
+
+    lemma_base_word_valid_down(w, n);
+
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+    assert(w2 =~= w1.subrange(0, p0 + 1) + r1 + w1.subrange(p0 + 1, w1.len() as int));
+
+    assert(w2[p0] == Symbol::Gen(n));
+    assert(w2[(p0 + 1 + r1_len) as int] == Symbol::Inv(n)) by {
+        assert(w1[(p0 + 1) as int] == inverse_symbol(sym));
+    };
+
+    reveal(presentation_valid);
+    let base_r = data.base.relators[ri1 as int];
+    assert(hp.relators[ri1 as int] == base_r);
+    if inv1 {
+        lemma_inverse_word_valid(base_r, n);
+        lemma_base_word_characterization(inverse_word(base_r), n);
+    } else {
+        lemma_base_word_characterization(base_r, n);
+    }
+    assert(is_base_word(r1, n));
+    assert forall|k: int| 0 <= k < r1_len implies generator_index(#[trigger] r1[k]) < n
+    by {
+        assert(symbol_valid(r1[k], n));
+    };
+
+    lemma_expand_stable_gives_count_2(w, p0 as nat, sym, n);
+    lemma_relator_stable_count(data, ri1, inv1);
+    assert(stable_letter_count(r1, n) == 0nat);
+    let left1 = w1.subrange(0, p0 + 1);
+    let right1 = w1.subrange(p0 + 1, w1.len() as int);
+    assert(w1 =~= left1 + right1);
+    lemma_stable_letter_count_concat(left1, right1, n);
+    lemma_stable_letter_count_concat(left1, r1, n);
+    lemma_stable_letter_count_concat(left1 + r1, right1, n);
+    assert(stable_letter_count(w2, n) == 2nat);
+
+    let r2 = get_relator(hp, ri2, inv2);
+    assert(w2.subrange(p2, p2 + r2.len() as int) =~= r2);
+    assert(w_end =~= w2.subrange(0, p2) + w2.subrange(p2 + r2.len() as int, w2.len() as int));
+
+    lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+    lemma_stable_letter_count_concat(
+        w2.subrange(0, p2),
+        w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+
+    if stable_letter_count(r2, n) == 0 {
+        assert(stable_letter_count(w_end, n) == 2nat);
+        assert(false);
+    }
+    if stable_letter_count(w_end, n) > 0nat {
+        assert(false);
+    }
+    // Must be HNN relator with count 2, removing both stable letters
+    if (ri2 as int) < data.base.relators.len() {
+        let base_r2 = data.base.relators[ri2 as int];
+        assert(hp.relators[ri2 as int] == base_r2);
+        if inv2 {
+            lemma_inverse_word_valid(base_r2, n);
+            lemma_base_word_characterization(inverse_word(base_r2), n);
+        } else {
+            lemma_base_word_characterization(base_r2, n);
+        }
+        assert(stable_letter_count(r2, n) == 0nat);
+        assert(false);
+    }
+    let j = (ri2 as int - data.base.relators.len()) as int;
+    assert(0 <= j < data.associations.len());
+
+    // HNN relator: first stable letter is Inv(n), but w2[p0] = Gen(n)
+    if !inv2 {
+        lemma_hnn_relator_stable_positions(data, j);
+        // r2[0] = Inv(n), w2[p2] = r2[0]
+        if p2 <= p0 {
+            if p2 < p0 {
+                assert(w2[p2] == w[p2]);
+                assert(symbol_valid(w[p2], n));
+                assert(generator_index(w2[p2]) < n);
+                assert(r2[0int] == stable_letter_inv(data));
+                assert(generator_index(r2[0int]) == n);
+                assert(w2[p2] == r2[0int]);
+                assert(false);
+            }
+            // p2 == p0: r2[0] = Inv(n) but w2[p0] = Gen(n)
+            assert(p2 == p0);
+            assert(r2[0int] == stable_letter_inv(data));
+            assert(stable_letter_inv(data) == Symbol::Inv(n));
+            assert(w2[p0] == Symbol::Gen(n));
+            assert(r2[0int] == w2[p0]);
+            assert(Symbol::Inv(n) == Symbol::Gen(n));
+            assert(false);
+        } else {
+            // p2 > p0: stable letter at p0 not in deleted region
+            assert(p0 < p2);
+            assert(w2[p0] == Symbol::Gen(n));
+            assert(generator_index(w2[p0]) == n);
+            lemma_stable_count_single(w2[p0], n);
+            lemma_stable_count_subrange(w2, 0, p2, n);
             lemma_stable_letter_count_concat(
                 w2.subrange(0, p2),
                 w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
-
-            if stable_letter_count(r2, n) == 0 {
-                assert(stable_letter_count(w_end, n) == 2nat);
-                assert(false);
-            }
-            if stable_letter_count(w_end, n) > 0nat {
-                assert(false);
-            }
-            // Must be HNN relator with count 2, removing both stable letters
-            if (ri2 as int) < data.base.relators.len() {
-                let base_r2 = data.base.relators[ri2 as int];
-                assert(hp.relators[ri2 as int] == base_r2);
-                if inv2 {
-                    lemma_inverse_word_valid(base_r2, n);
-                    lemma_base_word_characterization(inverse_word(base_r2), n);
-                } else {
-                    lemma_base_word_characterization(base_r2, n);
-                }
-                assert(stable_letter_count(r2, n) == 0nat);
-                assert(false);
-            }
-            let j = (ri2 as int - data.base.relators.len()) as int;
-            assert(0 <= j < data.associations.len());
-
-            // HNN relator: first stable letter is Inv(n), but w2[p0] = Gen(n)
-            if !inv2 {
-                lemma_hnn_relator_stable_positions(data, j);
-                // r2[0] = Inv(n), w2[p2] = r2[0]
-                if p2 <= p0 {
-                    if p2 < p0 {
-                        assert(w2[p2] == w[p2]);
-                        assert(symbol_valid(w[p2], n));
-                        assert(generator_index(w2[p2]) < n);
-                        assert(r2[0int] == stable_letter_inv(data));
-                        assert(generator_index(r2[0int]) == n);
-                        assert(w2[p2] == r2[0int]);
-                        assert(false);
-                    }
-                    // p2 == p0: r2[0] = Inv(n) but w2[p0] = Gen(n)
-                    assert(p2 == p0);
-                    assert(r2[0int] == stable_letter_inv(data));
-                    assert(stable_letter_inv(data) == Symbol::Inv(n));
-                    assert(w2[p0] == Symbol::Gen(n));
-                    assert(r2[0int] == w2[p0]);
-                    assert(Symbol::Inv(n) == Symbol::Gen(n));
-                    assert(false);
-                } else {
-                    // p2 > p0: stable letter at p0 not in deleted region
-                    assert(p0 < p2);
-                    assert(w2[p0] == Symbol::Gen(n));
-                    assert(generator_index(w2[p0]) == n);
-                    lemma_stable_count_single(w2[p0], n);
-                    lemma_stable_count_subrange(w2, 0, p2, n);
-                    lemma_stable_letter_count_concat(
-                        w2.subrange(0, p2),
-                        w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
-                    assert(stable_letter_count(w_end, n) >= stable_letter_count(w2.subrange(0, p2), n));
-                    assert(stable_letter_count(w2.subrange(0, p2), n) >= 1nat);
-                    assert(false);
-                }
-            } else {
-                // Inverted HNN relator: Inv(n) at position |b_j|
-                lemma_hnn_relator_inverted_stable_positions(data, j);
-                let (a_j, b_j) = data.associations[j];
-                let stable_pos1 = p2 + b_j.len() as int;
-                assert(r2[b_j.len() as int] == stable_letter_inv(data));
-                assert(stable_letter_inv(data) == Symbol::Inv(n));
-                assert(w2[stable_pos1] == r2[b_j.len() as int]);
-                assert(w2[stable_pos1] == Symbol::Inv(n));
-                // stable_pos1 must be at p0+1+r1_len (the Inv(n) position)
-                // because w2[p0] = Gen(n) != Inv(n)
-                if stable_pos1 == p0 {
-                    assert(w2[p0] == Symbol::Gen(n));
-                    assert(Symbol::Inv(n) == Symbol::Gen(n));
-                    assert(false);
-                } else if stable_pos1 < p0 {
-                    assert(w2[stable_pos1] == w[stable_pos1]);
-                    assert(symbol_valid(w[stable_pos1], n));
-                    assert(generator_index(w2[stable_pos1]) < n);
-                    assert(false);
-                } else if stable_pos1 > p0 && stable_pos1 < p0 + 1 + r1_len {
-                    // In the r1 region: base element
-                    assert(w2[stable_pos1] == r1[(stable_pos1 - p0 - 1) as int]);
-                    assert(generator_index(r1[(stable_pos1 - p0 - 1) as int]) < n);
-                    assert(false);
-                } else if stable_pos1 > p0 + 1 + r1_len {
-                    assert(w2[stable_pos1] == w[(stable_pos1 - r1_len - 2) as int]);
-                    assert(symbol_valid(w[(stable_pos1 - r1_len - 2) as int], n));
-                    assert(generator_index(w2[stable_pos1]) < n);
-                    assert(false);
-                }
-                // stable_pos1 == p0 + 1 + r1_len
-                assert(stable_pos1 == p0 + 1 + r1_len);
-                // Second stable letter at stable_pos1 + |a_j| + 1
-                let stable_pos2 = stable_pos1 + a_j.len() as int + 1;
-                assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
-                assert(stable_letter(data) == Symbol::Gen(n));
-                assert(w2[stable_pos2] == Symbol::Gen(n));
-                // stable_pos2 > p0+1+r1_len, so it's in the w region
-                assert(stable_pos2 > p0 + 1 + r1_len);
-                assert(w2[stable_pos2] == w[(stable_pos2 - r1_len - 2) as int]);
-                assert(symbol_valid(w[(stable_pos2 - r1_len - 2) as int], n));
-                assert(generator_index(w2[stable_pos2]) < n);
-                assert(false);
-            }
-        },
+            assert(stable_letter_count(w_end, n) >= stable_letter_count(w2.subrange(0, p2), n));
+            assert(stable_letter_count(w2.subrange(0, p2), n) >= 1nat);
+            assert(false);
+        }
+    } else {
+        // Inverted HNN relator: Inv(n) at position |b_j|
+        lemma_hnn_relator_inverted_stable_positions(data, j);
+        let (a_j, b_j) = data.associations[j];
+        let stable_pos1 = p2 + b_j.len() as int;
+        assert(r2[b_j.len() as int] == stable_letter_inv(data));
+        assert(stable_letter_inv(data) == Symbol::Inv(n));
+        assert(w2[stable_pos1] == r2[b_j.len() as int]);
+        assert(w2[stable_pos1] == Symbol::Inv(n));
+        // stable_pos1 must be at p0+1+r1_len (the Inv(n) position)
+        // because w2[p0] = Gen(n) != Inv(n)
+        if stable_pos1 == p0 {
+            assert(w2[p0] == Symbol::Gen(n));
+            assert(Symbol::Inv(n) == Symbol::Gen(n));
+            assert(false);
+        } else if stable_pos1 < p0 {
+            assert(w2[stable_pos1] == w[stable_pos1]);
+            assert(symbol_valid(w[stable_pos1], n));
+            assert(generator_index(w2[stable_pos1]) < n);
+            assert(false);
+        } else if stable_pos1 > p0 && stable_pos1 < p0 + 1 + r1_len {
+            // In the r1 region: base element
+            assert(w2[stable_pos1] == r1[(stable_pos1 - p0 - 1) as int]);
+            assert(generator_index(r1[(stable_pos1 - p0 - 1) as int]) < n);
+            assert(false);
+        } else if stable_pos1 > p0 + 1 + r1_len {
+            assert(w2[stable_pos1] == w[(stable_pos1 - r1_len - 2) as int]);
+            assert(symbol_valid(w[(stable_pos1 - r1_len - 2) as int], n));
+            assert(generator_index(w2[stable_pos1]) < n);
+            assert(false);
+        }
+        // stable_pos1 == p0 + 1 + r1_len
+        assert(stable_pos1 == p0 + 1 + r1_len);
+        // Second stable letter at stable_pos1 + |a_j| + 1
+        let stable_pos2 = stable_pos1 + a_j.len() as int + 1;
+        assert(r2[(b_j.len() + a_j.len() + 1) as int] == stable_letter(data));
+        assert(stable_letter(data) == Symbol::Gen(n));
+        assert(w2[stable_pos2] == Symbol::Gen(n));
+        // stable_pos2 > p0+1+r1_len, so it's in the w region
+        assert(stable_pos2 > p0 + 1 + r1_len);
+        assert(w2[stable_pos2] == w[(stable_pos2 - r1_len - 2) as int]);
+        assert(symbol_valid(w[(stable_pos2 - r1_len - 2) as int], n));
+        assert(generator_index(w2[stable_pos2]) < n);
+        assert(false);
     }
 }
 
