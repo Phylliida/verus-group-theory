@@ -170,6 +170,27 @@ proof fn lemma_single_step_equiv(
     assert(derivation_valid(p, d, w, w_next));
 }
 
+/// Extract apply_step from a 1-step derivation.
+proof fn lemma_derivation_unfold_1(
+    hp: Presentation, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+)
+    requires
+        steps.len() == 1,
+        derivation_produces(hp, steps, w) == Some(w_end),
+    ensures
+        apply_step(hp, w, steps.first()) == Some(w_end),
+{
+    // Follow the pattern from lemma_derivation_unfold_3:
+    // Get the result word from derivation_produces
+    let w_chk = apply_step(hp, w, steps.first()).unwrap();
+    // Show that the tail (empty) produces w_end from w_chk
+    assert(derivation_produces(hp, steps.drop_first(), w_chk) == Some(w_end)) by {
+        assert(steps.drop_first().len() == 0);
+    };
+    // Now Z3 knows w_chk == w_end
+    assert(w_chk == w_end);
+}
+
 /// Construct derivation_produces for a 2-step sequence from individual apply_step facts.
 proof fn lemma_derivation_produces_2(
     hp: Presentation, s0: DerivationStep, s1: DerivationStep,
@@ -13634,9 +13655,27 @@ proof fn lemma_k4_peak_step12(
         lemma_stable_count_reduce_step(data, w2, step2, n);
         let c3 = stable_letter_count(w3, n);
         // c3 is one of {2, 4, 6}
+        // Establish step3 produces w_end from w3 by unfolding derivation_produces
+        let rest1 = remaining_steps.drop_first();
+        assert(rest1.len() == 1);
+        assert(rest1.first() == step3);
+        // derivation_produces(hp, remaining_steps, w2) unfolds to:
+        // apply_step(hp, w2, step2) = Some(w3), then derivation_produces(hp, rest1, w3)
+        assert(derivation_produces(hp, rest1, w3) == Some(w_end));
+        // Use derivation split to extract step3 validity
+        lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+        lemma_word_at_produces(hp, remaining_steps, w2, 1nat);
+        let right_part = remaining_steps.subrange(1, 2);
+        assert(derivation_produces(hp, right_part, w3) == Some(w_end));
+        assert(right_part.len() == 1);
+        assert(right_part.first() == step3) by {
+            assert(right_part[0int] == step3);
+        };
+        lemma_derivation_unfold_1(hp, right_part, w3, w_end);
+        assert(apply_step(hp, w3, step3) == Some(w_end));
+
         if c3 >= 4 {
-            // Step 3 goes from c3 ≥ 4 to base, impossible
-            assert(apply_step(hp, w3, step3) == Some(w_end));
+            lemma_step_preserves_word_valid(data, w3, step3);
             lemma_count4_step_cant_reach_base(data, w3, w_end, step3);
             assert(false);
         }
