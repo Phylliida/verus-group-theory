@@ -14531,7 +14531,21 @@ proof fn lemma_single_segment_hard(
                     assume(false);
                 }
             } else {
-                // k >= 5 with c_2 = 4: commute from end or deeper analysis
+                // k >= 5 with c_2 = 4
+                // Check if the LAST non-base intermediate has count 2 (T-free from end)
+                // c_{k-1} = 2 always. c_{k-2} could be 2 or 4.
+                // If c_{k-2} = 2: step k-2 is T-free, and we can handle it
+                // by noting that the sub-derivation steps[0..k-2] from w to w_{k-2}
+                // has k-2 steps (strictly fewer). We show w_{k-2} is equivalent to
+                // w_end in base group (the last 2 steps are T-free + reducing).
+                //
+                // Actually, the simplest approach: since k >= 5 and c_2 = 4,
+                // and all changes are by 0 or ±2, for odd k there MUST be
+                // a T-free step at some position. For even k, there might not be.
+                // But we already handle T-free step 1 (c_2 = 2) above.
+                // For c_2 = 4, we need more analysis.
+                //
+                // For now, use assume(false) for k >= 5 peak case.
                 assume(false);
             }
         }
