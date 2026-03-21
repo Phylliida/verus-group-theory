@@ -13538,6 +13538,128 @@ proof fn lemma_k4_tfree_expand_commute_other(
     }
 }
 
+/// FreeReduce arm of RI(HNN) commutation.
+proof fn lemma_k4_tfree_ri_commute_fr(
+    data: HNNData, w: Word, w1: Word, w2: Word,
+    p0: int, ri0: nat, inv0: bool, p1: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w, data.base.num_generators),
+        ri0 as int >= data.base.relators.len(),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::FreeReduce { position: p1 }) == Some(w2)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 2nat,
+    ensures ({
+        let (w_prime, step1_base, step0_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_prime, n)
+        &&& word_valid(w_prime, n + 1)
+        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
+        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r0 = get_relator(hp, ri0, inv0);
+    let r0_len = r0.len() as int;
+
+    assert(w1 =~= w.subrange(0, p0) + r0 + w.subrange(p0, w.len() as int));
+    lemma_stable_count_reduce(w1, p1, n);
+    assert(generator_index(w1[p1]) < n);
+
+    // p1 can't be at a position where w1[p1] or w1[p1+1] is a stable letter
+    // from the relator. If p1+1 <= p0 or p1 >= p0+r0_len: both elements from w.
+    // If p1 == p0-1: w1[p1]=w[p1-1] (base), w1[p1+1]=r0[0] (might be stable) — contradiction
+    // If p0 <= p1 < p0+r0_len: inside relator — edge case
+
+    if p1 + 1 < p0 {
+        assert(w1[p1] == w[p1]);
+        assert(w1[p1 + 1] == w[p1 + 1]);
+        assert(has_cancellation_at(w, p1));
+
+        let w_prime = reduce_at(w, p1);
+        let step1_base = DerivationStep::FreeReduce { position: p1 };
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+        lemma_stable_count_reduce(w, p1, n);
+        lemma_step_preserves_word_valid(data, w, step1_base);
+
+        let p0_adj = (p0 - 2) as int;
+        let step0_adj = DerivationStep::RelatorInsert { position: p0_adj, relator_index: ri0, inverted: inv0 };
+        let insert_result = w_prime.subrange(0, p0_adj) + r0
+            + w_prime.subrange(p0_adj, w_prime.len() as int);
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == insert_result[k] by {};
+        assert(w2 =~= insert_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        (w_prime, step1_base, step0_adj)
+    } else if p1 == p0 - 1 {
+        // w1[p0-1] = w[p0-1] (base), w1[p0] = r0[0]
+        // For FreeReduce: is_inverse_pair(w1[p1], w1[p1+1])
+        // gen_idx(w1[p1]) < n (from T-free check above)
+        // But if r0[0] has gen_idx == n, they can't be an inverse pair
+        // Actually just check: gen_idx(w1[p1+1]) must equal gen_idx(w1[p1]) < n
+        // But w1[p1+1] = r0[0] might have gen_idx = n, contradiction
+        assert(w1[(p0 - 1) as int] == w[(p0 - 1) as int]);
+        assert(w1[p0] == r0[0int]);
+        // has_cancellation_at requires is_inverse_pair which requires same gen_idx
+        // gen_idx(w1[p1]) < n, gen_idx(w1[p1+1]) must also be < n for T-free
+        // If gen_idx(r0[0]) == n: contradiction with gen_idx(w1[p1+1]) < n...
+        // But we don't know gen_idx(w1[p1+1]) < n directly. We know gen_idx(w1[p1]) < n.
+        // For is_inverse_pair: gen_idx must match. So gen_idx(w1[p1+1]) == gen_idx(w1[p1]) < n.
+        // But w1[p1+1] = r0[0], which MIGHT have gen_idx < n (it's part of the relator).
+        // Actually r0 = HNN relator. For non-inverted: starts with Inv(n), gen_idx = n.
+        // For inverted: starts with b_j elements, gen_idx < n.
+        // So this case IS possible for inverted HNN relators!
+        // Handle as inside-relator edge case
+        assume(false);
+        arbitrary()
+    } else if p1 >= p0 + r0_len {
+        assert(w1[p1] == w[(p1 - r0_len) as int]);
+        assert(w1[p1 + 1] == w[(p1 - r0_len + 1) as int]);
+        let p1_adj = (p1 - r0_len) as int;
+        assert(has_cancellation_at(w, p1_adj));
+
+        let w_prime = reduce_at(w, p1_adj);
+        let step1_base = DerivationStep::FreeReduce { position: p1_adj };
+        assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+        lemma_stable_count_reduce(w, p1_adj, n);
+        lemma_step_preserves_word_valid(data, w, step1_base);
+
+        let step0_adj = DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 };
+        let insert_result = w_prime.subrange(0, p0) + r0
+            + w_prime.subrange(p0, w_prime.len() as int);
+        assert forall|k: int| 0 <= k < w2.len()
+            implies w2[k] == insert_result[k] by {};
+        assert(w2 =~= insert_result);
+        assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+        (w_prime, step1_base, step0_adj)
+    } else if p1 == p0 + r0_len - 1 {
+        // Boundary: w1[p1] = r0[r0_len-1], w1[p1+1] = w[p0]
+        // Similar edge case
+        assume(false);
+        arbitrary()
+    } else {
+        // Inside relator region
+        assume(false);
+        arbitrary()
+    }
+}
+
 /// k≥4, Case A, step0 = RelatorInsert(HNN): commute T-free step1.
 /// Returns (w_prime, step1_base, step0_adj).
 proof fn lemma_k4_tfree_ri_commute(
@@ -13572,9 +13694,17 @@ proof fn lemma_k4_tfree_ri_commute(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    // TODO: implement RelatorInsert(HNN) + T-free step1 commutation
-    assume(false);
-    arbitrary()
+    match step1 {
+        DerivationStep::FreeReduce { position: p1 } => {
+            lemma_k4_tfree_ri_commute_fr(data, w, w1, w2, p0, ri0, inv0, p1)
+        },
+        _ => {
+            // FreeExpand, RelatorInsert, RelatorDelete arms
+            // Same pattern as FreeReduce — commute before/after relator
+            assume(false);
+            arbitrary()
+        },
+    }
 }
 
 /*proof fn _dead_lemma_k4_peak_step12(
