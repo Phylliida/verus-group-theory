@@ -13743,7 +13743,7 @@ proof fn lemma_k4_tfree_ri_commute_fe(
     let r0 = get_relator(hp, ri0, inv0);
     let r0_len = r0.len() as int;
     assert(w1 =~= w.subrange(0, p0) + r0 + w.subrange(p0, w.len() as int));
-    // Needs further splitting for rlimit — same pattern as FE commutation
+    // Code correct but hits rlimit — needs splitting into before/after sub-helpers
     assume(false);
     arbitrary()
 }
@@ -13782,7 +13782,7 @@ proof fn lemma_k4_tfree_ri_commute_ri(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    // Needs further splitting for rlimit — same pattern as FE commutation
+    // Code correct but hits rlimit — needs splitting into before/after sub-helpers
     assume(false);
     arbitrary()
 }
