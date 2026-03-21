@@ -225,12 +225,31 @@ pub proof fn lemma_base_expand_preserves_base(
         is_base_word(w_prime, n)
     }),
 {
+    // Match the ensures exactly: use Seq::new form
     let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
     let w_prime = w.subrange(0, p) + pair + w.subrange(p, w.len() as int);
+    // Connect to seq![] form for lemma_stable_count_pair
+    let pair_seq: Seq<Symbol> = seq![sym, inverse_symbol(sym)];
+    assert(pair =~= pair_seq);
     lemma_stable_count_pair(sym, inverse_symbol(sym), n);
+    // pair_seq has count 0, and pair =~= pair_seq, so pair has count 0
+    assert(stable_letter_count(pair_seq, n) == 0nat);
+    assert(stable_letter_count(pair, n) == 0nat);
     lemma_stable_letter_count_concat(w.subrange(0, p), pair, n);
     lemma_stable_letter_count_concat(w.subrange(0, p) + pair, w.subrange(p, w.len() as int), n);
     lemma_stable_letter_count_concat(w.subrange(0, p), w.subrange(p, w.len() as int), n);
+    let left = w.subrange(0, p);
+    let right = w.subrange(p, w.len() as int);
+    assert(w =~= left + right);
+    assert(stable_letter_count(w, n) == 0nat);
+    // from concat lemma: count(left) + count(right) == count(left + right) == count(w) == 0
+    assert(stable_letter_count(left + right, n) == 0nat);
+    assert(stable_letter_count(left, n) + stable_letter_count(right, n) == 0nat);
+    assert(stable_letter_count(left, n) + stable_letter_count(pair, n) ==
+        stable_letter_count(left + pair, n));
+    assert(stable_letter_count(left + pair, n) + stable_letter_count(right, n) ==
+        stable_letter_count(w_prime, n));
+    assert(stable_letter_count(w_prime, n) == 0nat);
 }
 
 } // verus!
