@@ -1,0 +1,107 @@
+    │ Plan: Prove axiom_zfc_ceer via Reduced Church-Turing Axiom                                                                                              │
+     │                                                                                                                                                         │
+     │ Context                                                                                                                                                 │
+     │                                                                                                                                                         │
+     │ axiom_zfc_ceer in verus-computability-theory/src/machine_axioms.rs is an #[verifier::external_body] axiom asserting that ZFC provable equivalence on    │
+     │ Gödel codes is a CEER. It bundles two conceptually distinct claims: (1) the mathematical fact that proof enumeration captures ZFC equivalence, and (2)  │
+     │ that a register machine can implement proof checking. We factor these apart, proving (1) fully in Verus and reducing the trusted assumption to a        │
+     │ standard Church-Turing thesis application.                                                                                                              │
+     │                                                                                                                                                         │
+     │ Approach                                                                                                                                                │
+     │                                                                                                                                                         │
+     │ 1. Define encode_proof(p: Proof) -> nat using existing pair/encode                                                                                      │
+     │ 2. Define enumerator_spec(s) -> Option<(nat, nat)> — the ideal enumerator behavior                                                                      │
+     │ 3. Prove soundness: output implies zfc_equiv_nat                                                                                                        │
+     │ 4. Prove completeness: zfc_equiv_nat implies some stage outputs the pair                                                                                │
+     │ 5. New reduced axiom: "a RegisterMachine exists implementing enumerator_spec"                                                                           │
+     │ 6. Derive axiom_zfc_ceer as a fully proved theorem                                                                                                      │
+     │                                                                                                                                                         │
+     │ Files                                                                                                                                                   │
+     │                                                                                                                                                         │
+     │ 1. NEW: src/proof_encoding.rs (~250 lines)                                                                                                              │
+     │                                                                                                                                                         │
+     │ Depends on: pairing.rs, formula.rs, proof_system.rs                                                                                                     │
+     │                                                                                                                                                         │
+     │ Spec functions:                                                                                                                                         │
+     │ - encode_justification(j: Justification) -> nat — tags 0-3 + pair for fields                                                                            │
+     │ - encode_line(line: (Formula, Justification)) -> nat — pair(encode(f), encode_justification(j))                                                         │
+     │ - encode_nat_seq(s: Seq<nat>) -> nat — recursive: pair(len, pair(s[0], encode_nat_seq(rest)))                                                           │
+     │ - encode_proof(p: Proof) -> nat — encode_nat_seq(lines.map(encode_line))                                                                                │
+     │                                                                                                                                                         │
+     │ Proof lemmas:                                                                                                                                           │
+     │ - lemma_encode_justification_injective(j1, j2) — tag dispatch + lemma_pair_injective                                                                    │
+     │ - lemma_encode_nat_seq_injective(s1, s2) — induction on len, pair injectivity at each level                                                             │
+     │ - lemma_encode_line_injective(l1, l2) — from pair + formula encode + justification injectivity                                                          │
+     │ - lemma_encode_proof_injective(p1, p2) — from seq injectivity + pointwise line injectivity                                                              │
+     │                                                                                                                                                         │
+     │ 2. NEW: src/zfc_enumerator.rs (~300 lines)                                                                                                              │
+     │                                                                                                                                                         │
+     │ Depends on: proof_encoding.rs, formula.rs, proof_system.rs, zfc.rs, zfc_ceer.rs                                                                         │
+     │                                                                                                                                                         │
+     │ Spec functions:                                                                                                                                         │
+     │ - is_valid_iff_proof_code(s: nat) -> bool — exists|p, phi, psi| encode_proof(p) == s && is_valid_proof(p, ...) && conclusion == mk_iff(phi, psi) && both│
+     │  sentences                                                                                                                                              │
+     │ - enumerator_spec(s: nat) -> Option<(nat, nat)> — if valid code, choose the proof + extract (encode(phi), encode(psi)); else None                       │
+     │                                                                                                                                                         │
+     │ Proof lemmas:                                                                                                                                           │
+     │ - lemma_enumerator_spec_deterministic — all witnesses for same s produce same output (from encode_proof injectivity)                                    │
+     │ - lemma_enumerator_soundness(s, n, m) — enumerator_spec(s) == Some((n,m)) implies zfc_equiv_nat(n,m). Extract proof witness →                           │
+     │ provable_in_zfc(mk_iff(phi,psi)) → zfc_equiv(phi,psi) → build zfc_witness_pair → zfc_equiv_nat                                                          │
+     │ - lemma_enumerator_completeness(n, m) — n != m && zfc_equiv_nat(n,m) implies exists|s| enumerator_spec(s) == Some((n,m)). Extract formulas + proof from │
+     │ zfc_equiv_nat → s = encode_proof(proof) → show enumerator_spec(s) matches via injectivity                                                               │
+     │                                                                                                                                                         │
+     │ 3. NEW: src/church_turing.rs (~80 lines)                                                                                                                │
+     │                                                                                                                                                         │
+     │ Depends on: machine.rs, ceer.rs, zfc_enumerator.rs                                                                                                      │
+     │                                                                                                                                                         │
+     │ Single reduced axiom:                                                                                                                                   │
+     │ #[verifier::external_body]                                                                                                                              │
+     │ pub proof fn axiom_enumerator_machine_exists()                                                                                                          │
+     │     ensures exists|rm: RegisterMachine|                                                                                                                 │
+     │         machine_wf(rm) && rm.num_regs >= 3 &&                                                                                                           │
+     │         (forall|s| enumerator_spec(s).is_some() ==>                                                                                                     │
+     │             halts(rm, s) && regs_match_spec(rm, s)) &&                                                                                                  │
+     │         (forall|s| enumerator_spec(s).is_none() ==> !halts(rm, s))                                                                                      │
+     │                                                                                                                                                         │
+     │ Justification: enumerator_spec checks a decidable predicate (proof validity is a finite syntactic check) and performs primitive recursive operations    │
+     │ (Cantor pairing, formula encoding). Any such function is implementable by a register machine.                                                           │
+     │                                                                                                                                                         │
+     │ 4. MODIFY: src/machine_axioms.rs                                                                                                                        │
+     │                                                                                                                                                         │
+     │ - Remove #[verifier::external_body] from axiom_zfc_ceer                                                                                                 │
+     │ - Add proof body:                                                                                                                                       │
+     │   a. Call axiom_enumerator_machine_exists() → get machine rm                                                                                            │
+     │   b. Construct e = CEER { enumerator: rm }                                                                                                              │
+     │   c. Prove ceer_wf(e) via reveal(ceer_wf)                                                                                                               │
+     │   d. Soundness (declared_equiv(e,n,m) ==> zfc_equiv_nat(n,m)): extract stage s → connect declared_pair to enumerator_spec via                           │
+     │ lemma_declared_pair_well_defined → call lemma_enumerator_soundness                                                                                      │
+     │   e. Completeness (n!=m && zfc_equiv_nat(n,m) ==> declared_equiv(e,n,m)): call lemma_enumerator_completeness → get stage s → connect enumerator_spec to │
+     │ declared_pair → stage_declares → declared_equiv                                                                                                         │
+     │                                                                                                                                                         │
+     │ Helper: lemma_machine_declared_pair_matches_spec(e, rm, s) — bridges declared_pair's choose|fuel| with the axiom's fuel witness using                   │
+     │ lemma_declared_pair_well_defined                                                                                                                        │
+     │                                                                                                                                                         │
+     │ 5. MODIFY: src/lib.rs                                                                                                                                   │
+     │                                                                                                                                                         │
+     │ Add 3 module declarations (after zfc_ceer, before machine_axioms):                                                                                      │
+     │ pub mod proof_encoding;                                                                                                                                 │
+     │ pub mod zfc_enumerator;                                                                                                                                 │
+     │ pub mod church_turing;                                                                                                                                  │
+     │                                                                                                                                                         │
+     │ Implementation Order                                                                                                                                    │
+     │                                                                                                                                                         │
+     │ 1. proof_encoding.rs — self-contained, verify with check module=proof_encoding                                                                          │
+     │ 2. zfc_enumerator.rs — verify with check module=zfc_enumerator                                                                                          │
+     │ 3. church_turing.rs — verify (trivial, just an external_body)                                                                                           │
+     │ 4. lib.rs + machine_axioms.rs — verify full crate                                                                                                       │
+     │                                                                                                                                                         │
+     │ Verification                                                                                                                                            │
+     │                                                                                                                                                         │
+     │ After all changes: mcp verus check crate_name=verus-computability-theory should show 0 errors and the assume(false) / external_body count drops from 2  │
+     │ to 1 (only axiom_enumerator_machine_exists remains, plus the existing axiom_ceer_embeds_in_fp_group).                                                   │
+     │                                                                                                                                                         │
+     │ Axiom Debt Change                                                                                                                                       │
+     │                                                                                                                                                         │
+     │ - Before: axiom_zfc_ceer (complex mathematical+computational claim)                                                                                     │
+     │ - After: axiom_enumerator_machine_exists (pure CTT: "decidable predicates are register-machine computable")                                             │
+     │ - All mathematical reasoning about proof enumeration capturing ZFC equivalence is now verified
