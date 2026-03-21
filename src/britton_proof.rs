@@ -13738,7 +13738,7 @@ proof fn lemma_k4_tfree_ri_commute_fe(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    crate::britton_proof_helpers::lemma_k4_tfree_ri_commute_fe(data, w, w1, w2, p0, ri0, inv0, p1, sym1)
+    crate::britton_proof_helpers2::lemma_k4_tfree_ri_commute_fe(data, w, w1, w2, p0, ri0, inv0, p1, sym1)
 }
 
 /*proof fn _removed_lemma_k4_tfree_ri_commute_ri_before(
@@ -13883,7 +13883,7 @@ proof fn lemma_k4_tfree_ri_commute_ri(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    crate::britton_proof_helpers::lemma_k4_tfree_ri_commute_ri(data, w, w1, w2, p0, ri0, inv0, p1, ri1, inv1)
+    crate::britton_proof_helpers2::lemma_k4_tfree_ri_commute_ri(data, w, w1, w2, p0, ri0, inv0, p1, ri1, inv1)
 }
 
 /// RelatorDelete(base) arm of RI(HNN) commutation.
@@ -13920,7 +13920,7 @@ proof fn lemma_k4_tfree_ri_commute_rd(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    crate::britton_proof_helpers::lemma_k4_tfree_ri_commute_rd(data, w, w1, w2, p0, ri0, inv0, p1, ri1, inv1)
+    crate::britton_proof_helpers2::lemma_k4_tfree_ri_commute_rd(data, w, w1, w2, p0, ri0, inv0, p1, ri1, inv1)
 }
 
 /// Non-FreeReduce arms of RI(HNN) commutation.
