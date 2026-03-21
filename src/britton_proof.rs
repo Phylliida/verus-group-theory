@@ -13577,8 +13577,7 @@ proof fn lemma_k4_tfree_ri_commute(
     arbitrary()
 }
 
-/// k≥4, Case B: step 1 is +2 (c_2 = 4). Peak elimination.
-proof fn lemma_k4_peak_step12(
+/*proof fn _dead_lemma_k4_peak_step12(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w1: Word, w2: Word, w_end: Word,
     remaining_steps: Seq<DerivationStep>,
 )
@@ -13618,6 +13617,7 @@ proof fn lemma_k4_peak_step12(
         }),
     ensures
         equiv_in_presentation(data.base, w, w_end),
+    decreases steps.len(), 0nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -13682,14 +13682,75 @@ proof fn lemma_k4_peak_step12(
         assert(c3 == 2nat);
 
         // Steps 1 (+2) and 2 (-2) form a peak.
-        // For now, handle this with assume(false) — need per-type analysis
-        assume(false);
+        // Step 1: FreeExpand(stable) or RelatorInsert(HNN) — introduces 2 stable letters
+        // Step 2: FreeReduce(stable) or RelatorDelete(HNN) — removes 2 stable letters
+        //
+        // Strategy: construct a 2-step derivation [s0, s3] from w to w_end.
+        // If w_3 = w_1 (steps 1 and 2 cancel), this is direct.
+        // If w_3 ≠ w_1 (steps 1 and 2 commute), create a base intermediate.
+        //
+        // Key insight: step2 removes 2 stable letters from w_2 (which has 4).
+        // These 2 letters are either from step1 (cancel) or from step0 (commute).
+        // In both cases we can construct a shorter derivation.
+        //
+        // For now, construct [s0, s3] when possible, or use the k=3 result.
+        // Note: w → w_1 → w_2 → w_3 → w_end is a 4-step derivation.
+        // w and w_end are base. w_1 has c=2, w_2 has c=4, w_3 has c=2.
+        // Sub-derivation w_1 → w_2 → w_3: 2 steps, c goes 2→4→2.
+        // But the sub-derivation [s0, s2, s3] (removing step 1) or [s0, s1, s3]
+        // might not be valid derivations since the words don't chain.
+        //
+        // Alternative: use the 3-step sub-derivation [s0, s1, s2] from w to w_3.
+        // Both w and w_3 are... w is base but w_3 is NOT base (c_3 = 2).
+        // Not directly useful.
+        //
+        // Better approach for k=4: call lemma_single_segment on the FULL
+        // 4-step derivation, but noting that w_2 has c=4.
+        // Actually, w_2 is non-base, so the existing infrastructure handles it.
+        // lemma_base_derivation_equiv would try to find a base intermediate,
+        // and since all intermediates are non-base, it would call
+        // lemma_single_segment_hard again with the same 4 steps. This is circular.
+        //
+        // The right approach: show that steps 1 and 2 can be REPLACED by steps
+        // that produce a base intermediate.
+        //
+        // For this, I need to analyze the specific step types.
+        // Step 1 is +2: FreeExpand(stable, p1, sym1) or RelatorInsert(HNN, p1, ri1, inv1)
+        // Step 2 is -2: FreeReduce(stable, p2) or RelatorDelete(HNN, p2, ri2, inv2)
+        //
+        // For the simplest case: step1 = FreeExpand(sym1, p1) and step2 = FreeReduce(p2).
+        // The FreeExpand inserts [sym1, inv(sym1)] at p1 in w_1.
+        // The FreeReduce removes a stable pair from w_2.
+        //
+        // If p2 = p1 (cancel): w_3 = w_1. Derivation becomes [s0, s3] from w to w_end.
+        // If p2 ≠ p1 (commute): step2 removes a different stable pair (from w_1).
+        //   Apply step2 to w_1 first → w_1' (count 0, BASE!).
+        //   Then apply step1 to w_1' → w_3.
+        //   New derivation: [s0, s2', s1', s3] from w to w_end, base at position 2.
+        //
+        // In both cases, call lemma_base_derivation_equiv on shorter derivations.
+        //
+        // Since this requires per-type case analysis, delegate to a helper.
+        // Peak cancel or commute — inline to avoid recursion group issues
+        if w3 =~= w1 {
+            // Cancel case: steps 1 and 2 cancel, w3 = w1
+            // Construct 2-step derivation [step0, step3] from w to w_end
+            assert(apply_step(hp, w1, step3) == Some(w_end)) by {
+                assert(w3 =~= w1);
+            };
+            lemma_derivation_produces_2(hp, steps[0], step3, w, w1, w_end);
+            let short_steps: Seq<DerivationStep> = seq![steps[0], step3];
+            lemma_base_derivation_equiv(data, short_steps, w, w_end);
+        } else {
+            // Non-cancel: need per-type commutation analysis
+            assume(false);
+        }
     } else {
         // k >= 5 with c_2 = 4
         // TODO: commute from end or deeper peak analysis
         assume(false);
     }
-}
+}*/
 
 /// Strategy: for k=3, dispatch on step types and commute neutral step to front.
 /// For k≥4: commute T-free step to front, or peak-eliminate.
@@ -13872,8 +13933,65 @@ proof fn lemma_single_segment_hard(
             lemma_single_step_equiv(data.base, w, step1_base, w_prime);
             lemma_equiv_transitive(data.base, w, w_prime, w_end);
         } else {
+            // Case B: step 1 is +2, c_2 = 4. Peak elimination.
             assert(c2 == 4nat);
-            lemma_k4_peak_step12(data, steps, w, w1, w2, w_end, remaining_steps);
+
+            if steps.len() == 4 {
+                // k=4: c_3 forced to be 2.
+                let step2 = remaining_steps[0int];
+                let step3 = remaining_steps[1int];
+                assert(remaining_steps.len() == 2);
+                assert(apply_step(hp, w2, step2).is_some());
+                let w3 = apply_step(hp, w2, step2).unwrap();
+                lemma_step_preserves_word_valid(data, w2, step2);
+
+                // w3 is non-base intermediate
+                assert(derivation_word_at(hp, steps, w, 3nat) == w3) by {
+                    let r0 = steps.drop_first();
+                    let r1 = r0.drop_first();
+                    assert(derivation_word_at(hp, steps, w, 3nat) ==
+                        derivation_word_at(hp, r0, w1, 2nat));
+                    assert(derivation_word_at(hp, r0, w1, 2nat) ==
+                        derivation_word_at(hp, r1, w2, 1nat));
+                    assert(r1.first() == step2);
+                    lemma_word_at_one(hp, r1, w2);
+                };
+                assert(!is_base_word(w3, n));
+
+                // Prove c_3 = 2 via count4 barrier
+                lemma_stable_count_reduce_step(data, w2, step2, n);
+                let c3 = stable_letter_count(w3, n);
+                // Extract step3 validity
+                lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+                lemma_word_at_produces(hp, remaining_steps, w2, 1nat);
+                let right_part = remaining_steps.subrange(1, 2);
+                assert(right_part.first() == step3) by {
+                    assert(right_part[0int] == step3);
+                };
+                lemma_derivation_unfold_1(hp, right_part, w3, w_end);
+                assert(apply_step(hp, w3, step3) == Some(w_end));
+
+                if c3 >= 4 {
+                    lemma_count4_step_cant_reach_base(data, w3, w_end, step3);
+                    assert(false);
+                }
+                assert(c3 == 2nat);
+
+                // Peak at steps (1, 2): cancel or commute
+                if w3 =~= w1 {
+                    // Cancel: construct 2-step derivation [step0, step3]
+                    assert(apply_step(hp, w1, step3) == Some(w_end));
+                    lemma_derivation_produces_2(hp, step0, step3, w, w1, w_end);
+                    let short: Seq<DerivationStep> = seq![step0, step3];
+                    lemma_base_derivation_equiv(data, short, w, w_end);
+                } else {
+                    // Non-cancel: per-type commutation analysis needed
+                    assume(false);
+                }
+            } else {
+                // k >= 5 with c_2 = 4: commute from end or deeper analysis
+                assume(false);
+            }
         }
     }
 }
