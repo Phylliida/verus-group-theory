@@ -12998,7 +12998,474 @@ proof fn lemma_k4_tfree_expand_commute_fr(
     }
 }
 
-/// Non-FreeReduce arms of k4_tfree_expand_commute — extracted to avoid rlimit.
+/// k≥4, Case A, step0 = FreeExpand(stable), step1 = FreeExpand(base):
+/// Commute FreeExpand(base) to act on w first, then FreeExpand(stable).
+/// FreeExpand(stable) is contradiction (count 2→4).
+proof fn lemma_k4_tfree_expand_commute_fe(
+    data: HNNData, w: Word, w1: Word, w2: Word,
+    p0: int, sym: Symbol, p1: int, sym1: Symbol,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w, data.base.num_generators),
+        generator_index(sym) == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, DerivationStep::FreeExpand { position: p1, symbol: sym1 }) == Some(w2)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 2nat,
+    ensures ({
+        let (w_prime, step1_base, step0_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_prime, n)
+        &&& word_valid(w_prime, n + 1)
+        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
+        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+
+    if generator_index(sym1) == n {
+        // FreeExpand(stable): count increases by 2, so c2 = 4 != 2
+        let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+        assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+        let left1 = w1.subrange(0, p1);
+        let right1 = w1.subrange(p1, w1.len() as int);
+        assert(w1 =~= left1 + right1);
+        assert(w2 =~= left1 + pair1 + right1);
+        lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+        assert(stable_letter_count(pair1, n) == 2);
+        lemma_stable_letter_count_concat(left1, right1, n);
+        lemma_stable_letter_count_concat(left1, pair1, n);
+        lemma_stable_letter_count_concat(left1 + pair1, right1, n);
+        assert(stable_letter_count(w2, n) ==
+            stable_letter_count(left1, n) + 2 + stable_letter_count(right1, n));
+        assert(stable_letter_count(w1, n) ==
+            stable_letter_count(left1, n) + stable_letter_count(right1, n));
+        // c2 = c1 + 2 = 4, but c2 == 2
+        assert(false);
+        arbitrary()
+    } else {
+        // FreeExpand(base sym1): commute past stable expand
+        assert(generator_index(sym1) < n);
+        let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+
+        if p1 == p0 + 1 {
+            // Edge case between stable letters — use assume(false) for now
+            assume(false);
+            arbitrary()
+        } else if p1 <= p0 {
+            // step1 acts before the expand region: step1 unchanged, step0 shifted by +2
+            let w_prime = w.subrange(0, p1) + pair1 + w.subrange(p1, w.len() as int);
+            let step1_base = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base: stable count = 0
+            assert(generator_index(inverse_symbol(sym1)) < n) by {
+                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+            };
+            lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+            assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+            assert(stable_letter_count(pair1, n) == 0nat);
+            assert(w =~= w.subrange(0, p1) + w.subrange(p1, w.len() as int));
+            lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1, w.len() as int), n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1), pair1, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1) + pair1, w.subrange(p1, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: (p0 + 2) as int, symbol: sym };
+            let expand_result = w_prime.subrange(0, (p0 + 2) as int) + pair
+                + w_prime.subrange((p0 + 2) as int, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        } else {
+            // step1 acts after the expand region: step1 position adjusted by -2, step0 unchanged
+            assert(p1 >= p0 + 2);
+            let p1_adj = (p1 - 2) as int;
+            let w_prime = w.subrange(0, p1_adj) + pair1 + w.subrange(p1_adj, w.len() as int);
+            let step1_base = DerivationStep::FreeExpand { position: p1_adj, symbol: sym1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base: stable count = 0
+            assert(generator_index(inverse_symbol(sym1)) < n) by {
+                match sym1 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+            };
+            lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+            assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+            assert(stable_letter_count(pair1, n) == 0nat);
+            assert(w =~= w.subrange(0, p1_adj) + w.subrange(p1_adj, w.len() as int));
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj, w.len() as int), n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj), pair1, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj) + pair1, w.subrange(p1_adj, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+            let expand_result = w_prime.subrange(0, p0) + pair
+                + w_prime.subrange(p0, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        }
+    }
+}
+
+/// k≥4, Case A, step0 = FreeExpand(stable), step1 = RelatorInsert(base):
+/// Commute RelatorInsert(base) to act on w first, then FreeExpand(stable).
+/// RelatorInsert(HNN) is contradiction (count 2→4).
+proof fn lemma_k4_tfree_expand_commute_ri(
+    data: HNNData, w: Word, w1: Word, w2: Word,
+    p0: int, sym: Symbol, p1: int, ri1: nat, inv1: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w, data.base.num_generators),
+        generator_index(sym) == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            let step1 = DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 };
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 2nat,
+    ensures ({
+        let (w_prime, step1_base, step0_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_prime, n)
+        &&& word_valid(w_prime, n + 1)
+        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
+        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+
+    if (ri1 as int) >= data.base.relators.len() {
+        // HNN relator: inserts 2 stable letters, c2 = 4 != 2
+        let r1 = get_relator(hp, ri1, inv1);
+        let left1 = w1.subrange(0, p1);
+        let right1 = w1.subrange(p1, w1.len() as int);
+        assert(w1 =~= left1 + right1);
+        assert(w2 =~= left1 + r1 + right1);
+        lemma_relator_stable_count(data, ri1, inv1);
+        let rc = stable_letter_count(r1, n);
+        assert(rc == 2);
+        lemma_stable_letter_count_concat(left1, right1, n);
+        lemma_stable_letter_count_concat(left1, r1, n);
+        lemma_stable_letter_count_concat(left1 + r1, right1, n);
+        assert(stable_letter_count(w2, n) ==
+            stable_letter_count(left1, n) + rc + stable_letter_count(right1, n));
+        assert(stable_letter_count(w1, n) ==
+            stable_letter_count(left1, n) + stable_letter_count(right1, n));
+        assert(false);
+        arbitrary()
+    } else {
+        // Base relator: commute past stable expand
+        let r1 = get_relator(hp, ri1, inv1);
+        let r1_len = r1.len() as int;
+        reveal(presentation_valid);
+        lemma_relator_stable_count(data, ri1, inv1);
+
+        // Establish that the relator is valid in the base presentation
+        let base_r = data.base.relators[ri1 as int];
+        assert(hp.relators[ri1 as int] == base_r);
+        assert(get_relator(data.base, ri1, inv1) =~= r1) by {
+            assert(data.base.relators[ri1 as int] == hp.relators[ri1 as int]);
+        };
+
+        // r1 is base word: all gen_idx < n, so stable count = 0
+        if inv1 {
+            lemma_inverse_word_valid(base_r, n);
+            lemma_base_word_characterization(inverse_word(base_r), n);
+        } else {
+            lemma_base_word_characterization(base_r, n);
+        }
+        assert(stable_letter_count(r1, n) == 0nat);
+
+        if p1 == p0 + 1 {
+            // Edge case: insert between stable letters — use assume(false) for now
+            assume(false);
+            arbitrary()
+        } else if p1 <= p0 {
+            // step1 acts before the expand region: step1 unchanged, step0 shifted by +r1_len
+            let w_prime = w.subrange(0, p1) + r1 + w.subrange(p1, w.len() as int);
+            let step1_base = DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base: stable count = 0
+            assert(w =~= w.subrange(0, p1) + w.subrange(p1, w.len() as int));
+            lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1, w.len() as int), n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1), r1, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1) + r1, w.subrange(p1, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: (p0 + r1_len) as int, symbol: sym };
+            let expand_result = w_prime.subrange(0, (p0 + r1_len) as int) + pair
+                + w_prime.subrange((p0 + r1_len) as int, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        } else {
+            // step1 acts after the expand region: step1 position adjusted by -2, step0 unchanged
+            assert(p1 >= p0 + 2);
+            let p1_adj = (p1 - 2) as int;
+            let w_prime = w.subrange(0, p1_adj) + r1 + w.subrange(p1_adj, w.len() as int);
+            let step1_base = DerivationStep::RelatorInsert { position: p1_adj, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base: stable count = 0
+            assert(w =~= w.subrange(0, p1_adj) + w.subrange(p1_adj, w.len() as int));
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj, w.len() as int), n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj), r1, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj) + r1, w.subrange(p1_adj, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+            let expand_result = w_prime.subrange(0, p0) + pair
+                + w_prime.subrange(p0, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        }
+    }
+}
+
+/// k≥4, Case A, step0 = FreeExpand(stable), step1 = RelatorDelete(base):
+/// Commute RelatorDelete(base) to act on w first, then FreeExpand(stable).
+/// RelatorDelete(HNN) is contradiction (count 2→0, so w2 is base).
+/// Overlap with [p0, p0+2) is impossible since base relator can't contain stable letters.
+proof fn lemma_k4_tfree_expand_commute_rd(
+    data: HNNData, w: Word, w1: Word, w2: Word,
+    p0: int, sym: Symbol, p1: int, ri1: nat, inv1: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w, data.base.num_generators),
+        generator_index(sym) == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            let step1 = DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 };
+            &&& apply_step(hp, w, DerivationStep::FreeExpand { position: p0, symbol: sym }) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 2nat,
+    ensures ({
+        let (w_prime, step1_base, step0_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_prime, n)
+        &&& word_valid(w_prime, n + 1)
+        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
+        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
+
+    if (ri1 as int) >= data.base.relators.len() {
+        // HNN relator delete: removes 2 stable letters, count 2→0 → w2 is base
+        let r1 = get_relator(hp, ri1, inv1);
+        lemma_relator_stable_count(data, ri1, inv1);
+        lemma_stable_count_subrange(w1, p1, p1 + r1.len() as int, n);
+        lemma_stable_letter_count_concat(
+            w1.subrange(0, p1),
+            w1.subrange(p1 + r1.len() as int, w1.len() as int), n);
+        assert(stable_letter_count(w2, n) == 0nat);
+        // contradicts !is_base_word(w2) since count = 0 and word_valid
+        lemma_zero_count_implies_base(w2, n);
+        assert(false);
+        arbitrary()
+    } else {
+        // Base relator: commute past stable expand
+        let r1 = get_relator(hp, ri1, inv1);
+        let r1_len = r1.len() as int;
+        reveal(presentation_valid);
+        lemma_relator_stable_count(data, ri1, inv1);
+
+        // Establish that the relator is valid in the base presentation
+        let base_r = data.base.relators[ri1 as int];
+        assert(hp.relators[ri1 as int] == base_r);
+        assert(get_relator(data.base, ri1, inv1) =~= r1) by {
+            assert(data.base.relators[ri1 as int] == hp.relators[ri1 as int]);
+        };
+
+        // r1 is base: all generator indices < n
+        if inv1 {
+            lemma_inverse_word_valid(base_r, n);
+            lemma_base_word_characterization(inverse_word(base_r), n);
+        } else {
+            lemma_base_word_characterization(base_r, n);
+        }
+
+        // The deleted region [p1, p1+r1_len) in w1 can't overlap [p0, p0+2)
+        // because w1[p0] = sym (gen_idx = n) and w1[p0+1] = inverse_symbol(sym) (gen_idx = n),
+        // but r1 has all gen_idx < n.
+        assert(w1.subrange(p1, p1 + r1_len) =~= r1);
+        if r1_len > 0 {
+            if p1 <= p0 && p0 < p1 + r1_len {
+                assert(w1[p0] == r1[(p0 - p1) as int]);
+                assert(generator_index(w1[p0]) == n);
+                assert(generator_index(r1[(p0 - p1) as int]) < n);
+                assert(false);
+            }
+            if p1 <= p0 + 1 && p0 + 1 < p1 + r1_len {
+                assert(w1[(p0 + 1) as int] == r1[(p0 + 1 - p1) as int]);
+                assert(generator_index(w1[(p0 + 1) as int]) == n) by {
+                    match sym { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+                };
+                assert(generator_index(r1[(p0 + 1 - p1) as int]) < n);
+                assert(false);
+            }
+            // With r1_len > 0 and no overlap: p1 + r1_len <= p0 or p1 >= p0 + 2
+        }
+
+        if p1 + r1_len <= p0 {
+            // step1 acts entirely before the expand region
+            // Map back to w: w1[k] = w[k] for k < p0
+            assert forall|k: int| p1 <= k < p1 + r1_len
+                implies w1[k] == w[k] by {};
+            assert(w.subrange(p1, p1 + r1_len) =~= r1);
+
+            let w_prime = w.subrange(0, p1) + w.subrange(p1 + r1_len, w.len() as int);
+            let step1_base = DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base
+            lemma_stable_count_subrange(w, p1, p1 + r1_len, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1 + r1_len, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let p0_adj = (p0 - r1_len) as int;
+            let step0_adj = DerivationStep::FreeExpand { position: p0_adj, symbol: sym };
+            let expand_result = w_prime.subrange(0, p0_adj) + pair
+                + w_prime.subrange(p0_adj, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        } else if p1 >= p0 + 2 {
+            // step1 acts entirely after the expand region
+            let p1_adj = (p1 - 2) as int;
+            // Map back to w: w1[k] = w[k-2] for k >= p0+2
+            assert forall|k: int| p1 <= k < p1 + r1_len
+                implies w1[k] == w[(k - 2) as int] by {};
+            assert(w.subrange(p1_adj, p1_adj + r1_len) =~= r1);
+
+            let w_prime = w.subrange(0, p1_adj) + w.subrange(p1_adj + r1_len, w.len() as int);
+            let step1_base = DerivationStep::RelatorDelete { position: p1_adj, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+
+            // w_prime is base
+            lemma_stable_count_subrange(w, p1_adj, p1_adj + r1_len, n);
+            lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj + r1_len, w.len() as int), n);
+            lemma_base_implies_count_zero(w, n);
+            assert(stable_letter_count(w_prime, n) == 0nat);
+            lemma_step_preserves_word_valid(data, w, step1_base);
+            lemma_zero_count_implies_base(w_prime, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+            let expand_result = w_prime.subrange(0, p0) + pair
+                + w_prime.subrange(p0, w_prime.len() as int);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies w2[k] == expand_result[k] by {};
+            assert(w2 =~= expand_result);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        } else {
+            // r1_len == 0 case: delete is a no-op, w2 == w1
+            // p0 < p1 < p0 + 2 and p1 + 0 > p0, so p1 == p0 + 1
+            assert(r1_len == 0);
+            assert(w2 =~= w1);
+            // w2 == w1 has stable count 2 (checked), but w2 has count 2 (precondition)
+            // and w1 has count 2, so this is consistent.
+            // The delete on w is also a no-op: w.subrange(p1_adj, p1_adj) == empty == r1
+            // We can use any valid position in w for the no-op delete.
+            let p1_adj = 0int;
+            assert(w.subrange(p1_adj, p1_adj + r1_len) =~= r1);
+            let w_prime = w.subrange(0, p1_adj) + w.subrange(p1_adj + r1_len, w.len() as int);
+            assert(w_prime =~= w);
+            let step1_base = DerivationStep::RelatorDelete { position: p1_adj, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(data.base, w, step1_base) == Some(w_prime));
+            lemma_word_valid_monotone(w, n);
+
+            let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w1));
+            assert(w2 =~= w1);
+            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
+
+            (w_prime, step1_base, step0_adj)
+        }
+    }
+}
+
+/// Non-FreeReduce arms of k4_tfree_expand_commute — dispatches to per-step-type helpers.
 proof fn lemma_k4_tfree_expand_commute_other(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, step1: DerivationStep,
@@ -13032,224 +13499,22 @@ proof fn lemma_k4_tfree_expand_commute_other(
         &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
     }),
 {
-    // TODO: implement remaining arms (FreeExpand/RelatorInsert/RelatorDelete)
-    // Each arm follows the same commutation pattern as FreeReduce.
-    assume(false);
-    arbitrary()
-    /*
-    let hp = hnn_presentation(data);
-    let n = data.base.num_generators;
-
-    let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
-    assert(w1 =~= w.subrange(0, p0) + pair + w.subrange(p0, w.len() as int));
-
     match step1 {
-        DerivationStep::FreeReduce { position: p1 } => {
+        DerivationStep::FreeReduce { .. } => {
+            // Excluded by precondition
+            assert(false);
             arbitrary()
         },
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } => {
-            if generator_index(sym1) == n {
-                // FreeExpand(stable): count increases by 2, so c2 = 4 ≠ 2
-                let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
-                assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
-                let left1 = w1.subrange(0, p1);
-                let right1 = w1.subrange(p1, w1.len() as int);
-                assert(w1 =~= left1 + right1);
-                assert(w2 =~= left1 + pair1 + right1);
-                lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
-                assert(stable_letter_count(pair1, n) == 2);
-                lemma_stable_letter_count_concat(left1, right1, n);
-                lemma_stable_letter_count_concat(left1, pair1, n);
-                lemma_stable_letter_count_concat(left1 + pair1, right1, n);
-                assert(stable_letter_count(w2, n) ==
-                    stable_letter_count(left1, n) + 2 + stable_letter_count(right1, n));
-                assert(stable_letter_count(w1, n) ==
-                    stable_letter_count(left1, n) + stable_letter_count(right1, n));
-                // c2 = c1 + 2 = 4, but c2 == 2
-                assert(false);
-            }
-            let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
-
-            if p1 == p0 + 1 {
-                assume(false); // TODO: edge case between stable letters
-                arbitrary()
-            } else if p1 <= p0 {
-                let w_prime = w.subrange(0, p1) + pair1 + w.subrange(p1, w.len() as int);
-                let step1_base = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1), pair1, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1) + pair1, w.subrange(p1, w.len() as int), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let step0_adj = DerivationStep::FreeExpand { position: (p0 + 2) as int, symbol: sym };
-                let expand_result = w_prime.subrange(0, (p0 + 2) as int) + pair
-                    + w_prime.subrange((p0 + 2) as int, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            } else {
-                assert(p1 >= p0 + 2);
-                let p1_adj = (p1 - 2) as int;
-                let w_prime = w.subrange(0, p1_adj) + pair1 + w.subrange(p1_adj, w.len() as int);
-                let step1_base = DerivationStep::FreeExpand { position: p1_adj, symbol: sym1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj), pair1, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj) + pair1, w.subrange(p1_adj, w.len() as int), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
-                let expand_result = w_prime.subrange(0, p0) + pair
-                    + w_prime.subrange(p0, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            }
+            lemma_k4_tfree_expand_commute_fe(data, w, w1, w2, p0, sym, p1, sym1)
         },
         DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } => {
-            if (ri1 as int) >= data.base.relators.len() {
-                // HNN relator: inserts 2 stable letters, c2 = 4 ≠ 2
-                let r1 = get_relator(hp, ri1, inv1);
-                let left1 = w1.subrange(0, p1);
-                let right1 = w1.subrange(p1, w1.len() as int);
-                assert(w1 =~= left1 + right1);
-                assert(w2 =~= left1 + r1 + right1);
-                lemma_relator_stable_count(data, ri1, inv1);
-                let rc = stable_letter_count(r1, n);
-                assert(rc == 2);
-                lemma_stable_letter_count_concat(left1, right1, n);
-                lemma_stable_letter_count_concat(left1, r1, n);
-                lemma_stable_letter_count_concat(left1 + r1, right1, n);
-                assert(stable_letter_count(w2, n) ==
-                    stable_letter_count(left1, n) + rc + stable_letter_count(right1, n));
-                assert(stable_letter_count(w1, n) ==
-                    stable_letter_count(left1, n) + stable_letter_count(right1, n));
-                assert(false);
-            }
-            let r1 = get_relator(hp, ri1, inv1);
-            let r1_len = r1.len() as int;
-            reveal(presentation_valid);
-            lemma_relator_stable_count(data, ri1, inv1);
-
-            if p1 <= p0 {
-                let w_prime = w.subrange(0, p1) + r1 + w.subrange(p1, w.len() as int);
-                let step1_base = DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_letter_count_concat(w.subrange(0, p1), r1, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1) + r1, w.subrange(p1, w.len() as int), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let step0_adj = DerivationStep::FreeExpand { position: (p0 + r1_len) as int, symbol: sym };
-                let expand_result = w_prime.subrange(0, (p0 + r1_len) as int) + pair
-                    + w_prime.subrange((p0 + r1_len) as int, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            } else if p1 >= p0 + 2 {
-                let p1_adj = (p1 - 2) as int;
-                let w_prime = w.subrange(0, p1_adj) + r1 + w.subrange(p1_adj, w.len() as int);
-                let step1_base = DerivationStep::RelatorInsert { position: p1_adj, relator_index: ri1, inverted: inv1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj), r1, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj) + r1, w.subrange(p1_adj, w.len() as int), n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
-                let expand_result = w_prime.subrange(0, p0) + pair
-                    + w_prime.subrange(p0, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            } else {
-                assume(false); // TODO: p1 = p0 + 1 edge case
-                arbitrary()
-            }
+            lemma_k4_tfree_expand_commute_ri(data, w, w1, w2, p0, sym, p1, ri1, inv1)
         },
         DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 } => {
-            if (ri1 as int) >= data.base.relators.len() {
-                // HNN relator delete: removes 2 stable letters, count 2→0 → base
-                let r1 = get_relator(hp, ri1, inv1);
-                lemma_relator_stable_count(data, ri1, inv1);
-                lemma_stable_count_subrange(w1, p1, p1 + r1.len() as int, n);
-                lemma_stable_letter_count_concat(
-                    w1.subrange(0, p1),
-                    w1.subrange(p1 + r1.len() as int, w1.len() as int), n);
-                assert(stable_letter_count(w2, n) == 0nat);
-                assert(false); // contradicts !is_base_word(w2)
-            }
-            let r1 = get_relator(hp, ri1, inv1);
-            let r1_len = r1.len() as int;
-            reveal(presentation_valid);
-            lemma_relator_stable_count(data, ri1, inv1);
-
-            if p1 + r1_len <= p0 {
-                assert(w1.subrange(p1, p1 + r1_len) =~= r1);
-                assert forall|k: int| p1 <= k < p1 + r1_len
-                    implies w1[k] == w[k] by {};
-                assert(w.subrange(p1, p1 + r1_len) =~= r1);
-
-                let w_prime = w.subrange(0, p1) + w.subrange(p1 + r1_len, w.len() as int);
-                let step1_base = DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_count_subrange(w, p1, p1 + r1_len, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1), w.subrange(p1 + r1_len, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let p0_adj = (p0 - r1_len) as int;
-                let step0_adj = DerivationStep::FreeExpand { position: p0_adj, symbol: sym };
-                let expand_result = w_prime.subrange(0, p0_adj) + pair
-                    + w_prime.subrange(p0_adj, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            } else if p1 >= p0 + 2 {
-                let p1_adj = (p1 - 2) as int;
-                assert forall|k: int| p1 <= k < p1 + r1_len
-                    implies w1[k] == w[(k - 2) as int] by {};
-                assert(w.subrange(p1_adj, p1_adj + r1_len) =~= r1);
-
-                let w_prime = w.subrange(0, p1_adj) + w.subrange(p1_adj + r1_len, w.len() as int);
-                let step1_base = DerivationStep::RelatorDelete { position: p1_adj, relator_index: ri1, inverted: inv1 };
-                assert(apply_step(data.base, w, step1_base) == Some(w_prime));
-                lemma_stable_count_subrange(w, p1_adj, p1_adj + r1_len, n);
-                lemma_stable_letter_count_concat(w.subrange(0, p1_adj), w.subrange(p1_adj + r1_len, w.len() as int), n);
-                lemma_step_preserves_word_valid(data, w, step1_base);
-
-                let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym };
-                let expand_result = w_prime.subrange(0, p0) + pair
-                    + w_prime.subrange(p0, w_prime.len() as int);
-                assert forall|k: int| 0 <= k < w2.len()
-                    implies w2[k] == expand_result[k] by {};
-                assert(w2 =~= expand_result);
-                assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-
-                (w_prime, step1_base, step0_adj)
-            } else {
-                assume(false); // TODO: overlap case
-                arbitrary()
-            }
+            lemma_k4_tfree_expand_commute_rd(data, w, w1, w2, p0, sym, p1, ri1, inv1)
         },
-    */
+    }
 }
 
 /// k≥4, Case A, step0 = RelatorInsert(HNN): commute T-free step1.
@@ -13333,12 +13598,61 @@ proof fn lemma_k4_peak_step12(
     ensures
         equiv_in_presentation(data.base, w, w_end),
 {
-    // TODO: implement peak elimination
-    assume(false);
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    if steps.len() == 4 {
+        // k=4: c_3 is forced to be 2.
+        // Step 2 operates on w_2 (count 4). Step 3 must bring to base (count 0).
+        // By lemma_count4_step_cant_reach_base, step 3 can't reach base from count ≥ 4.
+        // So step 2 must reduce count: c_3 ∈ {2, 4, 6}.
+        // c_3 = 4 or 6: step 3 goes from c_3 ≥ 4 → 0, impossible.
+        // c_3 = 2: step 2 is -2, step 3 is -2. ✓
+        let step2 = remaining_steps[0int];
+        let step3 = remaining_steps[1int];
+        assert(remaining_steps.len() == 2);
+
+        // Establish step 2 validity and w3
+        assert(apply_step(hp, w2, step2).is_some());
+        let w3 = apply_step(hp, w2, step2).unwrap();
+        lemma_step_preserves_word_valid(data, w2, step2);
+
+        // w3 is the last non-base intermediate
+        assert(derivation_word_at(hp, steps, w, 3nat) == w3) by {
+            let rest0 = steps.drop_first();
+            let rest1 = rest0.drop_first();
+            assert(derivation_word_at(hp, steps, w, 3nat) ==
+                derivation_word_at(hp, rest0, w1, 2nat));
+            assert(derivation_word_at(hp, rest0, w1, 2nat) ==
+                derivation_word_at(hp, rest1, w2, 1nat));
+            assert(rest1.first() == step2);
+            lemma_word_at_one(hp, rest1, w2);
+        };
+        assert(!is_base_word(w3, n));
+
+        // Prove c_3 = 2: step 3 can't reach base from count ≥ 4
+        lemma_stable_count_reduce_step(data, w2, step2, n);
+        let c3 = stable_letter_count(w3, n);
+        // c3 is one of {2, 4, 6}
+        if c3 >= 4 {
+            // Step 3 goes from c3 ≥ 4 to base, impossible
+            assert(apply_step(hp, w3, step3) == Some(w_end));
+            lemma_count4_step_cant_reach_base(data, w3, w_end, step3);
+            assert(false);
+        }
+        assert(c3 == 2nat);
+
+        // Steps 1 (+2) and 2 (-2) form a peak.
+        // For now, handle this with assume(false) — need per-type analysis
+        assume(false);
+    } else {
+        // k >= 5 with c_2 = 4
+        // TODO: commute from end or deeper peak analysis
+        assume(false);
+    }
 }
 
 /// Strategy: for k=3, dispatch on step types and commute neutral step to front.
-/// For k≥4: commute T-free step to front, or peak-eliminate.
 /// For k≥4: commute T-free step to front, or peak-eliminate.
 proof fn lemma_single_segment_hard(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
