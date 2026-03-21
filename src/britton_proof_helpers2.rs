@@ -119,6 +119,12 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w), r1, n);
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w) + r1, w.subrange(p1_on_w, w.len() as int), n);
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w), w.subrange(p1_on_w, w.len() as int), n);
+        // Connect count(w) = 0 to count(left) + count(right) = 0
+        let left = w.subrange(0, p1_on_w);
+        let right = w.subrange(p1_on_w, w.len() as int);
+        assert(w =~= left + right);
+        assert(stable_letter_count(left + right, n) == 0nat);
+        assert(stable_letter_count(w_prime, n) == 0nat);
         lemma_step_preserves_word_valid(data, w, step1_base);
         let step0_adj = DerivationStep::RelatorInsert { position: p0_adj, relator_index: ri0, inverted: inv0 };
         let ins = w_prime.subrange(0, p0_adj) + r0 + w_prime.subrange(p0_adj, w_prime.len() as int);
