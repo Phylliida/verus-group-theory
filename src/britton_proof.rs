@@ -193,7 +193,7 @@ proof fn lemma_derivation_unfold_1(
 }
 
 /// Construct derivation_produces for a 2-step sequence from individual apply_step facts.
-proof fn lemma_derivation_produces_2(
+pub proof fn lemma_derivation_produces_2(
     hp: Presentation, s0: DerivationStep, s1: DerivationStep,
     w0: Word, w1: Word, w2: Word,
 )
@@ -14391,22 +14391,52 @@ proof fn lemma_single_segment_hard(
                     lemma_equiv_transitive(data.base, w, w1_prime, w_end);
                 }
             } else {
-                // k >= 5 with c_2 = 4
-                // Check if the LAST non-base intermediate has count 2 (T-free from end)
-                // c_{k-1} = 2 always. c_{k-2} could be 2 or 4.
-                // If c_{k-2} = 2: step k-2 is T-free, and we can handle it
-                // by noting that the sub-derivation steps[0..k-2] from w to w_{k-2}
-                // has k-2 steps (strictly fewer). We show w_{k-2} is equivalent to
-                // w_end in base group (the last 2 steps are T-free + reducing).
-                //
-                // Actually, the simplest approach: since k >= 5 and c_2 = 4,
-                // and all changes are by 0 or ±2, for odd k there MUST be
-                // a T-free step at some position. For even k, there might not be.
-                // But we already handle T-free step 1 (c_2 = 2) above.
-                // For c_2 = 4, we need more analysis.
-                //
-                // For now, use assume(false) for k >= 5 peak case.
-                assume(false);
+                // k >= 5 with c_2 = 4: same peak argument as k=4.
+                let step2 = remaining_steps[0int];
+                assert(apply_step(hp, w2, step2).is_some());
+                let w3 = apply_step(hp, w2, step2).unwrap();
+                lemma_step_preserves_word_valid(data, w2, step2);
+
+                // w3 is non-base intermediate
+                assert(derivation_word_at(hp, steps, w, 3nat) == w3) by {
+                    let r0 = steps.drop_first();
+                    let r1 = r0.drop_first();
+                    assert(derivation_word_at(hp, steps, w, 3nat) ==
+                        derivation_word_at(hp, r0, w1, 2nat));
+                    assert(derivation_word_at(hp, r0, w1, 2nat) ==
+                        derivation_word_at(hp, r1, w2, 1nat));
+                    assert(r1.first() == step2);
+                    lemma_word_at_one(hp, r1, w2);
+                };
+                assert(!is_base_word(w3, n));
+
+                // c_3 = 2 (c3 >= 4 requires deeper analysis)
+                lemma_stable_count_reduce_step(data, w2, step2, n);
+                let c3 = stable_letter_count(w3, n);
+                lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+                let tail_steps = remaining_steps.subrange(1, remaining_steps.len() as int);
+                assert(derivation_produces(hp, tail_steps, w3) == Some(w_end));
+
+                if c3 >= 4 {
+                    // c3 >= 4: need deeper peak analysis (T-free or higher peak)
+                    assume(false);
+                }
+                assert(c3 == 2nat);
+
+                // Peak at steps (1, 2): cancel or commute
+                if w3 =~= w1 {
+                    let short = crate::britton_proof_helpers3::lemma_k5_peak_cancel(
+                        data, steps, w, w_end, w1, step0, tail_steps);
+                    lemma_base_derivation_equiv(data, short, w, w_end);
+                } else {
+                    let (w1_prime, left_steps, right_steps) =
+                        crate::britton_proof_helpers3::lemma_k5_peak_noncancel(
+                            data, steps, w, w_end, w1, w2, w3,
+                            step0, step1, step2, tail_steps);
+                    lemma_base_derivation_equiv(data, left_steps, w, w1_prime);
+                    lemma_base_derivation_equiv(data, right_steps, w1_prime, w_end);
+                    lemma_equiv_transitive(data.base, w, w1_prime, w_end);
+                }
             }
         }
     }
@@ -14587,7 +14617,7 @@ proof fn lemma_single_segment(
 /// General base→base derivation equivalence.
 /// If a derivation in G* goes from base w to base w_end, then w ≡_G w_end.
 /// Uses mutual recursion with lemma_single_segment.
-proof fn lemma_base_derivation_equiv(
+pub proof fn lemma_base_derivation_equiv(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
     requires

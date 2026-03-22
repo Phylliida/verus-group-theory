@@ -1324,4 +1324,123 @@ pub proof fn lemma_k3_ri_hnn_relinsert_base_right(
     lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
 }
 
+/// k≥5 peak non-cancel: commute step2 past step1, return derivation data.
+/// Returns (w1_prime, left_steps, right_steps) where:
+///   - w1_prime is base, word_valid
+///   - derivation_produces(hp, left_steps, w) == Some(w1_prime), len 2
+///   - derivation_produces(hp, right_steps, w1_prime) == Some(w_end), len k-2
+pub proof fn lemma_k5_peak_noncancel(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word,
+    step0: DerivationStep, step1: DerivationStep, step2: DerivationStep,
+    tail_steps: Seq<DerivationStep>,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 5,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& step0 == steps[0]
+            &&& step1 == steps[1]
+            &&& step2 == steps[2]
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& tail_steps =~= steps.subrange(3, steps.len() as int)
+            &&& derivation_produces(hp, tail_steps, w3) == Some(w_end)
+        }),
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2, data.base.num_generators),
+        !is_base_word(w3, data.base.num_generators),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 2nat,
+        !(w3 =~= w1),
+    ensures ({
+        let (w1_prime, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w1_prime, n)
+        &&& word_valid(w1_prime, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w1_prime)
+        &&& derivation_produces(hp, right_steps, w1_prime) == Some(w_end)
+        &&& left_steps.len() < steps.len()
+        &&& right_steps.len() < steps.len()
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let (w1_prime, step2_adj, step1_adj) =
+        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
+
+    // Left: [step0, step2_adj] from w to w1', 2 steps
+    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w1_prime);
+    let left_steps: Seq<DerivationStep> = seq![step0, step2_adj];
+
+    // Right: [step1_adj] ++ tail_steps from w1' to w_end
+    lemma_step_preserves_word_valid(data, w1_prime, step1_adj);
+    assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
+    let one_adj: Seq<DerivationStep> = seq![step1_adj];
+    assert(one_adj.first() == step1_adj);
+    assert(one_adj.drop_first() =~= Seq::<DerivationStep>::empty());
+    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
+        assert(Seq::<DerivationStep>::empty().len() == 0);
+    };
+    assert(derivation_produces(hp, one_adj, w1_prime) == Some(w3));
+    lemma_derivation_concat(hp, one_adj, tail_steps, w1_prime, w3, w_end);
+    let right_steps = one_adj + tail_steps;
+
+    (w1_prime, left_steps, right_steps)
+}
+
+/// k≥5 cancel case: build shorter derivation [step0] ++ tail_steps (k-2 steps).
+pub proof fn lemma_k5_peak_cancel(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, step0: DerivationStep,
+    tail_steps: Seq<DerivationStep>,
+) -> (short: Seq<DerivationStep>)
+    requires
+        hnn_data_valid(data),
+        steps.len() >= 5,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& step0 == steps[0]
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& tail_steps =~= steps.subrange(3, steps.len() as int)
+            &&& derivation_produces(hp, tail_steps, w1) == Some(w_end)
+        }),
+    ensures ({
+        let hp = hnn_presentation(data);
+        &&& derivation_produces(hp, short, w) == Some(w_end)
+        &&& short.len() < steps.len()
+    }),
+{
+    let hp = hnn_presentation(data);
+
+    let one_step: Seq<DerivationStep> = seq![step0];
+    assert(one_step.first() == step0);
+    assert(apply_step(hp, w, one_step.first()) == Some(w1));
+    assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
+    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w1) == Some(w1)) by {
+        assert(Seq::<DerivationStep>::empty().len() == 0);
+    };
+    assert(derivation_produces(hp, one_step, w) == Some(w1));
+
+    lemma_derivation_concat(hp, one_step, tail_steps, w, w1, w_end);
+    one_step + tail_steps
+}
+
 } // verus!
