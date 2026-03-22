@@ -14143,7 +14143,6 @@ proof fn lemma_k4_tfree_ri_commute_other(
 /// For k≥4: commute T-free step to front, or peak-eliminate.
 proof fn lemma_single_segment_hard(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
-    count_sum: nat,
 )
     requires
         hnn_data_valid(data),
@@ -14165,10 +14164,9 @@ proof fn lemma_single_segment_hard(
             forall|j: nat| 1 <= j < steps.len()
                 ==> !is_base_word(derivation_word_at(hp, steps, w, j), n)
         }),
-        count_sum >= derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators),
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), count_sum, 0nat,
+    decreases steps.len(), 0nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -14484,7 +14482,7 @@ proof fn lemma_single_segment(
         // (For k > 2: all w_1,...,w_{k-1} are non-base — handled by induction)
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators) + 1, 1nat,
+    decreases steps.len(), 1nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -14622,8 +14620,7 @@ proof fn lemma_single_segment(
                 };
 
                 // Delegate to the hard case helper
-                lemma_single_segment_hard(data, steps, w, w_end,
-                    derivation_count_sum(hp, steps, w, n));
+                lemma_single_segment_hard(data, steps, w, w_end);
             }
         }
     }
@@ -14645,7 +14642,7 @@ pub proof fn lemma_base_derivation_equiv(
         word_valid(w_end, data.base.num_generators + 1),
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators) + 2, 2nat,
+    decreases steps.len(), 2nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
