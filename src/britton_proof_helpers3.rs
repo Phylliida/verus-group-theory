@@ -3574,19 +3574,23 @@ pub proof fn lemma_bubble_peak_to_front(
             _ => false,
         });
 
-        // word_valid for w_prev: prefix produces w_before_peak from w,
-        // splitting at len-1 gives w_prev, and step preserves word_valid
-        // All intermediate words of a valid derivation are word_valid.
-        // w is word_valid(n+1), each step preserves it.
-        // We need word_valid(w_prev, n+1).
-        // This follows from apply_step preserving word_valid through the prefix.
-        // For now, establish it via the derivation structure.
-        assume(word_valid(w_prev, n + 1)); // TODO: prove from prefix derivation
+        // word_valid for w_prev from derivation
+        lemma_derivation_preserves_word_valid(data, new_prefix, w, w_prev);
 
-        // Establish count of w_prev = 2 * new_prefix.len()
-        // This follows from: each prefix step is +2, starting from w (count 0).
-        // After new_prefix.len() steps of +2: count = 2 * new_prefix.len().
-        assume(stable_letter_count(w_prev, n) == 2 * new_prefix.len()); // TODO: prove by induction on prefix
+        // Count of w_prev = 2 * new_prefix.len() from all-+2 prefix
+        assert forall|j: int| 0 <= j < new_prefix.len() implies
+            match #[trigger] new_prefix[j] {
+                DerivationStep::FreeExpand { symbol, .. } =>
+                    generator_index(symbol) == n,
+                DerivationStep::RelatorInsert { relator_index, .. } =>
+                    relator_index as int >= data.base.relators.len(),
+                _ => false,
+            }
+        by {
+            assert(new_prefix[j] == prefix[j]);
+        };
+        lemma_base_implies_count_zero(w, n);
+        lemma_plus2_prefix_gives_count(data, new_prefix, w, w_prev, 0nat);
 
         // Check cancel at new peak
         if w_prime =~= w_prev {
