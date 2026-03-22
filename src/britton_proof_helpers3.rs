@@ -2533,26 +2533,71 @@ proof fn lemma_swap_rd_past_ri_inner(
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
         (w1_prime, step_tfree_adj, step0_adj)
     } else if p1 >= p0 + r0_len {
-        let p1_adj = (p1 - r0_len) as int;
-        assert forall|k: int| p1 <= k < p1 + r1_len implies w2[k] == w1[(k - r0_len) as int] by {};
-        assert(w1.subrange(p1_adj, p1_adj + r1_len) =~= r1);
-        let w1_prime = w1.subrange(0, p1_adj) + w1.subrange(p1_adj + r1_len, w1.len() as int);
-        let step_tfree_adj = DerivationStep::RelatorDelete { position: p1_adj, relator_index: ri1, inverted: inv1 };
-        assert(apply_step(hp, w1, step_tfree_adj) == Some(w1_prime));
-        lemma_stable_count_subrange(w1, p1_adj, p1_adj + r1_len, n);
-        lemma_stable_letter_count_concat(w1.subrange(0, p1_adj), w1.subrange(p1_adj + r1_len, w1.len() as int), n);
-        lemma_stable_letter_count_concat(w1.subrange(0, p1_adj), w1.subrange(p1_adj, w1.len() as int), n);
-        lemma_step_preserves_word_valid(data, w1, step_tfree_adj);
-        let step0_adj = DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 };
-        let ins = w1_prime.subrange(0, p0) + r0
-            + w1_prime.subrange(p0, w1_prime.len() as int);
-        assert forall|k: int| 0 <= k < w3.len() implies w3[k] == ins[k] by {};
-        assert(w3 =~= ins);
-        assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
-        (w1_prime, step_tfree_adj, step0_adj)
+        lemma_swap_rd_past_ri_right(data, w1, w2, w3, p0, ri0, inv0, p1, ri1, inv1)
     } else {
         assume(false); arbitrary()
     }
+}
+
+proof fn lemma_swap_rd_past_ri_right(
+    data: HNNData, w1: Word, w2: Word, w3: Word,
+    p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ri0 as int >= data.base.relators.len(),
+        ({
+            let hp = hnn_presentation(data);
+            let r0 = get_relator(hp, ri0, inv0);
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 }) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w3)
+            &&& p1 >= p0 + r0.len()
+        }),
+        stable_letter_count(w2, data.base.num_generators) ==
+            stable_letter_count(w3, data.base.num_generators),
+    ensures ({
+        let (w1_prime, step_tfree_adj, step0_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& word_valid(w1_prime, n + 1)
+        &&& stable_letter_count(w1_prime, n) == stable_letter_count(w1, n)
+        &&& apply_step(hp, w1, step_tfree_adj) == Some(w1_prime)
+        &&& apply_step(hp, w1_prime, step0_adj) == Some(w3)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r0 = get_relator(hp, ri0, inv0);
+    let r0_len = r0.len() as int;
+    let r1 = get_relator(hp, ri1, inv1);
+    let r1_len = r1.len() as int;
+    assert(w2 =~= w1.subrange(0, p0) + r0 + w1.subrange(p0, w1.len() as int));
+    lemma_relator_stable_count(data, ri1, inv1);
+    lemma_stable_count_subrange(w2, p1, p1 + r1_len, n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p1), w2.subrange(p1 + r1_len, w2.len() as int), n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p1), w2.subrange(p1, w2.len() as int), n);
+    assert(stable_letter_count(r1, n) == 0nat);
+
+    let p1_adj = (p1 - r0_len) as int;
+    assert forall|k: int| p1 <= k < p1 + r1_len implies w2[k] == w1[(k - r0_len) as int] by {};
+    assert(w1.subrange(p1_adj, p1_adj + r1_len) =~= r1);
+    let w1_prime = w1.subrange(0, p1_adj) + w1.subrange(p1_adj + r1_len, w1.len() as int);
+    let step_tfree_adj = DerivationStep::RelatorDelete { position: p1_adj, relator_index: ri1, inverted: inv1 };
+    assert(apply_step(hp, w1, step_tfree_adj) == Some(w1_prime));
+    lemma_stable_count_subrange(w1, p1_adj, p1_adj + r1_len, n);
+    lemma_stable_letter_count_concat(w1.subrange(0, p1_adj), w1.subrange(p1_adj + r1_len, w1.len() as int), n);
+    lemma_stable_letter_count_concat(w1.subrange(0, p1_adj), w1.subrange(p1_adj, w1.len() as int), n);
+    lemma_step_preserves_word_valid(data, w1, step_tfree_adj);
+    let step0_adj = DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 };
+    let ins = w1_prime.subrange(0, p0) + r0
+        + w1_prime.subrange(p0, w1_prime.len() as int);
+    assert forall|k: int| 0 <= k < w3.len() implies w3[k] == ins[k] by {};
+    assert(w3 =~= ins);
+    assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
+    (w1_prime, step_tfree_adj, step0_adj)
 }
 
 /// Classify a step that increases stable count by 2.
@@ -3632,6 +3677,557 @@ pub proof fn lemma_bubble_peak_to_front(
                 w_prime,
                 w_end,
             )
+        }
+    }
+}
+
+/// 3-round swap for c_3=6, c_4=6 (step3 T-free).
+/// Swaps step3 past step2, step1, step0 to create base intermediate.
+proof fn lemma_k5_c3_6_c4_6_three_round(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word, w4: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    step2: DerivationStep, step3: DerivationStep,
+    suffix: Seq<DerivationStep>,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 5,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w, data.base.num_generators),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        word_valid(w4, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& apply_step(hp, w3, step3) == Some(w4)
+            &&& derivation_produces(hp, suffix, w4) == Some(w_end)
+        }),
+        ({
+            let n = data.base.num_generators;
+            &&& stable_letter_count(w1, n) == 2nat
+            &&& stable_letter_count(w2, n) == 4nat
+            &&& stable_letter_count(w3, n) == 6nat
+            &&& stable_letter_count(w4, n) == 6nat  // step3 is T-free
+        }),
+        match step0 {
+            DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+        match step1 {
+            DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+        match step2 {
+            DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+        // suffix length relates to steps length
+        suffix.len() + 4 <= steps.len(),
+    ensures ({
+        let (w_base, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_base, n)
+        &&& word_valid(w_base, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
+        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
+        &&& left_steps.len() < steps.len()
+        &&& right_steps.len() < steps.len()
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // Round 1: swap step3 (T-free) past step2 (+2)
+    let (w_prime, step3_adj, step2_adj) = match step2 {
+        DerivationStep::FreeExpand { position: p2, symbol: sym2 } =>
+            lemma_swap_tfree_past_expand(data, w2, w3, w4, p2, sym2, step3),
+        DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 } =>
+            lemma_swap_tfree_past_ri(data, w2, w3, w4, p2, ri2, inv2, step3),
+        _ => { assert(false); arbitrary() },
+    };
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    // Round 2: swap step3_adj (T-free) past step1 (+2)
+    let (w1_prime, step3_adj2, step1_adj) = match step1 {
+        DerivationStep::FreeExpand { position: p1, symbol: sym1 } =>
+            lemma_swap_tfree_past_expand(data, w1, w2, w_prime, p1, sym1, step3_adj),
+        DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } =>
+            lemma_swap_tfree_past_ri(data, w1, w2, w_prime, p1, ri1, inv1, step3_adj),
+        _ => { assert(false); arbitrary() },
+    };
+    assert(stable_letter_count(w1_prime, n) == 2nat);
+    assert(!is_base_word(w1_prime, n));
+    lemma_step_preserves_word_valid(data, w1, step3_adj2);
+    lemma_base_word_valid_down(w, n);
+
+    // Round 3: swap step3_adj2 (T-free) past step0 (+2) at w (BASE)
+    let (w_base, step3_base, step0_adj) = match step0 {
+        DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
+            match step3_adj2 {
+                DerivationStep::FreeReduce { position: p } =>
+                    lemma_k4_tfree_expand_commute_fr(data, w, w1, w1_prime, p0, sym0, p),
+                _ =>
+                    lemma_k4_tfree_expand_commute_other(data, w, w1, w1_prime, p0, sym0, step3_adj2),
+            }
+        },
+        DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } =>
+            lemma_k4_tfree_ri_commute(data, w, w1, w1_prime, p0, ri0, inv0, step3_adj2),
+        _ => { assert(false); arbitrary() },
+    };
+
+    // Build derivation: [step0_adj, step1_adj, step2_adj] ++ suffix from w_base to w_end
+    lemma_step_preserves_word_valid(data, w_base, step0_adj);
+    lemma_derivation_produces_2(hp, step0_adj, step1_adj, w_base, w1_prime, w_prime);
+    let prefix2: Seq<DerivationStep> = seq![step0_adj, step1_adj];
+    let step2_adj_seq: Seq<DerivationStep> = seq![step2_adj];
+    assert(step2_adj_seq.first() == step2_adj);
+    assert(step2_adj_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w4) == Some(w4)) by {
+        assert(Seq::<DerivationStep>::empty().len() == 0);
+    };
+    assert(derivation_produces(hp, step2_adj_seq, w_prime) == Some(w4));
+    lemma_derivation_concat(hp, step2_adj_seq, suffix, w_prime, w4, w_end);
+    let suffix_full = step2_adj_seq + suffix;
+    lemma_derivation_concat(hp, prefix2, suffix_full, w_base, w_prime, w_end);
+    let deriv_steps = prefix2 + suffix_full;
+
+    // left = [step3_base] (base step on w → w_base), 1 step
+    let left_steps: Seq<DerivationStep> = seq![step3_base];
+    assert(left_steps.first() == step3_base);
+    assert(left_steps.drop_first() =~= Seq::<DerivationStep>::empty());
+    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_base) == Some(w_base)) by {
+        assert(Seq::<DerivationStep>::empty().len() == 0);
+    };
+    assert(derivation_produces(hp, left_steps, w) == Some(w_base));
+
+    // Length: left=1, right = 2 + 1 + suffix.len() = 3 + suffix.len()
+    // steps.len() >= 5 and right = steps.len() - 1 (since suffix.len() = steps.len() - 4)
+    assert(left_steps.len() == 1);
+    assert(deriv_steps.len() == 3 + suffix.len());
+
+    (w_base, left_steps, deriv_steps)
+}
+
+/// Recursive scan for first non-+2 step. When found:
+/// - If -2: peak, call bubble_peak_to_front
+/// - If T-free: n-round swap to front
+/// - If +2: extend prefix, recurse
+///
+/// prefix: accumulated +2 steps (derivation from w to w_current)
+/// remaining: steps after prefix (derivation from w_current to w_end)
+proof fn lemma_scan_and_handle(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    prefix: Seq<DerivationStep>,
+    remaining: Seq<DerivationStep>,
+    w_current: Word,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 5,
+        prefix.len() >= 2,
+        remaining.len() >= 2,  // need at least 2 more steps to reach base
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w_current, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& derivation_produces(hp, prefix, w) == Some(w_current)
+            &&& derivation_produces(hp, remaining, w_current) == Some(w_end)
+        }),
+        stable_letter_count(w_current, data.base.num_generators) == 2 * prefix.len(),
+        prefix.len() + remaining.len() == steps.len(),
+        // All prefix steps are +2
+        forall|j: int| 0 <= j < prefix.len() ==>
+            match #[trigger] prefix[j] {
+                DerivationStep::FreeExpand { symbol, .. } =>
+                    generator_index(symbol) == data.base.num_generators,
+                DerivationStep::RelatorInsert { relator_index, .. } =>
+                    relator_index as int >= data.base.relators.len(),
+                _ => false,
+            },
+    ensures ({
+        let (w_base, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_base, n)
+        &&& word_valid(w_base, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
+        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
+        &&& left_steps.len() < steps.len()
+        &&& right_steps.len() < steps.len()
+    }),
+    decreases remaining.len(),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let first_step = remaining.first();
+    assert(apply_step(hp, w_current, first_step).is_some());
+    let w_next = apply_step(hp, w_current, first_step).unwrap();
+    lemma_step_preserves_word_valid(data, w_current, first_step);
+    lemma_stable_count_reduce_step(data, w_current, first_step, n);
+    let c_next = stable_letter_count(w_next, n);
+
+    let rest = remaining.drop_first();
+
+    if c_next < stable_letter_count(w_current, n) {
+        // first_step is -2. Peak at (prefix.len()-1, prefix.len()).
+        // w_current is w_before_peak (count 2*prefix.len())
+        // w_next is w_after_peak (count 2*prefix.len() - 2)
+
+        // But wait — the peak is between the LAST prefix step (+2) and first_step (-2).
+        // The last prefix step took w_{prev} → w_current. first_step takes w_current → w_next.
+        // This doesn't have a word BETWEEN them at the peak top.
+        // Actually: the peak is at counts (2*(prefix.len()-1), 2*prefix.len(), 2*(prefix.len()-1)).
+        // step_up = prefix.last(), step_down = first_step
+        // w_before = word at prefix.len()-1, w_at = w_current, w_after = w_next
+
+        // Split prefix to get w_before
+        lemma_derivation_split(hp, prefix, w, w_current, (prefix.len() - 1) as nat);
+        let new_prefix = prefix.subrange(0, prefix.len() as int - 1);
+        let w_before = derivation_produces(hp, new_prefix, w).unwrap();
+        lemma_derivation_preserves_word_valid(data, new_prefix, w, w_before);
+
+        // Establish derivation for rest
+        lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
+        assert(derivation_produces(hp, rest, w_next) == Some(w_end));
+
+        // Cancel check
+        if w_next =~= w_before {
+            // Cancel: remove the peak steps
+            lemma_derivation_concat(hp, new_prefix, rest, w, w_before, w_end);
+            let short = new_prefix + rest;
+            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
+                assert(Seq::<DerivationStep>::empty().len() == 0);
+            };
+            (w, Seq::<DerivationStep>::empty(), short)
+        } else {
+            // Non-cancel: bubble peak to front
+            let last_prefix_step = prefix[prefix.len() as int - 1];
+            // Establish count and +2 type for last_prefix_step
+            assert(match last_prefix_step {
+                DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
+                DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+                _ => false,
+            });
+            // Establish counts
+            lemma_base_implies_count_zero(w, n);
+            lemma_plus2_prefix_gives_count(data, new_prefix, w, w_before, 0nat);
+            assert(stable_letter_count(w_before, n) == 2 * new_prefix.len());
+            assert(stable_letter_count(w_current, n) == 2 * new_prefix.len() + 2);
+            assert(stable_letter_count(w_next, n) == 2 * new_prefix.len());
+
+            // forall on new_prefix steps
+            assert forall|j: int| 0 <= j < new_prefix.len() implies
+                match #[trigger] new_prefix[j] {
+                    DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
+                    DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+                    _ => false,
+                }
+            by { assert(new_prefix[j] == prefix[j]); };
+
+            // Establish apply_step for the peak steps
+            let last_step_seq = prefix.subrange(prefix.len() as int - 1, prefix.len() as int);
+            assert(last_step_seq.len() == 1);
+            assert(last_step_seq.first() == last_prefix_step);
+            lemma_derivation_unfold_1(hp, last_step_seq, w_before, w_current);
+            assert(apply_step(hp, w_before, last_prefix_step) == Some(w_current));
+
+            lemma_bubble_peak_to_front(
+                data, new_prefix, last_prefix_step, first_step, rest,
+                w, w_before, w_current, w_next, w_end)
+        }
+    } else if c_next == stable_letter_count(w_current, n) {
+        // first_step is T-free. Multi-round swap to front.
+        // For now, assume(false) — would need n-round swap helper
+        assume(false);
+        arbitrary()
+    } else {
+        // first_step is +2. Extend prefix, recurse.
+        assert(c_next == stable_letter_count(w_current, n) + 2);
+
+        if rest.len() < 2 {
+            // Not enough remaining steps to reach base — contradiction
+            // From count 2*(prefix.len()+1) with < 2 steps remaining,
+            // can reduce by at most 4. Need to reach 0.
+            // 2*(prefix.len()+1) ≥ 2*(2+1) = 6 > 4.
+            // So can't reach 0. But w_end is base (count 0).
+            // Need at least prefix.len()+1 steps of -2 to reach 0.
+            // remaining has at most 1 step. prefix.len()+1 ≥ 3 > 1.
+            // Contradiction.
+            lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
+            if rest.len() == 0 {
+                // Only first_step. first_step takes c to c+2. w_end has count 0. c+2 > 0.
+                assert(false);
+            } else {
+                // rest has 1 step. w_next has count ≥ 6. 1 step can reduce by at most 2. ≥4 > 0.
+                assert(rest.len() == 1);
+                lemma_derivation_unfold_1(hp, rest, w_next, w_end);
+                lemma_count4_step_cant_reach_base(data, w_next, w_end, rest.first());
+                assert(false);
+            }
+            arbitrary()
+        } else {
+            // Extend prefix and recurse
+            let new_prefix = prefix + seq![first_step];
+            lemma_plus2_step_type(data, w_current, w_next, first_step, n);
+
+            // Prove new_prefix derivation
+            let first_step_seq: Seq<DerivationStep> = seq![first_step];
+            assert(first_step_seq.first() == first_step);
+            assert(first_step_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_next) == Some(w_next)) by {
+                assert(Seq::<DerivationStep>::empty().len() == 0);
+            };
+            assert(derivation_produces(hp, first_step_seq, w_current) == Some(w_next));
+            lemma_derivation_concat(hp, prefix, first_step_seq, w, w_current, w_next);
+
+            // Prove forall on new_prefix
+            assert forall|j: int| 0 <= j < new_prefix.len() implies
+                match #[trigger] new_prefix[j] {
+                    DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
+                    DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+                    _ => false,
+                }
+            by {
+                if j < prefix.len() as int { assert(new_prefix[j] == prefix[j]); }
+                else { assert(new_prefix[j] == first_step); }
+            };
+
+            lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
+            lemma_scan_and_handle(data, steps, w, w_end, new_prefix, rest, w_next)
+        }
+    }
+}
+
+/// Handle c_3 ≥ 6 case. Returns (w_base, left, right) where w_base is base
+/// and left ++ right is a shorter derivation from w to w_end via w_base.
+/// For cancel: left is empty, right is the shorter derivation.
+pub proof fn lemma_k5_c3_ge6(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word,
+    step0: DerivationStep, step1: DerivationStep, step2: DerivationStep,
+    tail_steps: Seq<DerivationStep>,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 5,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            let n = data.base.num_generators;
+            &&& step0 == steps[0]
+            &&& step1 == steps[1]
+            &&& step2 == steps[2]
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& tail_steps =~= steps.subrange(3, steps.len() as int)
+            &&& derivation_produces(hp, tail_steps, w3) == Some(w_end)
+            &&& stable_letter_count(w1, n) == 2nat
+            &&& stable_letter_count(w2, n) == 4nat
+            &&& stable_letter_count(w3, n) >= 6
+        }),
+        match step0 {
+            DerivationStep::FreeExpand { symbol, .. } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { relator_index, .. } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+    ensures ({
+        let (w_base, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_base, n)
+        &&& word_valid(w_base, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
+        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
+        &&& left_steps.len() < steps.len()
+        &&& right_steps.len() < steps.len()
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // c3 = 6 (only possibility from c2=4, change ±2, c3≥6)
+    assert(stable_letter_count(w3, n) == 6nat) by {
+        lemma_stable_count_reduce_step(data, w2, step2, n);
+    };
+
+    // k=5: c3≥6 is impossible (can't reach 0 in 2 remaining steps)
+    if steps.len() == 5 {
+        assert(tail_steps.len() == 2);
+        let s3 = tail_steps[0int];
+        assert(apply_step(hp, w3, s3).is_some());
+        let w4_k5 = apply_step(hp, w3, s3).unwrap();
+        lemma_step_preserves_word_valid(data, w3, s3);
+        lemma_stable_count_reduce_step(data, w3, s3, n);
+        assert(stable_letter_count(w4_k5, n) >= 4);
+        lemma_derivation_split(hp, tail_steps, w3, w_end, 1nat);
+        let last = tail_steps.subrange(1, 2);
+        lemma_derivation_unfold_1(hp, last, w4_k5, w_end);
+        lemma_count4_step_cant_reach_base(data, w4_k5, w_end, last.first());
+        assert(false);
+        return arbitrary();
+    }
+
+    // Get step3 and w4
+    assert(tail_steps.len() >= 1);
+    let step3_inner = tail_steps[0int];
+    assert(apply_step(hp, w3, step3_inner).is_some());
+    let w4 = apply_step(hp, w3, step3_inner).unwrap();
+    lemma_step_preserves_word_valid(data, w3, step3_inner);
+    lemma_stable_count_reduce_step(data, w3, step3_inner, n);
+    let c4 = stable_letter_count(w4, n);
+
+    lemma_derivation_split(hp, tail_steps, w3, w_end, 1nat);
+    let inner_suffix = tail_steps.subrange(1, tail_steps.len() as int);
+
+    if c4 == 4 {
+        // Peak at (2,3). Use bubble chain.
+        let prefix_steps = steps.subrange(0, 2);
+        // Build derivation_produces for the full steps from components
+        lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
+        let first2: Seq<DerivationStep> = seq![step0, step1];
+        assert(first2 =~= prefix_steps);
+        let step2_seq: Seq<DerivationStep> = seq![step2];
+        assert(step2_seq.first() == step2);
+        assert(step2_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
+            assert(Seq::<DerivationStep>::empty().len() == 0);
+        };
+        assert(derivation_produces(hp, step2_seq, w2) == Some(w3));
+        lemma_derivation_concat(hp, step2_seq, tail_steps, w2, w3, w_end);
+        lemma_derivation_concat(hp, prefix_steps, step2_seq + tail_steps, w, w2, w_end);
+        assert(derivation_produces(hp, prefix_steps, w) == Some(w2));
+
+        if w4 =~= w2 {
+            // Cancel
+            lemma_derivation_concat(hp, prefix_steps, inner_suffix, w, w2, w_end);
+            let short = prefix_steps + inner_suffix;
+            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
+                assert(Seq::<DerivationStep>::empty().len() == 0);
+            };
+            (w, Seq::<DerivationStep>::empty(), short)
+        } else {
+            // Non-cancel: bubble peak to front
+            lemma_plus2_step_type(data, w2, w3, step2, n);
+            lemma_plus2_step_type(data, w1, w2, step1, n);
+            assert forall|j: int| 0 <= j < prefix_steps.len() implies
+                match #[trigger] prefix_steps[j] {
+                    DerivationStep::FreeExpand { symbol, .. } =>
+                        generator_index(symbol) == n,
+                    DerivationStep::RelatorInsert { relator_index, .. } =>
+                        relator_index as int >= data.base.relators.len(),
+                    _ => false,
+                }
+            by {
+                if j == 0 { assert(prefix_steps[j] == step0); }
+                else { assert(prefix_steps[j] == step1); }
+            };
+
+            lemma_bubble_peak_to_front(
+                data, prefix_steps, step2, step3_inner, inner_suffix,
+                w, w2, w3, w4, w_end,
+            )
+        }
+    } else {
+        // c4 >= 6: for k=6 this is impossible; for k≥7 need deeper scan
+        if steps.len() == 6 {
+            // k=6, c4≥6: count can't reach 0 in remaining steps
+            let step4_inner = inner_suffix[0int];
+            assert(apply_step(hp, w4, step4_inner).is_some());
+            let w5 = apply_step(hp, w4, step4_inner).unwrap();
+            lemma_step_preserves_word_valid(data, w4, step4_inner);
+            lemma_stable_count_reduce_step(data, w4, step4_inner, n);
+            assert(stable_letter_count(w5, n) >= 4);
+            lemma_derivation_split(hp, inner_suffix, w4, w_end, 1nat);
+            let last_seq = inner_suffix.subrange(1, inner_suffix.len() as int);
+            lemma_derivation_unfold_1(hp, last_seq, w5, w_end);
+            let step5_inner = last_seq.first();
+            lemma_count4_step_cant_reach_base(data, w5, w_end, step5_inner);
+            assert(false);
+            arbitrary()
+        } else {
+            // k≥7, c4≥6: step3 is T-free (c4=6) or +2 (c4=8).
+            if c4 == 6 {
+                // step3 is T-free. 3-round swap to front. Delegate to helper.
+                lemma_plus2_step_type(data, w2, w3, step2, n);
+                lemma_plus2_step_type(data, w1, w2, step1, n);
+                lemma_base_word_valid_down(w, n);
+                lemma_k5_c3_6_c4_6_three_round(
+                    data, steps, w, w_end, w1, w2, w3, w4,
+                    step0, step1, step2, step3_inner, inner_suffix)
+            } else {
+                // c4 = 8: step3 is +2. Extend prefix and recurse.
+                // prefix = [step0, step1, step2, step3], all +2
+                let prefix4 = steps.subrange(0, 4);
+                lemma_plus2_step_type(data, w1, w2, step1, n);
+                lemma_plus2_step_type(data, w2, w3, step2, n);
+                lemma_plus2_step_type(data, w3, w4, step3_inner, n);
+                assert forall|j: int| 0 <= j < prefix4.len() implies
+                    match #[trigger] prefix4[j] {
+                        DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
+                        DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+                        _ => false,
+                    }
+                by {
+                    if j == 0 { assert(prefix4[j] == step0); }
+                    else if j == 1 { assert(prefix4[j] == step1); }
+                    else if j == 2 { assert(prefix4[j] == step2); }
+                    else { assert(prefix4[j] == step3_inner); }
+                };
+                // Build derivation for prefix4
+                lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
+                let first2: Seq<DerivationStep> = seq![step0, step1];
+                let step2_seq: Seq<DerivationStep> = seq![step2];
+                assert(step2_seq.first() == step2);
+                assert(step2_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+                assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
+                    assert(Seq::<DerivationStep>::empty().len() == 0);
+                };
+                assert(derivation_produces(hp, step2_seq, w2) == Some(w3));
+                lemma_derivation_concat(hp, first2, step2_seq, w, w2, w3);
+                let first3 = first2 + step2_seq;
+                let step3_seq: Seq<DerivationStep> = seq![step3_inner];
+                assert(step3_seq.first() == step3_inner);
+                assert(step3_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+                assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w4) == Some(w4)) by {
+                    assert(Seq::<DerivationStep>::empty().len() == 0);
+                };
+                assert(derivation_produces(hp, step3_seq, w3) == Some(w4));
+                lemma_derivation_concat(hp, first3, step3_seq, w, w3, w4);
+                assert(prefix4 =~= first3 + step3_seq);
+                assert(derivation_produces(hp, prefix4, w) == Some(w4));
+
+                // Recurse: scan inner_suffix for first non-+2 step
+                lemma_scan_and_handle(data, steps, w, w_end,
+                    prefix4, inner_suffix, w4)
+            }
         }
     }
 }
