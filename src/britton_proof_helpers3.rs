@@ -214,25 +214,10 @@ pub proof fn lemma_k4_peak_fe_fr(
                 assert(expand_result[k] == w1_prime[k]);
                 assert(w1_prime[k] == w1[k]);
             } else if k < p1_adj {
-                assert(w3[k] == w2[k]);
-                assert(w2[k] == w1[k]);
-                assert(expand_result[k] == w1_prime[k]);
-                assert(w1_prime[k] == w1[k + 2]);
-                // Wait: w1_prime = w1[0..p2] ++ w1[p2+2..]
-                // expand_result[k] for p2 <= k < p1-2:
-                //   w1_prime[k] = w1[k+2]
-                // w3[k] for k < p1-1 (we're in p2 <= k < p1-2):
-                //   w3[k] = w2[k] = w1[k]
-                // These should match: w1[k] vs w1[k+2]??
-                // That's wrong! Let me reconsider.
-                //
-                // Actually w3 = w2[0..p2] ++ w2[p2+2..]
-                // For k < p2: w3[k] = w2[k]
-                // For k >= p2: w3[k] = w2[k+2]
-                // So for p2 <= k < p1-2:
-                //   w3[k] = w2[k+2] = w1[k+2] (since k+2 < p1)
-                // expand_result[k] = w1_prime[k] = w1[k+2] (since k >= p2, w1_prime[k] = w1[k+2])
-                // These match! ✓
+                // p2 <= k < p1-2
+                // w3 = w2[0..p2] ++ w2[p2+2..], so for k >= p2: w3[k] = w2[k+2]
+                // w2[k+2] = w1[k+2] (since k+2 < p1, within w1 prefix)
+                // w1_prime = w1[0..p2] ++ w1[p2+2..], so w1_prime[k] = w1[k+2]
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[k + 2] == w1[k + 2]);
             } else if k == p1_adj {
@@ -701,50 +686,89 @@ pub proof fn lemma_k4_peak_noncancel_commute(
     // Classify step2: must be -2 (FreeReduce(stable) or RelatorDelete(HNN))
     lemma_stable_count_reduce_step(data, w2, step2, n);
 
+    // Helper: prove step2 (count -2) must be FreeReduce or RelatorDelete(HNN)
+    // by showing FreeExpand/RelatorInsert can only increase or maintain count.
+    // This is a nested function to share the step2 ruling-out logic.
+
     match step1 {
-        DerivationStep::FreeReduce { position: _ } => {
-            // FreeReduce can't increase count: count <= c1 = 2, but c2 = 4
-            lemma_stable_count_reduce(w1, match step1 {
-                DerivationStep::FreeReduce { position: p } => p,
-                _ => arbitrary(),
-            }, n);
+        DerivationStep::FreeReduce { position: p1r } => {
+            // FreeReduce: count(w2) = count(w1) - {0,2} ≤ 2. But c2 = 4.
+            lemma_stable_count_reduce(w1, p1r, n);
             assert(false); arbitrary()
         },
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } => {
-            // If base symbol: count stays same (2). But c2 = 4. Contradiction.
-            if generator_index(sym1) < n {
-                let pair = seq![sym1, inverse_symbol(sym1)];
-                lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
-                lemma_stable_letter_count_concat(
-                    w1.subrange(0, p1),
-                    pair + w1.subrange(p1, w1.len() as int), n);
-                lemma_stable_letter_count_concat(pair, w1.subrange(p1, w1.len() as int), n);
-                lemma_stable_letter_count_concat(w1.subrange(0, p1), w1.subrange(p1, w1.len() as int), n);
-                assert(stable_letter_count(w2, n) == 2nat);
-                assert(false); arbitrary()
-            }
-            // sym1 is stable. Now classify step2.
+            // Prove sym1 is stable using count argument
+            let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+            assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
+            let left1 = w1.subrange(0, p1);
+            let right1 = w1.subrange(p1, w1.len() as int);
+            assert(w1 =~= left1 + right1);
+            assert(w2 =~= left1 + pair1 + right1);
+            lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
+            let pc1 = if generator_index(sym1) == n { 2nat } else { 0nat };
+            assert(stable_letter_count(pair1, n) == pc1);
+            lemma_stable_letter_count_concat(left1, right1, n);
+            lemma_stable_letter_count_concat(left1, pair1, n);
+            lemma_stable_letter_count_concat(left1 + pair1, right1, n);
+            assert(stable_letter_count(w2, n) ==
+                stable_letter_count(left1, n) + pc1 + stable_letter_count(right1, n));
+            assert(stable_letter_count(w1, n) ==
+                stable_letter_count(left1, n) + stable_letter_count(right1, n));
+            // c2 = c1 + pc1. Since c2 = 4 and c1 = 2, pc1 = 2, so gen_idx(sym1) == n.
+            assert(pc1 == 2nat);
+            assert(generator_index(sym1) == n);
+            // Now classify step2
             match step2 {
-                DerivationStep::FreeExpand { .. } => {
-                    // Can't decrease count. Contradiction.
+                DerivationStep::FreeExpand { position: p2e, symbol: sym2e } => {
+                    // FreeExpand: count(w3) >= count(w2) = 4. But count(w3) = 2.
+                    let pair2 = Seq::new(1, |_i: int| sym2e) + Seq::new(1, |_i: int| inverse_symbol(sym2e));
+                    assert(pair2 =~= seq![sym2e, inverse_symbol(sym2e)]);
+                    let left2 = w2.subrange(0, p2e);
+                    let right2 = w2.subrange(p2e, w2.len() as int);
+                    assert(w2 =~= left2 + right2);
+                    assert(w3 =~= left2 + pair2 + right2);
+                    lemma_stable_count_pair(sym2e, inverse_symbol(sym2e), n);
+                    let pc2 = if generator_index(sym2e) == n { 2nat } else { 0nat };
+                    assert(stable_letter_count(pair2, n) == pc2);
+                    lemma_stable_letter_count_concat(left2, right2, n);
+                    lemma_stable_letter_count_concat(left2, pair2, n);
+                    lemma_stable_letter_count_concat(left2 + pair2, right2, n);
+                    assert(stable_letter_count(w3, n) ==
+                        stable_letter_count(left2, n) + pc2 + stable_letter_count(right2, n));
+                    assert(stable_letter_count(w2, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(right2, n));
+                    // c3 = c2 + pc2 >= c2 = 4, but c3 = 2. Contradiction.
                     assert(false); arbitrary()
                 },
-                DerivationStep::RelatorInsert { position: _, relator_index: ri2, inverted: _ } => {
-                    // Can't decrease count. Contradiction.
-                    lemma_relator_stable_count(data, ri2, match step2 {
-                        DerivationStep::RelatorInsert { inverted: inv, .. } => inv,
-                        _ => arbitrary(),
-                    });
+                DerivationStep::RelatorInsert { position: p2r, relator_index: ri2, inverted: inv2 } => {
+                    // RelatorInsert: count(w3) >= count(w2) = 4. But count(w3) = 2.
+                    let r2 = get_relator(hp, ri2, inv2);
+                    lemma_relator_stable_count(data, ri2, inv2);
+                    let left2 = w2.subrange(0, p2r);
+                    let right2 = w2.subrange(p2r, w2.len() as int);
+                    assert(w2 =~= left2 + right2);
+                    assert(w3 =~= left2 + r2 + right2);
+                    lemma_stable_letter_count_concat(left2, right2, n);
+                    lemma_stable_letter_count_concat(left2, r2, n);
+                    lemma_stable_letter_count_concat(left2 + r2, right2, n);
+                    assert(stable_letter_count(w3, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(r2, n) + stable_letter_count(right2, n));
+                    assert(stable_letter_count(w2, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(right2, n));
+                    // c3 = c2 + count(r2) >= c2 = 4, but c3 = 2. Contradiction.
                     assert(false); arbitrary()
                 },
                 DerivationStep::FreeReduce { position: p2 } => {
                     lemma_k4_peak_fe_fr(data, w1, w2, w3, p1, sym1, p2)
                 },
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
-                    // Must be HNN relator (count -2 requires stable letters in relator)
                     lemma_relator_stable_count(data, ri2, inv2);
                     if (ri2 as int) < data.base.relators.len() {
-                        // Base relator: count stays same. But c3 = 2 ≠ c2 = 4. Contradiction.
+                        // Base relator: count(r2) = 0, so count(w3) = count(w2) = 4 ≠ 2
+                        let r2 = get_relator(hp, ri2, inv2);
+                        lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+                        lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+                        lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
                     lemma_k4_peak_fe_rd(data, w1, w2, w3, p1, sym1, p2, ri2, inv2)
@@ -752,22 +776,60 @@ pub proof fn lemma_k4_peak_noncancel_commute(
             }
         },
         DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } => {
-            // Must be HNN relator (count +2)
+            // Prove ri1 is HNN: if base, count doesn't change → c2 = 2 ≠ 4
+            let r1 = get_relator(hp, ri1, inv1);
             lemma_relator_stable_count(data, ri1, inv1);
+            let left1 = w1.subrange(0, p1);
+            let right1 = w1.subrange(p1, w1.len() as int);
+            assert(w1 =~= left1 + right1);
+            assert(w2 =~= left1 + r1 + right1);
+            lemma_stable_letter_count_concat(left1, right1, n);
+            lemma_stable_letter_count_concat(left1, r1, n);
+            lemma_stable_letter_count_concat(left1 + r1, right1, n);
+            assert(stable_letter_count(w2, n) ==
+                stable_letter_count(left1, n) + stable_letter_count(r1, n) + stable_letter_count(right1, n));
+            assert(stable_letter_count(w1, n) ==
+                stable_letter_count(left1, n) + stable_letter_count(right1, n));
             if (ri1 as int) < data.base.relators.len() {
-                // Base relator: count stays same (2). But c2 = 4. Contradiction.
+                // count(r1) = 0 → c2 = c1 = 2 ≠ 4
+                assert(stable_letter_count(r1, n) == 0nat);
                 assert(false); arbitrary()
             }
-            // Now classify step2.
+            // Now classify step2
             match step2 {
-                DerivationStep::FreeExpand { .. } => {
+                DerivationStep::FreeExpand { position: p2e, symbol: sym2e } => {
+                    let pair2 = Seq::new(1, |_i: int| sym2e) + Seq::new(1, |_i: int| inverse_symbol(sym2e));
+                    assert(pair2 =~= seq![sym2e, inverse_symbol(sym2e)]);
+                    let left2 = w2.subrange(0, p2e);
+                    let right2 = w2.subrange(p2e, w2.len() as int);
+                    assert(w2 =~= left2 + right2);
+                    assert(w3 =~= left2 + pair2 + right2);
+                    lemma_stable_count_pair(sym2e, inverse_symbol(sym2e), n);
+                    let pc2 = if generator_index(sym2e) == n { 2nat } else { 0nat };
+                    assert(stable_letter_count(pair2, n) == pc2);
+                    lemma_stable_letter_count_concat(left2, right2, n);
+                    lemma_stable_letter_count_concat(left2, pair2, n);
+                    lemma_stable_letter_count_concat(left2 + pair2, right2, n);
+                    assert(stable_letter_count(w3, n) ==
+                        stable_letter_count(left2, n) + pc2 + stable_letter_count(right2, n));
+                    assert(stable_letter_count(w2, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(right2, n));
                     assert(false); arbitrary()
                 },
-                DerivationStep::RelatorInsert { position: _, relator_index: ri2, inverted: _ } => {
-                    lemma_relator_stable_count(data, ri2, match step2 {
-                        DerivationStep::RelatorInsert { inverted: inv, .. } => inv,
-                        _ => arbitrary(),
-                    });
+                DerivationStep::RelatorInsert { position: p2r, relator_index: ri2, inverted: inv2 } => {
+                    let r2 = get_relator(hp, ri2, inv2);
+                    lemma_relator_stable_count(data, ri2, inv2);
+                    let left2 = w2.subrange(0, p2r);
+                    let right2 = w2.subrange(p2r, w2.len() as int);
+                    assert(w2 =~= left2 + right2);
+                    assert(w3 =~= left2 + r2 + right2);
+                    lemma_stable_letter_count_concat(left2, right2, n);
+                    lemma_stable_letter_count_concat(left2, r2, n);
+                    lemma_stable_letter_count_concat(left2 + r2, right2, n);
+                    assert(stable_letter_count(w3, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(r2, n) + stable_letter_count(right2, n));
+                    assert(stable_letter_count(w2, n) ==
+                        stable_letter_count(left2, n) + stable_letter_count(right2, n));
                     assert(false); arbitrary()
                 },
                 DerivationStep::FreeReduce { position: p2 } => {
@@ -776,15 +838,29 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
                     lemma_relator_stable_count(data, ri2, inv2);
                     if (ri2 as int) < data.base.relators.len() {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
+                        lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
+                        lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
                     lemma_k4_peak_ri_rd(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
                 },
             }
         },
-        DerivationStep::RelatorDelete { position: _, relator_index: ri1, inverted: inv1 } => {
-            // RelatorDelete can't increase count. Contradiction.
+        DerivationStep::RelatorDelete { position: p1d, relator_index: ri1, inverted: inv1 } => {
+            // RelatorDelete: count(w2) = count(w1) - count(r1) ≤ count(w1) = 2. But c2 = 4.
+            let r1 = get_relator(hp, ri1, inv1);
             lemma_relator_stable_count(data, ri1, inv1);
+            // w2 = w1[0..p1d] ++ w1[p1d+|r1|..], removing r1 from w1
+            lemma_stable_count_subrange(w1, p1d, p1d + r1.len() as int, n);
+            lemma_stable_letter_count_concat(
+                w1.subrange(0, p1d),
+                w1.subrange(p1d + r1.len() as int, w1.len() as int), n);
+            lemma_stable_letter_count_concat(
+                w1.subrange(0, p1d),
+                w1.subrange(p1d, w1.len() as int), n);
+            // count(w2) = count(w1) - count(r1) ≤ 2. But c2 = 4.
             assert(false); arbitrary()
         },
     }
