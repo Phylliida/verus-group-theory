@@ -13451,7 +13451,7 @@ proof fn lemma_k4_tfree_ri_commute_fr(
 
 /// k≥4, Case A, step0 = RelatorInsert(HNN): commute T-free step1.
 /// Returns (w_prime, step1_base, step0_adj).
-proof fn lemma_k4_tfree_ri_commute(
+pub proof fn lemma_k4_tfree_ri_commute(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, step1: DerivationStep,
 ) -> (result: (Word, DerivationStep, DerivationStep))
@@ -14419,44 +14419,16 @@ proof fn lemma_single_segment_hard(
 
                 if c3 >= 4 {
                     if c3 == 4 {
-                        // c3 = 4: step2 is T-free. Two-round swap to commute
-                        // step2 past step1 and step0, creating base intermediate.
-                        match step0 {
-                            DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
-                                match step1 {
-                                    DerivationStep::FreeExpand { position: p1e, symbol: sym1e } => {
-                                        // Classify step1 as stable
-                                        assert(generator_index(sym1e) == n) by {
-                                            let pair1 = Seq::new(1, |_i: int| sym1e) + Seq::new(1, |_i: int| inverse_symbol(sym1e));
-                                            assert(pair1 =~= seq![sym1e, inverse_symbol(sym1e)]);
-                                            let left1 = w1.subrange(0, p1e);
-                                            let right1 = w1.subrange(p1e, w1.len() as int);
-                                            assert(w1 =~= left1 + right1);
-                                            assert(w2 =~= left1 + pair1 + right1);
-                                            lemma_stable_count_pair(sym1e, inverse_symbol(sym1e), n);
-                                            lemma_stable_letter_count_concat(left1, right1, n);
-                                            lemma_stable_letter_count_concat(left1, pair1, n);
-                                            lemma_stable_letter_count_concat(left1 + pair1, right1, n);
-                                        };
-                                        let (w_base, base_step, deriv_steps) =
-                                            crate::britton_proof_helpers3::lemma_k5_c3_eq4_two_round_fe_fe(
-                                                data, steps, w, w_end, w1, w2, w3,
-                                                p0, sym0, p1e, sym1e, step2, tail_steps);
-                                        lemma_single_step_equiv(data.base, w, base_step, w_base);
-                                        lemma_base_derivation_equiv(data, deriv_steps, w_base, w_end);
-                                        lemma_equiv_transitive(data.base, w, w_base, w_end);
-                                    },
-                                    _ => {
-                                        // step1 = RI(HNN) — needs RI generalized swap
-                                        assume(false);
-                                    },
-                                }
-                            },
-                            _ => {
-                                // step0 = RI(HNN) — needs RI generalized swap
-                                assume(false);
-                            },
-                        }
+                        // c3 = 4: step2 is T-free. Two-round swap for all step0×step1.
+                        // Classify step1 as +2 (FE stable or RI HNN)
+                        crate::britton_proof_helpers3::lemma_plus2_step_type(data, w1, w2, step1, n);
+                        let (w_base, base_step, deriv_steps) =
+                            crate::britton_proof_helpers3::lemma_k5_c3_eq4_two_round(
+                                data, steps, w, w_end, w1, w2, w3,
+                                step0, step1, step2, tail_steps);
+                        lemma_single_step_equiv(data.base, w, base_step, w_base);
+                        lemma_base_derivation_equiv(data, deriv_steps, w_base, w_end);
+                        lemma_equiv_transitive(data.base, w, w_base, w_end);
                     } else {
                         // c3 >= 6: step2 is +2, count keeps going up. Need deeper analysis.
                         assume(false);
