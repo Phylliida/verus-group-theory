@@ -1910,7 +1910,45 @@ proof fn lemma_swap_rd_past_expand(
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
         (w1_prime, step_tfree_adj, step0_adj)
     } else {
-        assume(false); arbitrary()
+        // Overlap: relator region [p1, p1+r1_len) overlaps [p0, p0+2)
+        // The relator has count 0 (all base, gen_idx < n).
+        // But w2[p0] = sym0 with gen_idx = n. If the relator contains position p0,
+        // then r1[p0-p1] = w2[p0] = sym0, gen_idx = n. But r1 has count 0. Contradiction!
+        // Similarly for p0+1.
+        assert(w2.subrange(p1, p1 + r1_len) =~= r1);
+        if p1 <= p0 && p0 < p1 + r1_len {
+            // r1[p0-p1] = w2[p0] = sym0
+            assert(r1[(p0 - p1) as int] == w2[p0]);
+            assert(w2[p0] == sym0);
+            assert(generator_index(sym0) == n);
+            // But r1 has count 0, so all elements have gen_idx < n
+            // Specifically: r1[p0-p1] has gen_idx < n (from count 0)
+            // This is a contradiction since gen_idx(r1[p0-p1]) = n
+            lemma_stable_count_subrange(r1, (p0 - p1) as int, (p0 - p1 + 1) as int, n);
+            assert(false);
+        }
+        // After the first if: p1 > p0. Combined with p1 < p0+2: p1 = p0+1.
+        assert(p1 == p0 + 1);
+        // w2.subrange(p1, p1+r1_len) =~= r1, so w2[p1] = r1[0]
+        // w2[p0+1] = inv(sym0), gen_idx = n
+        // But stable_letter_count(r1, n) = 0 → all r1 elements have gen_idx < n
+        // r1[0] = w2[p1] = w2[p0+1] = inv(sym0) → gen_idx(r1[0]) = n
+        // Contradiction: n < n
+        assert(w2[p1] == r1[0int]);
+        assert(p1 == (p0 + 1) as int);
+        assert(w2[p1] == inverse_symbol(sym0));
+        assert(generator_index(inverse_symbol(sym0)) == n) by {
+            match sym0 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        assert(generator_index(r1[0int]) == n);
+        // But r1 has count 0 → contradiction
+        // stable_letter_count counts elements with gen_idx == n
+        // If r1[0] has gen_idx == n, count >= 1 > 0
+        assert(r1.len() >= 1);
+        lemma_stable_count_subrange(r1, 0, 1, n);
+        // count(r1[0..1]) <= count(r1) = 0. But r1[0] has gen_idx = n → count(r1[0..1]) >= 1.
+        assert(false);
+        arbitrary()
     }
 }
 
