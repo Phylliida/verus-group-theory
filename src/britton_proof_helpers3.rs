@@ -3884,13 +3884,72 @@ proof fn lemma_bubble_tfree_to_front(
         lemma_base_implies_count_zero(w, n);
         assert(stable_letter_count(w_after_tfree, n) == 0nat);
         lemma_zero_count_implies_base(w_after_tfree, n);
-        // step_tfree is a valid base step
-        // We need apply_step(data.base, w, step_tfree) == Some(w_after_tfree)
-        // This requires step_tfree to be valid in data.base (base step).
-        // Since it's T-free (count unchanged) and w is base, it must be a base step type.
-        // FreeReduce(base), FreeExpand(base), RelatorInsert(base), RelatorDelete(base).
-        // These are all valid in data.base.
-        assume(apply_step(data.base, w, step_tfree) == Some(w_after_tfree)); // TODO: prove base step validity
+        // Prove apply_step(data.base, w, step_tfree) == Some(w_after_tfree)
+        // For each T-free step type, the step is valid in data.base:
+        match step_tfree {
+            DerivationStep::FreeReduce { position } => {
+                // FreeReduce doesn't depend on presentation
+                assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
+            },
+            DerivationStep::FreeExpand { position, symbol } => {
+                // FreeExpand: needs symbol_valid(symbol, data.base.num_generators)
+                // T-free means gen_idx(symbol) < n. symbol_valid requires gen_idx < num_generators = n.
+                // From count unchanged: pair count = 0, so gen_idx < n.
+                lemma_stable_count_reduce_step(data, w, step_tfree, n);
+                let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+                assert(pair =~= seq![symbol, inverse_symbol(symbol)]);
+                let left = w.subrange(0, position);
+                let right = w.subrange(position, w.len() as int);
+                assert(w =~= left + right);
+                assert(w_after_tfree =~= left + pair + right);
+                lemma_stable_count_pair(symbol, inverse_symbol(symbol), n);
+                lemma_stable_letter_count_concat(left, right, n);
+                lemma_stable_letter_count_concat(left, pair, n);
+                lemma_stable_letter_count_concat(left + pair, right, n);
+                // count unchanged → pair count = 0 → gen_idx(symbol) < n
+                assert(generator_index(symbol) < n);
+                // symbol_valid in base presentation
+                assert(symbol_valid(symbol, data.base.num_generators));
+                assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
+            },
+            DerivationStep::RelatorInsert { position, relator_index: ri, inverted: inv } => {
+                // T-free → relator has count 0 → base relator (ri < base.relators.len())
+                lemma_relator_stable_count(data, ri, inv);
+                let r = get_relator(hp, ri, inv);
+                let left = w.subrange(0, position);
+                let right = w.subrange(position, w.len() as int);
+                assert(w =~= left + right);
+                assert(w_after_tfree =~= left + r + right);
+                lemma_stable_letter_count_concat(left, right, n);
+                lemma_stable_letter_count_concat(left, r, n);
+                lemma_stable_letter_count_concat(left + r, right, n);
+                assert(stable_letter_count(r, n) == 0nat);
+                assert((ri as int) < data.base.relators.len());
+                // Base relator: same in both presentations
+                reveal(presentation_valid);
+                assert(data.base.relators[ri as int] == hp.relators[ri as int]);
+                assert(get_relator(data.base, ri, inv) =~= r) by {
+                    assert(data.base.relators[ri as int] == hp.relators[ri as int]);
+                };
+                assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
+            },
+            DerivationStep::RelatorDelete { position, relator_index: ri, inverted: inv } => {
+                // Same logic as RelatorInsert
+                lemma_relator_stable_count(data, ri, inv);
+                let r = get_relator(hp, ri, inv);
+                lemma_stable_count_subrange(w, position, position + r.len() as int, n);
+                lemma_stable_letter_count_concat(w.subrange(0, position), w.subrange(position + r.len() as int, w.len() as int), n);
+                lemma_stable_letter_count_concat(w.subrange(0, position), w.subrange(position, w.len() as int), n);
+                assert(stable_letter_count(r, n) == 0nat);
+                assert((ri as int) < data.base.relators.len());
+                reveal(presentation_valid);
+                assert(data.base.relators[ri as int] == hp.relators[ri as int]);
+                assert(get_relator(data.base, ri, inv) =~= r) by {
+                    assert(data.base.relators[ri as int] == hp.relators[ri as int]);
+                };
+                assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
+            },
+        }
         (w_after_tfree, step_tfree, suffix)
     } else {
         // Swap T-free past last prefix step
