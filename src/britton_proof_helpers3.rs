@@ -1930,14 +1930,21 @@ proof fn lemma_swap_rd_past_expand(
         assert(p1 == p0 + 1);
         // r1_len = 0: RelatorDelete is a no-op. Treat as non-overlapping.
         if r1_len == 0 {
+            // Empty relator: no-op. w3 = w2. Use position 0 on w1.
             assert(w3 =~= w2);
-            // No-op step: apply on w1 at same position
-            let step_tfree_adj = DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 };
-            assert(apply_step(hp, w1, step_tfree_adj) == Some(w1));
+            let step_tfree_adj = DerivationStep::RelatorDelete { position: 0int, relator_index: ri1, inverted: inv1 };
+            assert(w1.subrange(0, 0 + r1_len) =~= r1);
+            let w1_prime = w1.subrange(0, 0) + w1.subrange(0 + r1_len, w1.len() as int);
+            assert(w1_prime =~= w1);
+            assert(apply_step(hp, w1, step_tfree_adj) == Some(w1_prime));
             lemma_step_preserves_word_valid(data, w1, step_tfree_adj);
             let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym0 };
-            assert(apply_step(hp, w1, step0_adj) == Some(w2));
-            (w1, step_tfree_adj, step0_adj)
+            let result = w1_prime.subrange(0, p0) + pair
+                + w1_prime.subrange(p0, w1_prime.len() as int);
+            assert forall|k: int| 0 <= k < w3.len() implies w3[k] == result[k] by {};
+            assert(w3 =~= result);
+            assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
+            (w1_prime, step_tfree_adj, step0_adj)
         } else {
             // r1_len >= 1. r1[0] = w2[p1] = w2[p0+1] = inv(sym0), gen_idx = n.
             // But count(r1) = 0 → contradiction.
