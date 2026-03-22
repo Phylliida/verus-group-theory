@@ -416,8 +416,86 @@ pub proof fn lemma_k4_peak_fe_rd(
 
         (w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap: relator region [p2, p2+r2_len) overlaps insertion [p1, p1+2)
-        // This requires a_j = [] in the HNN association — rare edge case
+        // Overlap: relator region [p2, p2+r2_len) overlaps insertion [p1, p1+2).
+        // The relator contains the FE stable pair. Since w1 has count 2, FE adds 2,
+        // w2 has count 4, r2 removes 2 → w3 has count 2. The removed 2 must be
+        // the FE pair (otherwise w3 = w1, cancel case contradiction).
+        //
+        // This forces: the relator's 2 stable letters are at the FE positions.
+        // For non-inverted: stable at 0, |a_j|+1. Adjacent → a_j = [].
+        // For inverted: stable at |b_j|, |b_j|+|a_j|+1. Adjacent → a_j = [].
+        //
+        // After RelatorDelete: w3 = w1 minus the base content of the relator
+        // (the a_j and inv(b_j) parts, minus the stable pair which was from FE).
+        // Since a_j = []: the base content is just inv(b_j) (non-inv) or b_j (inv).
+        // w3 = w1 minus this base content at the appropriate position.
+        //
+        // From isomorphism (a_j = ε): b_j ≡ ε in data.base.
+        //
+        // Strategy: find w1_prime (base) by removing w1's original 2 stable letters.
+        // The original stable letters are from step0 (the step before the peak).
+        // We need the step2_adj to remove them from w1 → w1_prime (base).
+        // Then step1_adj inserts them back into w1_prime at adjusted position → w3.
+        //
+        // The key: w3 has the SAME 2 stable letters as w1 (the ones from step0,
+        // NOT the ones from the FE). They're at the same positions (the relator
+        // deletion removed only the FE stable letters and some base content).
+        //
+        // So I need step2_adj = -2 step that removes w1's original stable letters.
+        // And step1_adj = +2 step that puts them back into w1_prime → w3.
+        //
+        // But which -2 step removes w1's original stable letters? That depends on
+        // how step0 created them. If step0 = FreeExpand(stable, p0, sym0): the
+        // stable letters are at p0, p0+1 in w1. step2_adj = FreeReduce(p0) removes them.
+        // w1_prime = w1[0..p0] ++ w1[p0+2..] = w (base!).
+        // step1_adj = FreeExpand(sym0, p0_adj) on w → w3 at adjusted position.
+        //
+        // But wait — this is just the NON-OVERLAP commutation with step2_adj removing
+        // the OTHER pair of stable letters! The non-overlap code handles this.
+        // The issue was: the commutation code checks positions of step2 (RelatorDelete)
+        // relative to step1 (FreeExpand), and finds they overlap. But the ADJUSTED
+        // step2_adj should remove the OTHER stable letters (from step0), which are
+        // at a NON-overlapping position.
+        //
+        // So: step2_adj removes w1's original stable letters (from step0, at positions
+        // unrelated to the FE positions p1). This gives w1_prime = w (base).
+        // step1_adj = FreeExpand(sym1, p1_adj) inserts the FE pair into w at adjusted
+        // position, BUT the relator also removed base content (inv(b_j) or b_j).
+        // So step1_adj needs to produce w3, which is w1 minus base content.
+        //
+        // w3 = w1 minus base_content at some position.
+        // w = w1 minus the 2 original stable letters.
+        // So w3 = w minus base_content at adjusted position + 2 original stable letters adjusted.
+        //
+        // This is getting complex. Let me use a simpler approach:
+        // The non-cancel condition says w3 ≠ w1. The overlap means the relator
+        // contains the FE pair. After deleting the relator, the FE pair is gone
+        // and some base content is also gone. w3 has w1's original stable letters.
+        //
+        // For the non-cancel case: w3 ≠ w1 means the relator removed base content
+        // beyond just the FE pair. This base content is inv(b_j) (or b_j for inverted),
+        // and it was originally in w1 (from the word w via step0).
+        //
+        // I can construct w1_prime by removing w1's original 2 stable letters
+        // (FreeReduce if from FreeExpand, RelatorDelete if from RelatorInsert).
+        // This gives w1_prime = w (base). Then I need step1_adj on w → w3.
+        // w3 = w minus base_content. If base_content was a subword of w at some
+        // position, step1_adj = RelatorDelete(base) or FreeReduce at that position.
+        // But base_content (inv(b_j)) might not be a base relator.
+        //
+        // Alternative: w1_prime = w3 minus the 2 original stable letters.
+        // step2_adj removes them from w1 → w1_prime. step1_adj adds them back to w1_prime → w3.
+        // But w1 and w3 have the original stable letters at the SAME positions
+        // (the relator deletion only removed the FE pair, not the originals).
+        // So removing the originals from w1 gives one base word, and removing
+        // them from w3 gives another base word that differs by the base_content.
+        //
+        // Hmm, the originals might NOT be at the same positions in w1 and w3
+        // if the relator deletion shifted positions.
+        //
+        // This is genuinely hard. For now, use assume(false) with the analysis above
+        // documented. The fix requires tracking the original stable letter positions
+        // through the relator deletion.
         assume(false); arbitrary()
     }
 }
@@ -3606,22 +3684,11 @@ pub proof fn lemma_bubble_peak_to_front(
 
     if prefix.len() == 1 {
         // Peak at (1,2): counts (2, 4, 2).
-        // Check overlap: does the -2 step act inside the +2 step's insertion region?
         lemma_derivation_unfold_1(hp, prefix, w, w_before_peak);
         let step0 = prefix.first();
         assert(apply_step(hp, w, step0) == Some(w_before_peak));
 
-        // Detect overlap by checking if commutation would work.
-        // For non-overlap: positions don't conflict, commutation succeeds.
-        // For overlap: delegate to the general overlap handler.
-        //
-        // The overlap handler is always correct (it just uses assume(false) internally
-        // for now). The commutation handler is correct for non-overlap.
-        // Try commutation; if the positions overlap, use the overlap handler instead.
-        //
-        // For now, use the commutation for all cases (it handles non-overlap and
-        // has assume(false) for overlap). The overlap handler will be filled in
-        // to replace those assume(false) instances.
+        // Use the count-2 peak commutation (handles non-overlap, assume(false) for overlap)
         let (w_base, step_down_adj, step_up_adj) =
             lemma_k4_peak_noncancel_commute(data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
 
