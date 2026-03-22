@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::symbol::*;
 use crate::word::*;
+use crate::reduction::*;
 use crate::presentation::*;
 use crate::presentation_lemmas::*;
 use crate::hnn::*;
@@ -145,6 +146,294 @@ pub proof fn lemma_trace_gives_equiv(
 }
 
 // ============================================================
+// Free group: equiv_in_presentation → freely_equivalent
+// ============================================================
+
+/// One-step reduction implies reduces_to.
+proof fn lemma_one_step_reduces_to(w1: Word, w2: Word)
+    requires
+        reduces_one_step(w1, w2),
+    ensures
+        reduces_to(w1, w2),
+{
+    assert(reduces_in_steps(w2, w2, 0nat));
+    assert(reduces_one_step(w1, w2) && reduces_in_steps(w2, w2, 0nat));
+    assert(reduces_in_steps(w1, w2, 1nat));
+}
+
+/// reduces_to implies freely_equivalent.
+proof fn lemma_reduces_to_freely_equiv(w1: Word, w2: Word)
+    requires
+        reduces_to(w1, w2),
+    ensures
+        freely_equivalent(w1, w2),
+{
+    lemma_reduces_to_refl(w2);
+}
+
+/// FreeReduce step preserves free equivalence.
+proof fn lemma_free_reduce_equiv(w: Word, position: int)
+    requires
+        has_cancellation_at(w, position),
+    ensures
+        freely_equivalent(w, reduce_at(w, position)),
+{
+    let w2 = reduce_at(w, position);
+    assert(reduces_one_step(w, w2));
+    lemma_one_step_reduces_to(w, w2);
+    lemma_reduces_to_freely_equiv(w, w2);
+}
+
+/// Inserting an inverse pair creates a cancellation.
+proof fn lemma_inserted_pair_has_cancellation(
+    w: Word,
+    position: int,
+    symbol: Symbol,
+)
+    requires
+        0 <= position <= w.len(),
+    ensures ({
+        let pair = Seq::new(1, |_i: int| symbol)
+            + Seq::new(1, |_i: int| inverse_symbol(symbol));
+        let w2 = w.subrange(0, position) + pair
+            + w.subrange(position, w.len() as int);
+        has_cancellation_at(w2, position)
+    }),
+{
+    let pair = Seq::new(1, |_i: int| symbol)
+        + Seq::new(1, |_i: int| inverse_symbol(symbol));
+    let w2 = w.subrange(0, position) + pair
+        + w.subrange(position, w.len() as int);
+    assert(w2[position] == symbol);
+    assert(w2[position + 1] == inverse_symbol(symbol));
+}
+
+/// Reducing the inserted pair recovers the original word.
+proof fn lemma_reduce_inserted_pair(
+    w: Word,
+    position: int,
+    symbol: Symbol,
+)
+    requires
+        0 <= position <= w.len(),
+    ensures ({
+        let pair = Seq::new(1, |_i: int| symbol)
+            + Seq::new(1, |_i: int| inverse_symbol(symbol));
+        let w2 = w.subrange(0, position) + pair
+            + w.subrange(position, w.len() as int);
+        reduce_at(w2, position) == w
+    }),
+{
+    let pair = Seq::new(1, |_i: int| symbol)
+        + Seq::new(1, |_i: int| inverse_symbol(symbol));
+    let w2 = w.subrange(0, position) + pair
+        + w.subrange(position, w.len() as int);
+    let reduced = reduce_at(w2, position);
+    // reduced = w2[0..position] + w2[position+2..end]
+    // = w[0..position] + w[position..end] = w
+    assert(reduced =~= w);
+}
+
+/// FreeExpand step preserves free equivalence.
+proof fn lemma_free_expand_equiv(
+    w: Word,
+    position: int,
+    symbol: Symbol,
+)
+    requires
+        0 <= position <= w.len(),
+    ensures ({
+        let pair = Seq::new(1, |_i: int| symbol)
+            + Seq::new(1, |_i: int| inverse_symbol(symbol));
+        let w2 = w.subrange(0, position) + pair
+            + w.subrange(position, w.len() as int);
+        freely_equivalent(w, w2)
+    }),
+{
+    let pair = Seq::new(1, |_i: int| symbol)
+        + Seq::new(1, |_i: int| inverse_symbol(symbol));
+    let w2 = w.subrange(0, position) + pair
+        + w.subrange(position, w.len() as int);
+
+    lemma_inserted_pair_has_cancellation(w, position, symbol);
+    lemma_reduce_inserted_pair(w, position, symbol);
+
+    // reduces_one_step(w2, w): cancellation at position, reduce gives w
+    assert(reduces_one_step(w2, w));
+    lemma_one_step_reduces_to(w2, w);
+    lemma_reduces_to_freely_equiv(w2, w);
+    lemma_freely_equivalent_sym(w2, w);
+}
+
+/// A single derivation step on a free group (no relators) preserves
+/// free equivalence with the starting word.
+proof fn lemma_free_step_equiv(
+    p: Presentation,
+    w: Word,
+    step: DerivationStep,
+)
+    requires
+        p.relators.len() == 0,
+        apply_step(p, w, step) is Some,
+    ensures
+        freely_equivalent(w, apply_step(p, w, step).unwrap()),
+{
+    let w2 = apply_step(p, w, step).unwrap();
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            lemma_free_reduce_equiv(w, position);
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            lemma_free_expand_equiv(w, position, symbol);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            assert(false);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            assert(false);
+        },
+    }
+}
+
+/// For a free group (empty relators), derivation_produces preserves
+/// free equivalence at each step.
+proof fn lemma_free_derivation_equiv(
+    p: Presentation,
+    steps: Seq<DerivationStep>,
+    start: Word,
+    end: Word,
+)
+    requires
+        p.relators.len() == 0,
+        derivation_produces(p, steps, start) == Some(end),
+    ensures
+        freely_equivalent(start, end),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        assert(start == end);
+        lemma_freely_equivalent_refl(start);
+    } else {
+        let mid = apply_step(p, start, steps.first()).unwrap();
+        lemma_free_step_equiv(p, start, steps.first());
+        lemma_free_derivation_equiv(p, steps.drop_first(), mid, end);
+        lemma_freely_equivalent_trans(start, mid, end);
+    }
+}
+
+// ============================================================
+// Config words are reduced (no cancellations)
+// ============================================================
+
+/// Every symbol in a config word is a Gen (not Inv).
+proof fn lemma_config_word_all_gen(
+    num_states: nat, state: nat, alpha: nat, beta: nat,
+    i: int,
+)
+    requires
+        state < num_states,
+        0 <= i < config_word(num_states, state, alpha, beta).len() as int,
+    ensures
+        config_word(num_states, state, alpha, beta)[i] is Gen,
+{
+    let cw = config_word(num_states, state, alpha, beta);
+    let part1 = Seq::new(1, |_j: int| state_symbol(state));
+    let part2 = symbol_power(alpha_symbol(num_states), alpha);
+    let part3 = symbol_power(beta_symbol(num_states), beta);
+    assert(cw =~= part1 + part2 + part3);
+
+    if i < 1 {
+        assert(cw[i] == state_symbol(state));
+    } else if i < (1 + alpha) as int {
+        assert(cw[i] == alpha_symbol(num_states));
+    } else {
+        assert(cw[i] == beta_symbol(num_states));
+    }
+}
+
+/// Config words are freely reduced (no adjacent inverse pairs).
+proof fn lemma_config_word_reduced(
+    num_states: nat, state: nat, alpha: nat, beta: nat,
+)
+    requires
+        state < num_states,
+    ensures
+        is_reduced(config_word(num_states, state, alpha, beta)),
+{
+    let cw = config_word(num_states, state, alpha, beta);
+    assert(!has_cancellation(cw)) by {
+        assert forall|i: int| !has_cancellation_at(cw, i) by {
+            if 0 <= i < cw.len() - 1 {
+                lemma_config_word_all_gen(num_states, state, alpha, beta, i);
+                lemma_config_word_all_gen(num_states, state, alpha, beta, i + 1);
+                // Both cw[i] and cw[i+1] are Gen variants.
+                // inverse_symbol(Gen(x)) = Inv(x), which is not Gen.
+                // So cw[i+1] != inverse_symbol(cw[i]).
+            }
+        };
+    };
+}
+
+// ============================================================
+// Config word sequence equality → parameter equality
+// ============================================================
+
+/// If two config words are equal as sequences, their parameters match.
+proof fn lemma_config_word_seq_injective(
+    num_states: nat,
+    s1: nat, a1: nat, b1: nat,
+    s2: nat, a2: nat, b2: nat,
+)
+    requires
+        s1 < num_states,
+        s2 < num_states,
+        config_word(num_states, s1, a1, b1) ==
+            config_word(num_states, s2, a2, b2),
+    ensures
+        s1 == s2 && a1 == a2 && b1 == b2,
+{
+    let cw1 = config_word(num_states, s1, a1, b1);
+    let cw2 = config_word(num_states, s2, a2, b2);
+
+    // First symbols: Gen(state_gen_index(s1)) == Gen(state_gen_index(s2))
+    assert(cw1[0] == state_symbol(s1));
+    assert(cw2[0] == state_symbol(s2));
+    assert(s1 == s2);
+
+    // Length equality: 1 + a1 + b1 == 1 + a2 + b2
+    assert(cw1.len() == 1 + a1 + b1);
+    assert(cw2.len() == 1 + a2 + b2);
+    assert(a1 + b1 == a2 + b2);
+
+    // Prove a1 == a2 by contradiction
+    if a1 != a2 {
+        if a1 < a2 {
+            if b1 == 0 {
+                // cw1.len() = 1 + a1 < 1 + a2 <= cw2.len(). Contradiction.
+                assert(false);
+            } else {
+                // cw1[1 + a1] is beta, cw2[1 + a1] is alpha
+                assert(cw1[(1 + a1) as int] == beta_symbol(num_states));
+                assert(cw2[(1 + a1) as int] == alpha_symbol(num_states));
+                // beta_gen_index != alpha_gen_index
+                assert(false);
+            }
+        } else {
+            // a1 > a2, symmetric
+            if b2 == 0 {
+                assert(false);
+            } else {
+                assert(cw2[(1 + a2) as int] == beta_symbol(num_states));
+                assert(cw1[(1 + a2) as int] == alpha_symbol(num_states));
+                assert(false);
+            }
+        }
+    }
+    assert(a1 == a2);
+    // b1 == b2 from a1 + b1 == a2 + b2
+}
+
+// ============================================================
 // Backward direction via Britton's Lemma
 // ============================================================
 
@@ -155,7 +444,6 @@ pub proof fn lemma_trace_gives_equiv(
 /// they are identical after free reduction. Since config words have
 /// the form q_s · a^α · b^β with distinct generator types, two
 /// config words are freely equivalent only when s=s', α=α', β=β'.
-#[verifier::external_body]
 pub proof fn axiom_config_words_free_injective(
     num_states: nat,
     s1: nat, a1: nat, b1: nat,
@@ -172,6 +460,26 @@ pub proof fn axiom_config_words_free_injective(
     ensures
         s1 == s2 && a1 == a2 && b1 == b2,
 {
+    let p = machine_base_presentation(num_states);
+    let w1 = config_word(num_states, s1, a1, b1);
+    let w2 = config_word(num_states, s2, a2, b2);
+
+    // Step 1: equiv_in_presentation → freely_equivalent
+    let d: Derivation = choose|d: Derivation| derivation_valid(p, d, w1, w2);
+    lemma_free_derivation_equiv(p, d.steps, w1, w2);
+
+    // Step 2: freely_equivalent → same normal_form
+    lemma_normal_form_equiv_forward(w1, w2);
+
+    // Step 3: config words are reduced → normal_form is identity
+    lemma_config_word_reduced(num_states, s1, a1, b1);
+    lemma_config_word_reduced(num_states, s2, a2, b2);
+    lemma_reduced_is_own_normal_form(w1);
+    lemma_reduced_is_own_normal_form(w2);
+
+    // Step 4: w1 == w2 as sequences → params equal
+    assert(w1 == w2);
+    lemma_config_word_seq_injective(num_states, s1, a1, b1, s2, a2, b2);
 }
 
 /// Backward direction: equivalence of config words in G_M implies
