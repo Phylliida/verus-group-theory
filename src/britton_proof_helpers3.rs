@@ -1927,28 +1927,33 @@ proof fn lemma_swap_rd_past_expand(
             lemma_stable_count_subrange(r1, (p0 - p1) as int, (p0 - p1 + 1) as int, n);
             assert(false);
         }
-        // After the first if: p1 > p0. Combined with p1 < p0+2: p1 = p0+1.
         assert(p1 == p0 + 1);
-        // w2.subrange(p1, p1+r1_len) =~= r1, so w2[p1] = r1[0]
-        // w2[p0+1] = inv(sym0), gen_idx = n
-        // But stable_letter_count(r1, n) = 0 → all r1 elements have gen_idx < n
-        // r1[0] = w2[p1] = w2[p0+1] = inv(sym0) → gen_idx(r1[0]) = n
-        // Contradiction: n < n
-        assert(w2[p1] == r1[0int]);
-        assert(p1 == (p0 + 1) as int);
-        assert(w2[p1] == inverse_symbol(sym0));
-        assert(generator_index(inverse_symbol(sym0)) == n) by {
-            match sym0 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
-        };
-        assert(generator_index(r1[0int]) == n);
-        // But r1 has count 0 → contradiction
-        // stable_letter_count counts elements with gen_idx == n
-        // If r1[0] has gen_idx == n, count >= 1 > 0
-        assert(r1.len() >= 1);
-        lemma_stable_count_subrange(r1, 0, 1, n);
-        // count(r1[0..1]) <= count(r1) = 0. But r1[0] has gen_idx = n → count(r1[0..1]) >= 1.
-        assert(false);
-        arbitrary()
+        // r1_len = 0: RelatorDelete is a no-op. Treat as non-overlapping.
+        if r1_len == 0 {
+            assert(w3 =~= w2);
+            // No-op step: apply on w1 at same position
+            let step_tfree_adj = DerivationStep::RelatorDelete { position: p1, relator_index: ri1, inverted: inv1 };
+            assert(apply_step(hp, w1, step_tfree_adj) == Some(w1));
+            lemma_step_preserves_word_valid(data, w1, step_tfree_adj);
+            let step0_adj = DerivationStep::FreeExpand { position: p0, symbol: sym0 };
+            assert(apply_step(hp, w1, step0_adj) == Some(w2));
+            (w1, step_tfree_adj, step0_adj)
+        } else {
+            // r1_len >= 1. r1[0] = w2[p1] = w2[p0+1] = inv(sym0), gen_idx = n.
+            // But count(r1) = 0 → contradiction.
+            assert(w2[(p0 + 1) as int] == inverse_symbol(sym0));
+            assert(generator_index(inverse_symbol(sym0)) == n) by {
+                match sym0 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+            };
+            assert forall|k: int| p1 <= k < p1 + r1_len
+                implies w2[k] == #[trigger] r1[(k - p1) as int] by {
+                assert(w2.subrange(p1, p1 + r1_len) =~= r1);
+            };
+            assert(generator_index(r1[0int]) == n);
+            lemma_stable_count_subrange(r1, 0, 1, n);
+            assert(false);
+            arbitrary()
+        }
     }
 }
 
