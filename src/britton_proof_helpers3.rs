@@ -3910,6 +3910,21 @@ proof fn lemma_bubble_tfree_to_front(
         lemma_derivation_unfold_1(hp, last_seq, w_prev, w_before_tfree);
         lemma_derivation_preserves_word_valid(data, shorter_prefix, w, w_prev);
 
+        // Establish count of w_prev
+        lemma_base_implies_count_zero(w, n);
+        assert forall|j: int| 0 <= j < shorter_prefix.len() implies
+            match #[trigger] shorter_prefix[j] {
+                DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
+                DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
+                _ => false,
+            }
+        by { assert(shorter_prefix[j] == prefix[j]); };
+        lemma_plus2_prefix_gives_count(data, shorter_prefix, w, w_prev, 0nat);
+        assert(stable_letter_count(w_prev, n) == 2 * shorter_prefix.len());
+
+        // count of w_prev_adj after swap: same as w_prev (T-free)
+        // This will be established by the swap ensures.
+
         // Swap
         let (w_prev_adj, tfree_adj, plus2_adj) = match last_step {
             DerivationStep::FreeExpand { position: p, symbol: sym } =>
@@ -4134,18 +4149,25 @@ proof fn lemma_scan_and_handle(
         lemma_derivation_concat(hp, plus2_seq, rest, w_before_adj, w_next, w_end);
         let new_remaining = plus2_seq + rest;
 
-        // But new_prefix_with_tfree has a T-free step at the end — NOT all +2!
-        // The scan requires all prefix steps to be +2.
-        // Instead of recursing with the scan, I need to handle this differently.
-        //
-        // The T-free step is now at position prefix.len()-1.
-        // I need to keep swapping it left until it reaches position 0.
-        // This is a separate recursive function with decreasing on the T-free position.
-        //
-        // For now, assume(false) — the approach is correct but needs a
-        // dedicated T-free bubble helper.
-        assume(false);
-        arbitrary()
+        // Use lemma_bubble_tfree_to_front to swap T-free all the way to position 0
+        lemma_base_word_valid_down(w, n);
+        lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
+        let (w_base, base_step, remaining_deriv) =
+            lemma_bubble_tfree_to_front(
+                data, prefix, first_step, rest,
+                w, w_current, w_next, w_end,
+                steps.len());
+
+        // left = [base_step], right = remaining_deriv
+        let left_steps: Seq<DerivationStep> = seq![base_step];
+        assert(left_steps.first() == base_step);
+        assert(left_steps.drop_first() =~= Seq::<DerivationStep>::empty());
+        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_base) == Some(w_base)) by {
+            assert(Seq::<DerivationStep>::empty().len() == 0);
+        };
+        assert(derivation_produces(hp, left_steps, w) == Some(w_base));
+
+        (w_base, left_steps, remaining_deriv)
     } else {
         // first_step is +2. Extend prefix, recurse.
         assert(c_next == stable_letter_count(w_current, n) + 2);
