@@ -12646,7 +12646,7 @@ pub proof fn lemma_stable_count_reduce_step(
 ///   apply_step(data.base, w, step1_base) == Some(w_prime)  (w_prime is base)
 ///   apply_step(hp, w_prime, step0_adj) == Some(w2)
 /// FreeReduce arm of k4_tfree_expand_commute — extracted to avoid rlimit.
-proof fn lemma_k4_tfree_expand_commute_fr(
+pub proof fn lemma_k4_tfree_expand_commute_fr(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, p1: int,
 ) -> (result: (Word, DerivationStep, DerivationStep))
@@ -13217,7 +13217,7 @@ proof fn lemma_k4_tfree_expand_commute_rd(
 }
 
 /// Non-FreeReduce arms of k4_tfree_expand_commute — dispatches to per-step-type helpers.
-proof fn lemma_k4_tfree_expand_commute_other(
+pub proof fn lemma_k4_tfree_expand_commute_other(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, step1: DerivationStep,
 ) -> (result: (Word, DerivationStep, DerivationStep))
@@ -14418,9 +14418,52 @@ proof fn lemma_single_segment_hard(
                 assert(derivation_produces(hp, tail_steps, w3) == Some(w_end));
 
                 if c3 >= 4 {
-                    // c3 >= 4: need deeper peak analysis (T-free or higher peak)
-                    assume(false);
+                    if c3 == 4 {
+                        // c3 = 4: step2 is T-free. Two-round swap to commute
+                        // step2 past step1 and step0, creating base intermediate.
+                        match step0 {
+                            DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
+                                match step1 {
+                                    DerivationStep::FreeExpand { position: p1e, symbol: sym1e } => {
+                                        // Classify step1 as stable
+                                        assert(generator_index(sym1e) == n) by {
+                                            let pair1 = Seq::new(1, |_i: int| sym1e) + Seq::new(1, |_i: int| inverse_symbol(sym1e));
+                                            assert(pair1 =~= seq![sym1e, inverse_symbol(sym1e)]);
+                                            let left1 = w1.subrange(0, p1e);
+                                            let right1 = w1.subrange(p1e, w1.len() as int);
+                                            assert(w1 =~= left1 + right1);
+                                            assert(w2 =~= left1 + pair1 + right1);
+                                            lemma_stable_count_pair(sym1e, inverse_symbol(sym1e), n);
+                                            lemma_stable_letter_count_concat(left1, right1, n);
+                                            lemma_stable_letter_count_concat(left1, pair1, n);
+                                            lemma_stable_letter_count_concat(left1 + pair1, right1, n);
+                                        };
+                                        let (w_base, base_step, deriv_steps) =
+                                            crate::britton_proof_helpers3::lemma_k5_c3_eq4_two_round_fe_fe(
+                                                data, steps, w, w_end, w1, w2, w3,
+                                                p0, sym0, p1e, sym1e, step2, tail_steps);
+                                        lemma_single_step_equiv(data.base, w, base_step, w_base);
+                                        lemma_base_derivation_equiv(data, deriv_steps, w_base, w_end);
+                                        lemma_equiv_transitive(data.base, w, w_base, w_end);
+                                    },
+                                    _ => {
+                                        // step1 = RI(HNN) — needs RI generalized swap
+                                        assume(false);
+                                    },
+                                }
+                            },
+                            _ => {
+                                // step0 = RI(HNN) — needs RI generalized swap
+                                assume(false);
+                            },
+                        }
+                    } else {
+                        // c3 >= 6: step2 is +2, count keeps going up. Need deeper analysis.
+                        assume(false);
+                    }
                 }
+
+                if c3 < 4 {
                 assert(c3 == 2nat);
 
                 // Peak at steps (1, 2): cancel or commute
@@ -14437,6 +14480,7 @@ proof fn lemma_single_segment_hard(
                     lemma_base_derivation_equiv(data, right_steps, w1_prime, w_end);
                     lemma_equiv_transitive(data.base, w, w1_prime, w_end);
                 }
+                } // if c3 < 4
             }
         }
     }
