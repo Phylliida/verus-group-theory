@@ -172,7 +172,7 @@ proof fn lemma_single_step_equiv(
 }
 
 /// Extract apply_step from a 1-step derivation.
-proof fn lemma_derivation_unfold_1(
+pub proof fn lemma_derivation_unfold_1(
     hp: Presentation, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
     requires
@@ -14955,7 +14955,7 @@ pub proof fn lemma_step_preserves_word_valid(
 }
 
 /// Compute the intermediate word after k steps of a derivation.
-spec fn derivation_word_at(p: Presentation, steps: Seq<DerivationStep>, w: Word, k: nat) -> Word
+pub open spec fn derivation_word_at(p: Presentation, steps: Seq<DerivationStep>, w: Word, k: nat) -> Word
     recommends
         k <= steps.len(),
         derivation_produces(p, steps, w).is_some(),
@@ -14980,7 +14980,7 @@ proof fn lemma_word_at_zero(p: Presentation, steps: Seq<DerivationStep>, w: Word
 {}
 
 /// derivation_word_at at 1 is the result of the first step.
-proof fn lemma_word_at_one(
+pub proof fn lemma_word_at_one(
     p: Presentation, steps: Seq<DerivationStep>, w: Word,
 )
     requires
@@ -14998,7 +14998,7 @@ proof fn lemma_word_at_one(
 }
 
 /// derivation_word_at relates to the derivation_produces of the prefix.
-proof fn lemma_word_at_produces(
+pub proof fn lemma_word_at_produces(
     p: Presentation, steps: Seq<DerivationStep>, w: Word, k: nat,
 )
     requires
