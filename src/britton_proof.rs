@@ -13338,25 +13338,45 @@ proof fn lemma_k4_tfree_ri_commute_fr(
         (w_prime, step1_base, step0_adj)
     } else if p1 == p0 - 1 {
         // w1[p0-1] = w[p0-1] (base), w1[p0] = r0[0]
-        // For FreeReduce: is_inverse_pair(w1[p1], w1[p1+1])
-        // gen_idx(w1[p1]) < n (from T-free check above)
-        // But if r0[0] has gen_idx == n, they can't be an inverse pair
-        // Actually just check: gen_idx(w1[p1+1]) must equal gen_idx(w1[p1]) < n
-        // But w1[p1+1] = r0[0] might have gen_idx = n, contradiction
+        // is_inverse_pair(w1[p1], w1[p1+1]) → gen_idx match
+        // gen_idx(w1[p1]) < n, so gen_idx(w1[p1+1]) = gen_idx(r0[0]) must be < n
         assert(w1[(p0 - 1) as int] == w[(p0 - 1) as int]);
         assert(w1[p0] == r0[0int]);
-        // has_cancellation_at requires is_inverse_pair which requires same gen_idx
-        // gen_idx(w1[p1]) < n, gen_idx(w1[p1+1]) must also be < n for T-free
-        // If gen_idx(r0[0]) == n: contradiction with gen_idx(w1[p1+1]) < n...
-        // But we don't know gen_idx(w1[p1+1]) < n directly. We know gen_idx(w1[p1]) < n.
-        // For is_inverse_pair: gen_idx must match. So gen_idx(w1[p1+1]) == gen_idx(w1[p1]) < n.
-        // But w1[p1+1] = r0[0], which MIGHT have gen_idx < n (it's part of the relator).
-        // Actually r0 = HNN relator. For non-inverted: starts with Inv(n), gen_idx = n.
-        // For inverted: starts with b_j elements, gen_idx < n.
-        // So this case IS possible for inverted HNN relators!
-        // Handle as inside-relator edge case
-        assume(false);
-        arbitrary()
+        // is_inverse_pair ensures gen_idx match
+        assert(has_cancellation_at(w1, p1));
+        assert(is_inverse_pair(w1[p1], w1[p1 + 1]));
+        assert(w1[p1 + 1] == inverse_symbol(w1[p1]));
+        assert(generator_index(inverse_symbol(w1[p1])) == generator_index(w1[p1])) by {
+            match w1[p1] { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        assert(generator_index(w1[p1 + 1]) == generator_index(w1[p1]));
+        assert(generator_index(r0[0int]) < n);
+
+        let j = (ri0 as int - data.base.relators.len()) as int;
+        let (a_j, b_j) = data.associations[j];
+
+        if !inv0 {
+            // Non-inverted: r0[0] = Inv(n), gen_idx = n. But gen_idx(r0[0]) < n. Contradiction.
+            lemma_hnn_relator_stable_positions(data, j);
+            assert(r0[0int] == stable_letter_inv(data));
+            assert(generator_index(r0[0int]) == n);
+            assert(false);
+            arbitrary()
+        } else {
+            // Inverted: r0 = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
+            lemma_hnn_relator_inverted_stable_positions(data, j);
+            if b_j.len() == 0 {
+                // b_j empty: r0[0] = Inv(n), gen_idx = n. Contradiction.
+                assert(r0[0int] == stable_letter_inv(data));
+                assert(generator_index(r0[0int]) == n);
+                assert(false);
+                arbitrary()
+            } else {
+                // Inverted with b_j non-empty: boundary straddle — genuinely hard
+                assume(false);
+                arbitrary()
+            }
+        }
     } else if p1 >= p0 + r0_len {
         assert(w1[p1] == w[(p1 - r0_len) as int]);
         assert(w1[p1 + 1] == w[(p1 - r0_len + 1) as int]);
@@ -13380,9 +13400,48 @@ proof fn lemma_k4_tfree_ri_commute_fr(
         (w_prime, step1_base, step0_adj)
     } else if p1 == p0 + r0_len - 1 {
         // Boundary: w1[p1] = r0[r0_len-1], w1[p1+1] = w[p0]
-        // Similar edge case
-        assume(false);
-        arbitrary()
+        // gen_idx(w1[p1]) < n, and is_inverse_pair → gen_idx(w1[p1+1]) == gen_idx(w1[p1]) < n
+        // So gen_idx(r0[r0_len-1]) < n
+        assert(w1[p1] == r0[(r0_len - 1) as int]);
+        assert(has_cancellation_at(w1, p1));
+        assert(is_inverse_pair(w1[p1], w1[p1 + 1]));
+        assert(w1[p1 + 1] == inverse_symbol(w1[p1]));
+        assert(generator_index(inverse_symbol(w1[p1])) == generator_index(w1[p1])) by {
+            match w1[p1] { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        // gen_idx(r0[r0_len-1]) < n
+        assert(generator_index(r0[(r0_len - 1) as int]) < n);
+
+        let j = (ri0 as int - data.base.relators.len()) as int;
+        let (a_j, b_j) = data.associations[j];
+
+        if inv0 {
+            // Inverted: r0 ends with Gen(n), gen_idx = n. But gen_idx(r0[r0_len-1]) < n. Contradiction.
+            lemma_hnn_relator_inverted_stable_positions(data, j);
+            assert(r0[(r0_len - 1) as int] == stable_letter(data));
+            assert(generator_index(r0[(r0_len - 1) as int]) == n);
+            assert(false);
+            arbitrary()
+        } else {
+            // Non-inverted: r0 = [Inv(n)] ++ a_j ++ [Gen(n)] ++ inv(b_j)
+            // r0[r0_len-1] = last element of inv(b_j) if b_j non-empty, or Gen(n) if b_j empty
+            lemma_hnn_relator_stable_positions(data, j);
+            if b_j.len() == 0 {
+                // b_j empty: r0 ends with Gen(n), gen_idx = n. Contradiction.
+                assert(r0_len == 2 + a_j.len() as int + b_j.len() as int);
+                assert(r0[(a_j.len() + 1) as int] == stable_letter(data));
+                assert(generator_index(stable_letter(data)) == n);
+                // r0_len - 1 = 1 + a_j.len() = a_j.len() + 1
+                assert((r0_len - 1) as int == (a_j.len() + 1) as int);
+                assert(generator_index(r0[(r0_len - 1) as int]) == n);
+                assert(false);
+                arbitrary()
+            } else {
+                // Non-inverted with b_j non-empty: boundary straddle — genuinely hard
+                assume(false);
+                arbitrary()
+            }
+        }
     } else {
         // Inside relator region
         assume(false);
