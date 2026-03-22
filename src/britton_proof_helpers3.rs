@@ -516,7 +516,27 @@ pub proof fn lemma_k4_peak_ri_fr(
 
         (w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap: FreeReduce spans boundary of inserted relator
+        // Overlap: FR(stable) pair overlaps the relator region [p1, p1+r1_len).
+        // The FR has gen_idx(w2[p2]) == n (stable). is_inverse_pair gives gen_idx match.
+        // So both w2[p2] and w2[p2+1] have gen_idx == n (stable).
+        //
+        // Case (a): p2 == p1 - 1 — left boundary straddle
+        //   w2[p2] = w1[p2] (from w1, stable), w2[p2+1] = r1[0] (from relator)
+        //   Both gen_idx == n. For non-inverted: r1[0] = Inv(n), gen_idx = n. ✓
+        //   w1[p2] has gen_idx = n, so w1 has a stable letter at position p1-1.
+        //   The commutation in this case requires adjusting for the boundary.
+        //
+        // Case (b): p1 <= p2 AND p2+2 <= p1+r1_len — both elements inside relator
+        //   Both r1[p2-p1] and r1[p2-p1+1] have gen_idx == n.
+        //   Relator has stable letters at exactly 2 positions. For adjacent: a_j = [].
+        //
+        // Case (c): p2 == p1+r1_len-1 — right boundary straddle
+        //   w2[p2] = r1[r1_len-1], w2[p2+1] = w1[p2-r1_len+1] (adjusted)
+        //   Similar to case (a) at the right end.
+        //
+        // All three cases require detailed HNN relator structure analysis.
+        // For now, use assume(false) — the remaining overlaps all need the
+        // isomorphism argument (a_j=[] → b_j≡ε) or boundary straddle handling.
         assume(false); arbitrary()
     }
 }
