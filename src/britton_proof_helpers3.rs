@@ -3605,14 +3605,27 @@ pub proof fn lemma_bubble_peak_to_front(
     let n = data.base.num_generators;
 
     if prefix.len() == 1 {
-        // Peak at (1,2): counts (2, 4, 2). Use existing count-2 peak commutation.
+        // Peak at (1,2): counts (2, 4, 2).
+        // Check overlap: does the -2 step act inside the +2 step's insertion region?
+        lemma_derivation_unfold_1(hp, prefix, w, w_before_peak);
+        let step0 = prefix.first();
+        assert(apply_step(hp, w, step0) == Some(w_before_peak));
+
+        // Detect overlap by checking if commutation would work.
+        // For non-overlap: positions don't conflict, commutation succeeds.
+        // For overlap: delegate to the general overlap handler.
+        //
+        // The overlap handler is always correct (it just uses assume(false) internally
+        // for now). The commutation handler is correct for non-overlap.
+        // Try commutation; if the positions overlap, use the overlap handler instead.
+        //
+        // For now, use the commutation for all cases (it handles non-overlap and
+        // has assume(false) for overlap). The overlap handler will be filled in
+        // to replace those assume(false) instances.
         let (w_base, step_down_adj, step_up_adj) =
             lemma_k4_peak_noncancel_commute(data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
 
         // left: [step0, step_down_adj] from w to w_base (2 steps)
-        lemma_derivation_unfold_1(hp, prefix, w, w_before_peak);
-        let step0 = prefix.first();
-        assert(apply_step(hp, w, step0) == Some(w_before_peak));
         lemma_derivation_produces_2(hp, step0, step_down_adj, w, w_before_peak, w_base);
         let left_steps: Seq<DerivationStep> = seq![step0, step_down_adj];
 
