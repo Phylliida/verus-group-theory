@@ -14143,6 +14143,7 @@ proof fn lemma_k4_tfree_ri_commute_other(
 /// For k≥4: commute T-free step to front, or peak-eliminate.
 proof fn lemma_single_segment_hard(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    count_sum: nat,
 )
     requires
         hnn_data_valid(data),
@@ -14164,9 +14165,10 @@ proof fn lemma_single_segment_hard(
             forall|j: nat| 1 <= j < steps.len()
                 ==> !is_base_word(derivation_word_at(hp, steps, w, j), n)
         }),
+        count_sum >= derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators),
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), 0nat,
+    decreases steps.len(), count_sum, 0nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -14482,7 +14484,7 @@ proof fn lemma_single_segment(
         // (For k > 2: all w_1,...,w_{k-1} are non-base — handled by induction)
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), 1nat,
+    decreases steps.len(), derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators) + 1, 1nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -14620,7 +14622,8 @@ proof fn lemma_single_segment(
                 };
 
                 // Delegate to the hard case helper
-                lemma_single_segment_hard(data, steps, w, w_end);
+                lemma_single_segment_hard(data, steps, w, w_end,
+                    derivation_count_sum(hp, steps, w, n));
             }
         }
     }
@@ -14642,7 +14645,7 @@ pub proof fn lemma_base_derivation_equiv(
         word_valid(w_end, data.base.num_generators + 1),
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases steps.len(), 2nat,
+    decreases steps.len(), derivation_count_sum(hnn_presentation(data), steps, w, data.base.num_generators) + 2, 2nat,
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
@@ -14934,6 +14937,23 @@ pub open spec fn derivation_word_at(p: Presentation, steps: Seq<DerivationStep>,
             apply_step(p, w, steps.first()).unwrap(),
             (k - 1) as nat,
         )
+    }
+}
+
+/// Sum of stable_letter_count over all intermediate words in a derivation.
+/// Used as a secondary decreasing measure for peak elimination.
+pub open spec fn derivation_count_sum(p: Presentation, steps: Seq<DerivationStep>, w: Word, n: nat) -> nat
+    recommends
+        derivation_produces(p, steps, w).is_some(),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        0nat
+    } else if apply_step(p, w, steps.first()).is_none() {
+        0nat
+    } else {
+        let w1 = apply_step(p, w, steps.first()).unwrap();
+        stable_letter_count(w1, n) + derivation_count_sum(p, steps.drop_first(), w1, n)
     }
 }
 
