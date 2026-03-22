@@ -2675,4 +2675,190 @@ pub proof fn lemma_k5_c3_eq4_two_round(
     (w_base, step2_base, deriv_steps)
 }
 
+/// Generalized peak commutation: FreeExpand(stable) + FreeReduce at arbitrary count.
+/// Same position arithmetic as lemma_k4_peak_fe_fr, but for any count c ≥ 2.
+pub proof fn lemma_peak_fe_fr_general(
+    data: HNNData, w1: Word, w2: Word, w3: Word,
+    p1: int, sym1: Symbol, p2: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        generator_index(sym1) == data.base.num_generators,
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w1, DerivationStep::FreeExpand { position: p1, symbol: sym1 }) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+        }),
+        stable_letter_count(w1, data.base.num_generators) >= 2,
+        stable_letter_count(w2, data.base.num_generators) ==
+            stable_letter_count(w1, data.base.num_generators) + 2,
+        stable_letter_count(w3, data.base.num_generators) ==
+            stable_letter_count(w1, data.base.num_generators),
+        !(w3 =~= w1),
+    ensures ({
+        let (w1_prime, step2_adj, step1_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        let c = stable_letter_count(w1, n);
+        &&& word_valid(w1_prime, n + 1)
+        &&& stable_letter_count(w1_prime, n) == (c - 2) as nat
+        &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
+        &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+    }),
+{
+    // Identical position arithmetic to lemma_k4_peak_fe_fr.
+    // The only difference: w1' has count c-2 instead of 0.
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let pair = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
+    assert(pair =~= seq![sym1, inverse_symbol(sym1)]);
+
+    assert(w2 =~= w1.subrange(0, p1) + pair + w1.subrange(p1, w1.len() as int));
+    assert(has_cancellation_at(w2, p2));
+    assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + 2, w2.len() as int));
+
+    // The stable count decreased by 2 (from c+2 to c), so the reduced pair is stable
+    lemma_stable_count_reduce(w2, p2, n);
+    assert(generator_index(w2[p2]) == n);
+
+    // Boundary cases: all lead to w3 = w1 (cancel), contradicting non-cancel.
+    // Same proof as lemma_k4_peak_fe_fr lines for p2 == p1, p1-1, p1+1.
+    if p2 == p1 {
+        assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
+            if k < p1 { assert(w3[k] == w2[k]); assert(w2[k] == w1[k]); }
+            else { assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]); }
+        };
+        assert(w3 =~= w1); assert(false);
+    }
+    if p2 == p1 - 1 {
+        assert(is_inverse_pair(w2[p2], w2[p2 + 1]));
+        assert(w2[p2 + 1] == sym1);
+        assert(generator_index(w2[p2]) == generator_index(sym1)) by {
+            assert(w2[p2 + 1] == inverse_symbol(w2[p2]));
+            match w2[p2] { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
+        };
+        assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
+            if k < p1 - 1 { assert(w3[k] == w2[k]); assert(w2[k] == w1[k]); }
+            else if k == p1 - 1 {
+                assert(w3[k] == w2[(p1 + 1) as int]);
+                assert(w2[(p1 + 1) as int] == inverse_symbol(sym1));
+                assert(w1[k] == inverse_symbol(sym1)) by {
+                    assert(is_inverse_pair(w1[k], sym1));
+                    match w1[k] { Symbol::Gen(i) => {
+                        assert(sym1 == Symbol::Inv(i));
+                        assert(inverse_symbol(sym1) == Symbol::Gen(i));
+                    }, Symbol::Inv(i) => {
+                        assert(sym1 == Symbol::Gen(i));
+                        assert(inverse_symbol(sym1) == Symbol::Inv(i));
+                    } }
+                };
+            } else { assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]); }
+        };
+        assert(w3 =~= w1); assert(false);
+    }
+    if p2 == p1 + 1 {
+        assert(w2[p2] == inverse_symbol(sym1));
+        assert(is_inverse_pair(inverse_symbol(sym1), w1[p1]));
+        assert(w1[p1] == sym1) by {
+            let isym = inverse_symbol(sym1);
+            assert(is_inverse_pair(isym, w1[p1]));
+            match isym {
+                Symbol::Gen(idx) => { match sym1 {
+                    Symbol::Gen(j) => { assert(isym == Symbol::Inv(j)); assert(false); },
+                    Symbol::Inv(j) => { assert(idx == j); }
+                } },
+                Symbol::Inv(idx) => { match sym1 {
+                    Symbol::Gen(j) => { assert(idx == j); },
+                    Symbol::Inv(j) => { assert(isym == Symbol::Gen(j)); assert(false); }
+                } },
+            }
+        };
+        assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
+            if k < p1 { assert(w3[k] == w2[k]); assert(w2[k] == w1[k]); }
+            else if k == p1 { assert(w3[k] == w2[p1]); assert(w2[p1] == sym1); }
+            else { assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]); }
+        };
+        assert(w3 =~= w1); assert(false);
+    }
+
+    // Non-boundary: same position adjustment as count-2 case
+    if p2 < p1 - 1 {
+        assert(w2[p2] == w1[p2]);
+        assert(w2[p2 + 1] == w1[p2 + 1]);
+        assert(has_cancellation_at(w1, p2));
+        let w1_prime = reduce_at(w1, p2);
+        let step2_adj = DerivationStep::FreeReduce { position: p2 };
+        assert(apply_step(hp, w1, step2_adj) == Some(w1_prime));
+        lemma_stable_count_reduce(w1, p2, n);
+        lemma_step_preserves_word_valid(data, w1, step2_adj);
+
+        let p1_adj = (p1 - 2) as int;
+        let step1_adj = DerivationStep::FreeExpand { position: p1_adj, symbol: sym1 };
+        let expand_result = w1_prime.subrange(0, p1_adj) + pair
+            + w1_prime.subrange(p1_adj, w1_prime.len() as int);
+        assert forall|k: int| 0 <= k < w3.len() implies w3[k] == expand_result[k] by {
+            if k < p2 {
+                assert(w3[k] == w2[k]); assert(w2[k] == w1[k]);
+                assert(expand_result[k] == w1_prime[k]); assert(w1_prime[k] == w1[k]);
+            } else if k < p1_adj {
+                assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k + 2]);
+                assert(expand_result[k] == w1_prime[k]); assert(w1_prime[k] == w1[k + 2]);
+            } else if k == p1_adj {
+                assert(w3[k] == w2[k + 2]); assert(w2[(p1_adj + 2) as int] == sym1);
+                assert(expand_result[k] == sym1);
+            } else if k == p1_adj + 1 {
+                assert(w3[k] == w2[k + 2]); assert(w2[(k + 2) as int] == inverse_symbol(sym1));
+                assert(expand_result[k] == inverse_symbol(sym1));
+            } else {
+                assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]);
+                assert(expand_result[k] == w1_prime[(k - 2) as int]); assert(w1_prime[(k - 2) as int] == w1[k]);
+            }
+        };
+        assert(w3 =~= expand_result);
+        assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
+        (w1_prime, step2_adj, step1_adj)
+    } else {
+        assert(p2 >= p1 + 2);
+        let p2_adj = (p2 - 2) as int;
+        assert(w2[p2] == w1[p2_adj]);
+        assert(w2[p2 + 1] == w1[(p2_adj + 1) as int]);
+        assert(has_cancellation_at(w1, p2_adj));
+        let w1_prime = reduce_at(w1, p2_adj);
+        let step2_adj = DerivationStep::FreeReduce { position: p2_adj };
+        assert(apply_step(hp, w1, step2_adj) == Some(w1_prime));
+        lemma_stable_count_reduce(w1, p2_adj, n);
+        lemma_step_preserves_word_valid(data, w1, step2_adj);
+
+        let step1_adj = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
+        let expand_result = w1_prime.subrange(0, p1) + pair
+            + w1_prime.subrange(p1, w1_prime.len() as int);
+        assert forall|k: int| 0 <= k < w3.len() implies w3[k] == expand_result[k] by {
+            if k < p1 {
+                assert(w3[k] == w2[k]); assert(w2[k] == w1[k]);
+                assert(expand_result[k] == w1_prime[k]); assert(w1_prime[k] == w1[k]);
+            } else if k == p1 {
+                assert(w3[k] == w2[k]); assert(w2[p1] == sym1);
+                assert(expand_result[k] == sym1);
+            } else if k == p1 + 1 {
+                assert(w3[k] == w2[k]); assert(w2[(p1 + 1) as int] == inverse_symbol(sym1));
+                assert(expand_result[k] == inverse_symbol(sym1));
+            } else if k < p2 {
+                // p1+2 <= k < p2: w3[k] = w2[k] = w1[k-2], expand_result[k] = w1_prime[k-2] = w1[k-2]
+                assert(w3[k] == w2[k]); assert(w2[k] == w1[(k - 2) as int]);
+                assert(expand_result[k] == w1_prime[(k - 2) as int]); assert(w1_prime[(k - 2) as int] == w1[(k - 2) as int]);
+            } else {
+                // k >= p2: w3[k] = w2[k+2] = w1[k], expand_result[k] = w1_prime[k-2] = w1[k]
+                assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]);
+                assert(expand_result[k] == w1_prime[(k - 2) as int]); assert(w1_prime[(k - 2) as int] == w1[k]);
+            }
+        };
+        assert(w3 =~= expand_result);
+        assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
+        (w1_prime, step2_adj, step1_adj)
+    }
+}
+
 } // verus!

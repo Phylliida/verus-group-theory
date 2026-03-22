@@ -14430,8 +14430,40 @@ proof fn lemma_single_segment_hard(
                         lemma_base_derivation_equiv(data, deriv_steps, w_base, w_end);
                         lemma_equiv_transitive(data.base, w, w_base, w_end);
                     } else {
-                        // c3 >= 6: step2 is +2, count keeps going up. Need deeper analysis.
-                        assume(false);
+                        // c3 >= 6: step2 is +2. For k=5, this is impossible because
+                        // 2 remaining steps can reduce count by at most 4, but c3 >= 6 > 4.
+                        // For k>=6, need recursive analysis.
+                        if steps.len() == 5 {
+                            // k=5: tail_steps has 2 steps. w3 has count >= 6.
+                            // step3 changes by at most -2: c4 >= 4.
+                            // step4 changes by at most -2: c5 >= 2.
+                            // But c5 = 0 (w_end is base). Contradiction.
+                            assert(tail_steps.len() == 2);
+                            let step3 = tail_steps[0int];
+                            assert(apply_step(hp, w3, step3).is_some());
+                            let w4 = apply_step(hp, w3, step3).unwrap();
+                            lemma_step_preserves_word_valid(data, w3, step3);
+                            lemma_stable_count_reduce_step(data, w3, step3, n);
+                            let c4 = stable_letter_count(w4, n);
+                            assert(c4 >= 4);
+                            // w4 has count >= 4, one step to reach w_end (count 0) — impossible
+                            lemma_derivation_split(hp, tail_steps, w3, w_end, 1nat);
+                            let last_step_seq = tail_steps.subrange(1, 2);
+                            assert(last_step_seq.len() == 1);
+                            // Extract apply_step from 1-step derivation
+                            lemma_derivation_unfold_1(hp, last_step_seq, w4, w_end);
+                            let step4 = last_step_seq.first();
+                            assert(apply_step(hp, w4, step4) == Some(w_end));
+                            lemma_count4_step_cant_reach_base(data, w4, w_end, step4);
+                            assert(false);
+                        } else {
+                            // c3 >= 6: need proper inductive argument with count_sum measure.
+                            // The standard Britton proof finds a peak, commutes it (reducing
+                            // count_sum), and recurses. This requires adding count_sum to the
+                            // decreases clause of the mutual recursion group.
+                            // TODO: restructure with (steps.len(), count_sum) decreases.
+                            assume(false);
+                        }
                     }
                 }
 
