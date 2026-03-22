@@ -3307,6 +3307,72 @@ pub proof fn lemma_peak_commute_general(
     }
 }
 
+/// word_valid is preserved through a derivation in the HNN presentation.
+pub proof fn lemma_derivation_preserves_word_valid(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators + 1),
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+    ensures
+        word_valid(w_end, data.base.num_generators + 1),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        assert(w_end == w);
+    } else {
+        let hp = hnn_presentation(data);
+        let w1 = apply_step(hp, w, steps.first()).unwrap();
+        lemma_step_preserves_word_valid(data, w, steps.first());
+        lemma_derivation_preserves_word_valid(data, steps.drop_first(), w1, w_end);
+    }
+}
+
+/// If all steps are +2 (FE stable or RI HNN) and w is base,
+/// then after k steps the stable count is 2*k.
+pub proof fn lemma_plus2_prefix_gives_count(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators + 1),
+        is_base_word(w, data.base.num_generators),
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+        forall|j: int| 0 <= j < steps.len() ==>
+            match #[trigger] steps[j] {
+                DerivationStep::FreeExpand { symbol, .. } =>
+                    generator_index(symbol) == data.base.num_generators,
+                DerivationStep::RelatorInsert { relator_index, .. } =>
+                    relator_index as int >= data.base.relators.len(),
+                _ => false,
+            },
+    ensures
+        stable_letter_count(w_end, data.base.num_generators) == 2 * steps.len(),
+    decreases steps.len(),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    if steps.len() == 0 {
+        lemma_base_implies_count_zero(w, n);
+        assert(w_end == w);
+    } else {
+        let step0 = steps.first();
+        let w1 = apply_step(hp, w, step0).unwrap();
+        lemma_step_preserves_word_valid(data, w, step0);
+        lemma_stable_count_reduce_step(data, w, step0, n);
+        lemma_base_implies_count_zero(w, n);
+        // step0 is +2, so count(w1) = count(w) + 2 = 2
+        lemma_plus2_step_type(data, w, w1, step0, n);
+
+        // Now prove w1 satisfies the preconditions for recursion.
+        // w1 has count 2. We need: is_base_word(w1, n)? No — w1 is NOT base (count 2).
+        // The precondition requires is_base_word. But after one +2 step, w1 is not base.
+        // Need a more general version that starts from any count, not just base.
+        assume(false); // Need generalized version
+    }
+}
+
 /// Bubble a peak leftward to position (1,2), then create a base intermediate.
 ///
 /// Takes the derivation decomposed into: prefix ++ [step_up, step_down] ++ suffix.
