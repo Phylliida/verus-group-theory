@@ -3329,15 +3329,15 @@ pub proof fn lemma_derivation_preserves_word_valid(
     }
 }
 
-/// If all steps are +2 (FE stable or RI HNN) and w is base,
-/// then after k steps the stable count is 2*k.
+/// If all steps are +2 (FE stable or RI HNN) starting from count c,
+/// then after k steps the stable count is c + 2*k.
 pub proof fn lemma_plus2_prefix_gives_count(
-    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word, c: nat,
 )
     requires
         hnn_data_valid(data),
         word_valid(w, data.base.num_generators + 1),
-        is_base_word(w, data.base.num_generators),
+        stable_letter_count(w, data.base.num_generators) == c,
         derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
         forall|j: int| 0 <= j < steps.len() ==>
             match #[trigger] steps[j] {
@@ -3348,28 +3348,65 @@ pub proof fn lemma_plus2_prefix_gives_count(
                 _ => false,
             },
     ensures
-        stable_letter_count(w_end, data.base.num_generators) == 2 * steps.len(),
+        stable_letter_count(w_end, data.base.num_generators) == c + 2 * steps.len(),
     decreases steps.len(),
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
     if steps.len() == 0 {
-        lemma_base_implies_count_zero(w, n);
         assert(w_end == w);
     } else {
         let step0 = steps.first();
         let w1 = apply_step(hp, w, step0).unwrap();
         lemma_step_preserves_word_valid(data, w, step0);
-        lemma_stable_count_reduce_step(data, w, step0, n);
-        lemma_base_implies_count_zero(w, n);
-        // step0 is +2, so count(w1) = count(w) + 2 = 2
-        lemma_plus2_step_type(data, w, w1, step0, n);
 
-        // Now prove w1 satisfies the preconditions for recursion.
-        // w1 has count 2. We need: is_base_word(w1, n)? No — w1 is NOT base (count 2).
-        // The precondition requires is_base_word. But after one +2 step, w1 is not base.
-        // Need a more general version that starts from any count, not just base.
-        assume(false); // Need generalized version
+        // step0 is +2: count increases by exactly 2
+        lemma_stable_count_reduce_step(data, w, step0, n);
+        // From plus2_step_type and the count arithmetic:
+        // count(w1) ∈ {c, c+2, c-2}. Since step0 is +2: count(w1) = c + 2.
+        match step0 {
+            DerivationStep::FreeExpand { position: p, symbol: sym } => {
+                let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
+                assert(pair =~= seq![sym, inverse_symbol(sym)]);
+                let left = w.subrange(0, p);
+                let right = w.subrange(p, w.len() as int);
+                assert(w =~= left + right);
+                assert(w1 =~= left + pair + right);
+                lemma_stable_count_pair(sym, inverse_symbol(sym), n);
+                lemma_stable_letter_count_concat(left, right, n);
+                lemma_stable_letter_count_concat(left, pair, n);
+                lemma_stable_letter_count_concat(left + pair, right, n);
+                assert(stable_letter_count(w1, n) == c + 2);
+            },
+            DerivationStep::RelatorInsert { position: p, relator_index: ri, inverted: inv } => {
+                let r = get_relator(hp, ri, inv);
+                lemma_relator_stable_count(data, ri, inv);
+                let left = w.subrange(0, p);
+                let right = w.subrange(p, w.len() as int);
+                assert(w =~= left + right);
+                assert(w1 =~= left + r + right);
+                lemma_stable_letter_count_concat(left, right, n);
+                lemma_stable_letter_count_concat(left, r, n);
+                lemma_stable_letter_count_concat(left + r, right, n);
+                assert(stable_letter_count(w1, n) == c + 2);
+            },
+            _ => { assert(false); },
+        }
+
+        // Recurse on tail
+        let tail = steps.drop_first();
+        assert forall|j: int| 0 <= j < tail.len() implies
+            match #[trigger] tail[j] {
+                DerivationStep::FreeExpand { symbol, .. } =>
+                    generator_index(symbol) == n,
+                DerivationStep::RelatorInsert { relator_index, .. } =>
+                    relator_index as int >= data.base.relators.len(),
+                _ => false,
+            }
+        by {
+            assert(tail[j] == steps[j + 1]);
+        };
+        lemma_plus2_prefix_gives_count(data, tail, w1, w_end, c + 2);
     }
 }
 
