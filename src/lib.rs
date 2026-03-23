@@ -100,4 +100,10 @@ pub mod machine_group;
 #[cfg(verus_keep_ghost)]
 pub mod machine_group_faithful;
 
+#[cfg(verus_keep_ghost)]
+pub mod shortlex;
+
+#[cfg(verus_keep_ghost)]
+pub mod rewrite;
+
 pub mod runtime;
