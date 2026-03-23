@@ -155,38 +155,43 @@ pub fn reduce_to_normal_form_exec(
         out@.len() <= word@.len(),
 {
     let mut current = word.clone();
-    loop
+    let mut fuel: usize = word.len();
+    while fuel > 0
         invariant
             current@.len() <= word@.len(),
+            current@.len() <= fuel,
             word@.len() < usize::MAX,
             forall|i: int| 0 <= i < sys.rules@.len() ==>
                 (#[trigger] sys.rules@[i]).lhs@.len() > 0
                 && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
-        decreases current.len(),
+        decreases fuel,
     {
-        let old_len: Ghost<nat> = Ghost(current@.len());
-        let mut progress = false;
+        let mut found = false;
         let mut ri: usize = 0;
         while ri < sys.rules.len()
             invariant_except_break
                 0 <= ri <= sys.rules.len(),
-                !progress,
+                !found,
                 current@.len() <= word@.len(),
+                current@.len() <= fuel,
+                current@.len() < usize::MAX,
                 forall|i: int| 0 <= i < sys.rules@.len() ==>
                     (#[trigger] sys.rules@[i]).lhs@.len() > 0
                     && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
             ensures
                 current@.len() <= word@.len(),
+                found ==> current@.len() < fuel,
+                !found ==> current@.len() <= fuel,
             decreases sys.rules.len() - ri,
         {
             let rule = &sys.rules[ri];
             if rule.lhs.len() > 0 && current.len() >= rule.lhs.len() {
                 match find_match_exec(&current, &rule.lhs) {
                     Some(pos) => {
+                        let old_len = current.len();
                         let new_word = apply_rule_at_exec(&current, rule.lhs.len(), &rule.rhs, pos);
-                        assert(new_word@.len() < current@.len());
                         current = new_word;
-                        progress = true;
+                        found = true;
                         break;
                     }
                     None => { ri = ri + 1; }
@@ -195,11 +200,12 @@ pub fn reduce_to_normal_form_exec(
                 ri = ri + 1;
             }
         }
-        if !progress {
+        if !found {
             return current;
         }
-        // progress == true, current got shorter, loop decreases
+        fuel = fuel - 1;
     }
+    current
 }
 
 // ============================================================
@@ -484,6 +490,11 @@ pub fn build_initial_rules_exec(
     requires
         num_generators < 10000,
         relators@.len() < 10000,
+    ensures
+        out@.len() <= 2 * num_generators + relators@.len(),
+        forall|i: int| 0 <= i < out@.len() ==>
+            (#[trigger] out@[i]).lhs@.len() > 0
+            && out@[i].rhs@.len() < out@[i].lhs@.len(),
 {
     let mut rules: Vec<RuntimeRule> = Vec::new();
 
