@@ -3868,32 +3868,15 @@ pub proof fn lemma_bubble_peak_to_front(
     let n = data.base.num_generators;
 
     if prefix.len() == 1 {
-        // Peak at (1,2): counts (2, 4, 2).
+        // Peak at (1,2): counts (2, 4, 2). Use peak elimination with bypass.
         lemma_derivation_unfold_1(hp, prefix, w, w_before_peak);
         let step0 = prefix.first();
         assert(apply_step(hp, w, step0) == Some(w_before_peak));
+        lemma_plus2_step_type(data, w_before_peak, w_at_peak, step_up, n);
 
-        // Use the count-2 peak commutation (handles non-overlap, assume(false) for overlap)
-        let (w_base, step_down_adj, step_up_adj) =
-            lemma_k4_peak_noncancel_commute(data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
-
-        // left: [step0, step_down_adj] from w to w_base (2 steps)
-        lemma_derivation_produces_2(hp, step0, step_down_adj, w, w_before_peak, w_base);
-        let left_steps: Seq<DerivationStep> = seq![step0, step_down_adj];
-
-        // right: [step_up_adj] ++ suffix from w_base to w_end
-        lemma_step_preserves_word_valid(data, w_base, step_up_adj);
-        let one_adj: Seq<DerivationStep> = seq![step_up_adj];
-        assert(one_adj.first() == step_up_adj);
-        assert(one_adj.drop_first() =~= Seq::<DerivationStep>::empty());
-        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_after_peak) == Some(w_after_peak)) by {
-            assert(Seq::<DerivationStep>::empty().len() == 0);
-        };
-        assert(derivation_produces(hp, one_adj, w_base) == Some(w_after_peak));
-        lemma_derivation_concat(hp, one_adj, suffix, w_base, w_after_peak, w_end);
-        let right_steps = one_adj + suffix;
-
-        (w_base, left_steps, right_steps)
+        lemma_eliminate_peak_with_bypass(
+            data, w, w_before_peak, w_at_peak, w_after_peak, w_end,
+            step0, step_up, step_down, suffix)
     } else {
         // prefix.len() > 1: commute, then recurse with shorter prefix
         let (w_prime, step_down_adj, step_up_adj) =
@@ -5432,35 +5415,28 @@ pub proof fn lemma_overlap_peak_elimination(
                     }
                 } else {
                     // Non-cancel peak at (1,2) with counts (2,4,2).
+                    // Use peak elimination with bypass (handles overlap via step2/step3 commutation)
                     lemma_plus2_step_type(data, w1, w2, step1, n);
 
-                    let (w_prime, step2_adj, step1_adj) =
-                        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
-
-                    // Build [step0, step2_adj] from w to w_prime (2 steps)
-                    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_prime);
-                    let left: Seq<DerivationStep> = seq![step0, step2_adj];
-
-                    // Build [step1_adj] ++ tail from w_prime to w_end
-                    lemma_step_preserves_word_valid(data, w_prime, step1_adj);
-                    let one_adj: Seq<DerivationStep> = seq![step1_adj];
-                    assert(one_adj.first() == step1_adj);
-                    assert(one_adj.drop_first() =~= Seq::<DerivationStep>::empty());
-                    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
-                        assert(Seq::<DerivationStep>::empty().len() == 0);
-                    };
-                    assert(derivation_produces(hp, one_adj, w_prime) == Some(w3));
-                    lemma_derivation_concat(hp, one_adj, tail, w_prime, w3, w_end);
-                    let right = one_adj + tail;
+                    let (w_prime, left, right) =
+                        lemma_eliminate_peak_with_bypass(
+                            data, w, w1, w2, w3, w_end,
+                            step0, step1, step2, tail);
 
                     // Both shorter → recurse
+                    assert(left.len() >= 2);
+                    assert(is_base_word(w_prime, n));
+                    assert(word_valid(w_prime, n + 1));
                     lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
                     if right.len() >= 2 {
                         lemma_overlap_peak_elimination(data, right, w_prime, w_end, fuel);
-                    } else {
+                    } else if right.len() == 1 {
                         lemma_derivation_unfold_1(hp, right, w_prime, w_end);
                         lemma_t_free_step_is_base_step(data, w_prime, right.first());
                         lemma_single_step_equiv(data.base, w_prime, right.first(), w_end);
+                    } else {
+                        assert(w_prime == w_end);
+                        lemma_equiv_refl(data.base, w_prime);
                     }
                     lemma_equiv_transitive(data.base, w, w_prime, w_end);
                 }
