@@ -190,7 +190,15 @@ pub proof fn lemma_unique_normal_form(
     ensures
         nf1 =~= nf2,
 {
-    assert(joinable(sys, nf1, nf2));
+    // Explicitly instantiate the confluent forall with (w, nf1, nf2)
+    // instead of letting Z3 search the quantifier space.
+    assert(rewrites_to(sys, w, nf1) && rewrites_to(sys, w, nf2));
+    assert(joinable(sys, nf1, nf2)) by {
+        // confluent says: forall w, w1, w2. rewrites_to(w,w1) && rewrites_to(w,w2) ==> joinable(w1,w2)
+        // instantiate with w=w, w1=nf1, w2=nf2
+        assert(rewrites_to(sys, w, nf1));
+        assert(rewrites_to(sys, w, nf2));
+    }
     let w3 = choose|w3: Word| rewrites_to(sys, nf1, w3) && rewrites_to(sys, nf2, w3);
     lemma_irreducible_only_rewrites_to_self(sys, nf1, w3);
     lemma_irreducible_only_rewrites_to_self(sys, nf2, w3);
