@@ -1131,13 +1131,15 @@ proof fn lemma_peak_bypass_commuted(
 
 /// Inner: FR×FR bypass for overlapping count-2 peak.
 /// Try to commute two -2 steps. Returns None if positions overlap.
+/// When Some, also guarantees s3a doesn't overlap with step1.
 proof fn try_commute_minus2_steps(
-    data: HNNData, hp: Presentation, w2: Word, w3: Word, w4: Word,
-    step2: DerivationStep, step3: DerivationStep,
+    data: HNNData, hp: Presentation, w1: Word, w2: Word, w3: Word, w4: Word,
+    step1: DerivationStep, step2: DerivationStep, step3: DerivationStep,
 ) -> (result: Option<(Word, DerivationStep, DerivationStep)>)
     requires
         hnn_data_valid(data),
         hp == hnn_presentation(data),
+        word_valid(w1, data.base.num_generators + 1),
         word_valid(w2, data.base.num_generators + 1),
         word_valid(w3, data.base.num_generators + 1),
         stable_letter_count(w2, data.base.num_generators) >= 4,
@@ -1145,8 +1147,11 @@ proof fn try_commute_minus2_steps(
             (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
         stable_letter_count(w4, data.base.num_generators) ==
             (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        apply_step(hp, w1, step1) == Some(w2),
         apply_step(hp, w2, step2) == Some(w3),
         apply_step(hp, w3, step3) == Some(w4),
+        // step2 overlaps with step1
+        !peak_steps_non_overlapping(hp, step1, step2, w1),
     ensures
         match result {
             Some((w2p, s3a, s2a)) => {
@@ -1155,15 +1160,28 @@ proof fn try_commute_minus2_steps(
                 &&& word_valid(w2p, data.base.num_generators + 1)
                 &&& stable_letter_count(w2p, data.base.num_generators) ==
                     (stable_letter_count(w2, data.base.num_generators) - 2) as nat
+                &&& peak_steps_non_overlapping(hp, step1, s3a, w1)
             },
             None => true,
         },
 {
+    // For the postcondition: we need to prove peak_steps_non_overlapping(hp, step1, s3a, w1).
+    // step2 overlaps with step1 (precondition: !peak_steps_non_overlapping(hp, step1, step2, w1)).
+    // For step1 = RI(p1, ri1, inv1): step2's FR/RD is inside [p1, p1+r1_len).
+    // step3 is OUTSIDE this region (it acts on step0's letters).
+    // After commuting, s3a acts at step3's adjusted position, still outside.
+    //
+    // We prove non-overlap by matching on step1 and the commuted s3a.
+
     match (step2, step3) {
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::FreeReduce { position: p3 }) =>
             if (p3 < p2 ==> p3 + 2 <= p2) {
-                Some(lemma_commute_fr_fr(data, w2, w3, w4, p2, p3))
+                let r = lemma_commute_fr_fr(data, w2, w3, w4, p2, p3);
+                // r.1 = s3a = FreeReduce at p3 (if p3<p2) or p3+2 (if p3>=p2).
+                // step2 is FR(p2) inside step1's region. step3 is FR(p3) outside.
+                // s3a is FR at same or shifted position, still outside step1's region.
+                Some(r)
             } else { None },
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
@@ -1256,22 +1274,13 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         let c4 = stable_letter_count(w4, n);
         if c4 == 0 {
             lemma_base_implies_count_zero(w_end, n);
-            let commuted = try_commute_minus2_steps(data, hp, w2, w3, w4, step2, step3);
+            let commuted = try_commute_minus2_steps(data, hp, w1, w2, w3, w4, step1, step2, step3);
             match commuted {
                 Some((w2p, s3a, s2a)) => {
                     lemma_step_preserves_word_valid(data, w2, s3a);
                     lemma_step_preserves_word_valid(data, w2p, s2a);
 
-                    // Prove: commuted step s3a doesn't overlap with step1.
-                    // step2 is inside step1's region in w2. step3 is outside.
-                    // After commuting, s3a acts at step3's adjusted position, still outside.
-                    // The key: step1 inserts at [p1, p1+r1_len) in w1 → these become
-                    // [p1, p1+r1_len) in w2. step3 acts at p3 in w3 which maps to
-                    // p3 or p3+s2 in w2 (outside step1's region). After commuting,
-                    // s3a acts at the same adjusted position in w2.
-                    // peak_steps_non_overlapping checks step1 vs s3a regions in w2.
-                    // Since s3a is at step3's position (outside step1), non-overlap holds.
-                    assert(peak_steps_non_overlapping(hp, step1, s3a, w1));
+                    // s3a doesn't overlap with step1 (from try_commute_minus2_steps postcondition)
 
                     if w2p =~= w1 {
                         // Cancel
@@ -5883,6 +5892,10 @@ pub proof fn lemma_commute_fr_fr(
         &&& word_valid(w2_prime, data.base.num_generators + 1)
         &&& stable_letter_count(w2_prime, data.base.num_generators) ==
             (stable_letter_count(w2, data.base.num_generators) - 2) as nat
+        // Expose s3a position for non-overlap proofs
+        &&& step3_adj == DerivationStep::FreeReduce {
+            position: if p3 < p2 { p3 } else { (p3 + 2) as int }
+        }
     }),
 {
     let hp = hnn_presentation(data);
