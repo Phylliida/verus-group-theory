@@ -66,14 +66,13 @@ pub proof fn lemma_rule_preserves_equiv(
         }
     }
 
-    // lhs ≡ rhs  →  prefix + lhs ≡ prefix + rhs
-    lemma_equiv_concat_left(p, rule.lhs, rule.rhs, prefix);
+    // lhs ≡ rhs  →  lhs·suffix ≡ rhs·suffix
+    lemma_equiv_concat_left(p, rule.lhs, rule.rhs, suffix);
+    // prefix·(lhs·suffix) ≡ prefix·(rhs·suffix)
+    lemma_equiv_concat_right(p, prefix, concat(rule.lhs, suffix), concat(rule.rhs, suffix));
 
-    // (prefix + lhs) + suffix ≡ (prefix + rhs) + suffix
-    lemma_equiv_concat_right(p, prefix + rule.lhs, prefix + rule.rhs, suffix);
-
-    assert((prefix + rule.lhs + suffix) =~= ((prefix + rule.lhs) + suffix));
-    assert((prefix + rule.rhs + suffix) =~= ((prefix + rule.rhs) + suffix));
+    assert((prefix + rule.lhs + suffix) =~= (prefix + (rule.lhs + suffix)));
+    assert((prefix + rule.rhs + suffix) =~= (prefix + (rule.rhs + suffix)));
 }
 
 /// A one-step rewrite in a sound system preserves group equivalence.
