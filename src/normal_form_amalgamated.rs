@@ -251,7 +251,11 @@ proof fn lemma_empty_v_means_u_trivial(
     lemma_equiv_refl(data.p2, empty_word());
 
     assert(apply_embedding_symbol(a_words, Symbol::Gen(ident_idx)) == u_i);
+    assert(apply_embedding(a_words, gen_word)
+        == concat(apply_embedding_symbol(a_words, gen_word.first()),
+                  apply_embedding(a_words, gen_word.drop_first())));
     assert(apply_embedding(a_words, gen_word) =~= concat(u_i, empty_word()));
+    assert(concat(u_i, empty_word()) =~= u_i);
     assert(apply_embedding(a_words, gen_word) =~= u_i);
 }
 
@@ -289,10 +293,15 @@ proof fn lemma_inverse_of_trivial(p: Presentation, w: Word)
 // ============================================================
 
 /// Inserting r ≡ ε at position preserves equivalence.
+/// Proves w ≡ (w[0..p] + r + w[p..]) by building w_prime → w (reducing r to ε)
+/// then using symmetry.
 proof fn lemma_insert_trivial_preserves_equiv(
     p: Presentation, w: Word, r: Word, position: int,
 )
     requires
+        presentation_valid(p),
+        word_valid(w, p.num_generators),
+        word_valid(r, p.num_generators),
         0 <= position <= w.len(),
         equiv_in_presentation(p, r, empty_word()),
     ensures
@@ -312,13 +321,17 @@ proof fn lemma_insert_trivial_preserves_equiv(
         by { if k < position { } else { } }
     }
 
+    // Build: w_prime ≡ w (direction: derivation from w_prime to w)
+    // concat(r, suffix) ≡ concat(ε, suffix) =~= suffix
     lemma_equiv_concat_left(p, r, empty_word(), suffix);
     assert(concat(empty_word(), suffix) =~= suffix);
     lemma_equiv_refl(p, suffix);
     lemma_equiv_transitive(p, concat(r, suffix), concat(empty_word(), suffix), suffix);
 
+    // concat(prefix, concat(r, suffix)) ≡ concat(prefix, suffix)
     lemma_equiv_concat_right(p, prefix, concat(r, suffix), suffix);
 
+    // w_prime =~= concat(prefix, concat(r, suffix))
     assert(w_prime =~= concat(prefix, concat(r, suffix))) by {
         let lhs = prefix + r + suffix;
         let rhs = concat(prefix, concat(r, suffix));
@@ -335,7 +348,28 @@ proof fn lemma_insert_trivial_preserves_equiv(
             }
         }
     }
-    lemma_equiv_refl(p, w);
+
+    // w =~= concat(prefix, suffix)
+    // So: w_prime ≡ w (derivation from w_prime to w)
+    // Now use symmetry to get w ≡ w_prime.
+    // Need word_valid(w_prime, n) for symmetry.
+    reveal(presentation_valid);
+    assert(word_valid(w_prime, p.num_generators)) by {
+        assert forall|k: int| 0 <= k < w_prime.len()
+            implies symbol_valid(w_prime[k], p.num_generators)
+        by {
+            if k < prefix.len() as int {
+                assert(w_prime[k] == prefix[k]);
+                assert(prefix[k] == w[k]);
+            } else if k < (prefix.len() + r.len()) as int {
+                assert(w_prime[k] == r[k - prefix.len()]);
+            } else {
+                assert(w_prime[k] == suffix[k - prefix.len() - r.len()]);
+                assert(suffix[k - prefix.len() - r.len()] == w[k - r.len()]);
+            }
+        }
+    }
+    lemma_equiv_symmetric(p, w_prime, w);
 }
 
 // ============================================================
@@ -492,9 +526,10 @@ pub proof fn lemma_left_step_valid_in_g1(
         DerivationStep::FreeReduce { position } => {
             let s = DerivationStep::FreeReduce { position };
             assert(apply_step(data.p1, w, s) == Some(w_prime));
-            let d = Derivation { steps: Seq::new(1, |_i: int| s) };
-            assert(d.steps.first() == s);
-            assert(d.steps.drop_first() =~= Seq::<DerivationStep>::empty());
+            let steps = Seq::new(1, |_i: int| s);
+            assert(derivation_produces(data.p1, steps.drop_first(), w_prime) == Some(w_prime));
+            assert(derivation_produces(data.p1, steps, w) == Some(w_prime));
+            let d = Derivation { steps };
             assert(derivation_valid(data.p1, d, w, w_prime));
         },
         DerivationStep::FreeExpand { position, symbol } => {
@@ -507,9 +542,10 @@ pub proof fn lemma_left_step_valid_in_g1(
             assert(symbol_valid(symbol, n1));
             let s = DerivationStep::FreeExpand { position, symbol };
             assert(apply_step(data.p1, w, s) == Some(w_prime));
-            let d = Derivation { steps: Seq::new(1, |_i: int| s) };
-            assert(d.steps.first() == s);
-            assert(d.steps.drop_first() =~= Seq::<DerivationStep>::empty());
+            let steps = Seq::new(1, |_i: int| s);
+            assert(derivation_produces(data.p1, steps.drop_first(), w_prime) == Some(w_prime));
+            assert(derivation_produces(data.p1, steps, w) == Some(w_prime));
+            let d = Derivation { steps };
             assert(derivation_valid(data.p1, d, w, w_prime));
         },
         DerivationStep::RelatorInsert { position, relator_index, inverted } => {
@@ -528,9 +564,10 @@ pub proof fn lemma_left_step_valid_in_g1(
                     == get_relator(data.p1, relator_index, inverted));
                 let s = DerivationStep::RelatorInsert { position, relator_index, inverted };
                 assert(apply_step(data.p1, w, s) == Some(w_prime));
-                let d = Derivation { steps: Seq::new(1, |_i: int| s) };
-                assert(d.steps.first() == s);
-                assert(d.steps.drop_first() =~= Seq::<DerivationStep>::empty());
+                let steps = Seq::new(1, |_i: int| s);
+                assert(derivation_produces(data.p1, steps.drop_first(), w_prime) == Some(w_prime));
+                assert(derivation_produces(data.p1, steps, w) == Some(w_prime));
+                let d = Derivation { steps };
                 assert(derivation_valid(data.p1, d, w, w_prime));
             } else if r.len() == 0 {
                 assert(w_prime =~= w);
@@ -555,9 +592,10 @@ pub proof fn lemma_left_step_valid_in_g1(
                     == get_relator(data.p1, relator_index, inverted));
                 let s = DerivationStep::RelatorDelete { position, relator_index, inverted };
                 assert(apply_step(data.p1, w, s) == Some(w_prime));
-                let d = Derivation { steps: Seq::new(1, |_i: int| s) };
-                assert(d.steps.first() == s);
-                assert(d.steps.drop_first() =~= Seq::<DerivationStep>::empty());
+                let steps = Seq::new(1, |_i: int| s);
+                assert(derivation_produces(data.p1, steps.drop_first(), w_prime) == Some(w_prime));
+                assert(derivation_produces(data.p1, steps, w) == Some(w_prime));
+                let d = Derivation { steps };
                 assert(derivation_valid(data.p1, d, w, w_prime));
             } else if r.len() == 0 {
                 assert(w_prime =~= w);
