@@ -13845,12 +13845,55 @@ proof fn lemma_single_segment_hard(
         lemma_stable_count_reduce_step(data, w1, step1, n);
         let c2 = stable_letter_count(w2, n);
 
-        // All k≥4 cases: delegate to overlap peak elimination
-        // This handles c2=2 (T-free commutation), c2=4 (peak elimination),
-        // and all overlap/non-overlap sub-cases uniformly via fuel-based recursion.
+        // All k≥4 cases: delegate to overlap peak elimination.
+        // For k=4 with FR×FR overlap: use specialized handler that commutes
+        // step2/step3 to resolve the overlap.
+        let fuel = derivation_count_sum(hp, steps, w, n);
+        if steps.len() == 4 && c2 == 4 {
+            // Check for FR×FR overlap case
+            let step2_check = steps[2int];
+            let step3_check = steps[3int];
+            match (step1, step2_check, step3_check) {
+                (DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 },
+                 DerivationStep::FreeReduce { position: p2 },
+                 DerivationStep::FreeReduce { position: p3 }) => {
+                    let r1 = get_relator(hp, ri1, inv1);
+                    // Check overlap between RI and FR
+                    if !(p2 + 2 <= p1 || p2 >= p1 + r1.len())
+                        && ((p3 < p2 && p3 + 2 <= p2) || p3 >= p2)
+                    {
+                        // Extract w3 and verify preconditions
+                        let w3_temp = apply_step(hp, w2, step2_check).unwrap();
+                        lemma_step_preserves_word_valid(data, w2, step2_check);
+                        lemma_stable_count_reduce_step(data, w2, step2_check, n);
+                        let c3_temp = stable_letter_count(w3_temp, n);
+                        if c3_temp == 2 && !(w3_temp =~= w1) {
+                            // k=4, FR×FR overlap, non-cancel
+                            lemma_plus2_step_type(data, w1, w2, step1, n);
+                            // Unfold tail to get step3 applied
+                            let remaining2 = steps.subrange(2, 4);
+                            lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+                            let tail_part = remaining_steps.subrange(1, remaining_steps.len() as int);
+                            lemma_derivation_unfold_1(hp, tail_part, w3_temp, w_end);
+                            crate::britton_proof_helpers3::lemma_handle_overlap_k4_fr_fr(
+                                data, steps, w, w_end, w1, w2, w3_temp,
+                                step0, step1, p2, p3, fuel);
+                            return;
+                        }
+                    }
+                },
+                (DerivationStep::FreeExpand { position: p1, symbol: sym1 },
+                 DerivationStep::FreeReduce { position: p2 },
+                 DerivationStep::FreeReduce { position: p3 }) => {
+                    // Check FE+FR overlap — but FE+FR overlap is always cancel
+                    // (proved in analysis), so this case won't reach non-cancel.
+                    // Fall through to standard handler.
+                },
+                _ => {},
+            }
+        }
         crate::britton_proof_helpers3::lemma_overlap_peak_elimination(
-            data, steps, w, w_end,
-            derivation_count_sum(hp, steps, w, n));
+            data, steps, w, w_end, fuel);
     }
 }
 
