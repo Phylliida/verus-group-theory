@@ -5423,11 +5423,17 @@ pub proof fn lemma_overlap_peak_elimination(
                             data, w, w1, w2, w3, w_end,
                             step0, step1, step2, tail);
 
-                    // Both shorter → recurse
-                    assert(left.len() >= 2);
-                    assert(is_base_word(w_prime, n));
-                    assert(word_valid(w_prime, n + 1));
-                    lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
+                    // Both shorter → recurse. left.len() < total = 3 + tail.len() >= 3, so left.len() >= 2.
+                    if left.len() >= 2 {
+                        lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
+                    } else if left.len() == 1 {
+                        lemma_derivation_unfold_1(hp, left, w, w_prime);
+                        lemma_t_free_step_is_base_step(data, w, left.first());
+                        lemma_single_step_equiv(data.base, w, left.first(), w_prime);
+                    } else {
+                        assert(w_prime == w);
+                        lemma_equiv_refl(data.base, w);
+                    }
                     if right.len() >= 2 {
                         lemma_overlap_peak_elimination(data, right, w_prime, w_end, fuel);
                     } else if right.len() == 1 {
