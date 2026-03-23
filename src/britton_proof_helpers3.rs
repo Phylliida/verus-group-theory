@@ -1110,8 +1110,9 @@ proof fn lemma_peak_bypass_commuted(
     assert(!is_base_word(w2, n)) by {
         if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
     };
-    let (w_base, s3a2, s1a) =
+    let (ok_, w_base, s3a2, s1a) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2p, step1, s3a);
+    assert(ok_); // commuted peak doesn't overlap
     lemma_derivation_produces_2(hp, step0, s3a2, w, w1, w_base);
     let left: Seq<DerivationStep> = seq![step0, s3a2];
 
@@ -1242,8 +1243,9 @@ pub proof fn lemma_eliminate_peak_with_bypass(
     }
 
     // Non-overlap or bypass failed: standard commutation
-    let (w_base, step2_adj, step1_adj) =
+    let (ok_, w_base, step2_adj, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
+    assert(ok_); // non-overlap path or bypassed
     lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_base);
     let left: Seq<DerivationStep> = seq![step0, step2_adj];
 
@@ -1283,13 +1285,15 @@ pub proof fn lemma_k4_peak_noncancel_commute(
         stable_letter_count(w3, data.base.num_generators) == 2nat,
         !(w3 =~= w1),
     ensures ({
-        let (w1_prime, step2_adj, step1_adj) = result;
+        let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w1_prime, n)
-        &&& word_valid(w1_prime, n + 1)
-        &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        ok ==> {
+            &&& is_base_word(w1_prime, n)
+            &&& word_valid(w1_prime, n + 1)
+            &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
+            &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        }
     }),
 {
     let hp = hnn_presentation(data);
@@ -1374,7 +1378,8 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                     assert(false); arbitrary()
                 },
                 DerivationStep::FreeReduce { position: p2 } => {
-                    lemma_k4_peak_fe_fr(data, w1, w2, w3, p1, sym1, p2)
+                    let r = lemma_k4_peak_fe_fr(data, w1, w2, w3, p1, sym1, p2);
+                    (true, r.0, r.1, r.2)
                 },
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
                     lemma_relator_stable_count(data, ri2, inv2);
@@ -1386,7 +1391,8 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
-                    lemma_k4_peak_fe_rd(data, w1, w2, w3, p1, sym1, p2, ri2, inv2)
+                    let r = lemma_k4_peak_fe_rd(data, w1, w2, w3, p1, sym1, p2, ri2, inv2);
+                    (true, r.0, r.1, r.2)
                 },
             }
         },
@@ -1459,7 +1465,8 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
-                    lemma_k4_peak_ri_rd(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
+                    let r = lemma_k4_peak_ri_rd(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2);
+                    (true, r.0, r.1, r.2)
                 },
             }
         },
@@ -5425,8 +5432,9 @@ pub proof fn lemma_handle_overlap_noncancel_general(
         if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
     };
 
-    let (w_prime, step3_adj2, step1_adj) =
+    let (ok_, w_prime, step3_adj2, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
+    assert(ok_); // commuted peak doesn't overlap
 
     // Left: [step0, step3_adj2] from w to w_prime (2 steps)
     lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
