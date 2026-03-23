@@ -4996,6 +4996,18 @@ pub proof fn lemma_handle_tfree_overlap(
         (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
          DerivationStep::FreeReduce { position: p3 }) =>
             p3 + 2 <= p2 || p3 >= p2 + 2,
+        (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r3 = get_relator(hp, ri3, inv3);
+            p3 + r3.len() <= p2 || p3 >= p2 + 2
+        },
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r3 = get_relator(hp, ri3, inv3);
+            let p3a: int = if p3 < p2 { p3 } else { (p3 + 2) as int };
+            (p3a + r3.len() <= p2 || p3a >= p2 + 2)
+                && (p3 < p2 ==> p3 + r3.len() <= p2)
+        },
         _ => false,
     };
 
@@ -5843,6 +5855,102 @@ pub proof fn lemma_commute_fe_fr_general(
             } else {
                 assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[k as int]);
                 assert(result_word[k] == w2_prime[(k-2) as int]); assert(w2_prime[(k-2) as int] == w2[k as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// General commutation of non-overlapping FE (step2) × RD (step3).
+/// FE adds 2 elements at p2, RD removes relator at p3. No stable count restriction.
+pub proof fn lemma_commute_fe_rd_general(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, sym2: Symbol, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeExpand { position: p2, symbol: sym2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        // Non-overlapping: RD region doesn't overlap with FE region in w3
+        ({
+            let r3 = get_relator(hnn_presentation(data), ri3, inv3);
+            p3 + r3.len() <= p2 || p3 >= p2 + 2
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+    let pair = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+    assert(w3 =~= w2.subrange(0, p2) + pair + w2.subrange(p2, w2.len() as int));
+    assert(w3.subrange(p3, p3 + r3_len) =~= r3);
+
+    if p3 + r3_len <= p2 {
+        // RD before FE. In w3, RD region [p3, p3+r3_len) is before FE pair [p2, p2+2).
+        // Adjusted: RD at p3 in w2. FE at p2 - r3_len in w2'.
+        assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
+        assert(w2.subrange(p3, p3 + r3_len) =~= r3);
+        let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
+        let w2_prime = w2.subrange(0, p3) + w2.subrange(p3 + r3_len, w2.len() as int);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeExpand { position: (p2 - r3_len) as int, symbol: sym2 };
+        let pair2 = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+        let result_word = w2_prime.subrange(0, (p2 - r3_len) as int) + pair2 + w2_prime.subrange((p2 - r3_len) as int, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p3 {
+            } else if k < p2 - r3_len {
+                assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len) as int]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + r3_len) as int]);
+            } else if k < p2 - r3_len + 2 {
+                assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == pair[(k + r3_len - p2) as int]);
+                assert(result_word[k] == pair2[(k - (p2 - r3_len)) as int]);
+            } else {
+                assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len - 2) as int]);
+                assert(result_word[k] == w2_prime[(k - 2) as int]); assert(w2_prime[(k - 2) as int] == w2[(k - 2 + r3_len) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // RD after FE. p3 >= p2 + 2. Adjusted: RD at p3 - 2 in w2. FE at p2 in w2'.
+        let p3_adj = (p3 - 2) as int;
+        assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k - 2) as int] by {};
+        assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
+        let step3_adj = DerivationStep::RelatorDelete { position: p3_adj, relator_index: ri3, inverted: inv3 };
+        let w2_prime = w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeExpand { position: p2, symbol: sym2 };
+        let pair2 = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+        let result_word = w2_prime.subrange(0, p2) + pair2 + w2_prime.subrange(p2, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p2 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            } else if k < p2 + 2 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == pair[(k - p2) as int]);
+                assert(result_word[k] == pair2[(k - p2) as int]);
+            } else if k < p3 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k - 2) as int]);
+                assert(result_word[k] == w2_prime[(k - 2) as int]); assert(w2_prime[(k - 2) as int] == w2[(k - 2) as int]);
+            } else {
+                assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len - 2) as int]);
+                assert(result_word[k] == w2_prime[(k - 2) as int]); assert(w2_prime[(k - 2) as int] == w2[(k - 2 + r3_len) as int]);
             }
         };
         assert(w_end =~= result_word);
