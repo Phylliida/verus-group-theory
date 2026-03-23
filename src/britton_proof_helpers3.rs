@@ -1047,16 +1047,57 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         let suffix_rest = suffix.subrange(1, suffix.len() as int);
         let c4 = stable_letter_count(w4, n);
         if c4 == 0 {
-            match (step2, step3) {
+            // Try commuting step2/step3 using all available helpers
+            lemma_base_implies_count_zero(w_end, n);
+            let commuted = match (step2, step3) {
                 (DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::FreeReduce { position: p3 }) => {
+                 DerivationStep::FreeReduce { position: p3 }) =>
                     if (p3 < p2 ==> p3 + 2 <= p2) {
-                        return lemma_peak_bypass_fr_fr(
-                            data, w, w1, w2, w3, w4, w_end,
-                            step0, step1, p2, p3, suffix_rest);
-                    }
+                        Some(lemma_commute_fr_fr(data, w2, w3, w4, p2, p3))
+                    } else { None },
+                (DerivationStep::FreeReduce { position: p2 },
+                 DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+                    if p3 >= p2 {
+                        Some(lemma_commute_fr_rd_right(data, w2, w3, w4, p2, p3, ri3, inv3))
+                    } else if ({ let r3 = get_relator(hp, ri3, inv3); p3 + r3.len() <= p2 }) {
+                        Some(lemma_commute_fr_rd_left(data, w2, w3, w4, p2, p3, ri3, inv3))
+                    } else { None },
+                (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+                 DerivationStep::FreeReduce { position: p3 }) => {
+                    let r2 = get_relator(hp, ri2, inv2);
+                    let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+                    if p3a + 2 <= p2 || p3a >= p2 + r2.len() {
+                        Some(lemma_commute_rd_fr(data, w2, w3, w4, p2, ri2, inv2, p3))
+                    } else { None }
                 },
-                _ => {},
+                (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+                 DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+                    let r2 = get_relator(hp, ri2, inv2);
+                    let r3 = get_relator(hp, ri3, inv3);
+                    if p3 >= p2 && (p3 + r2.len()) as int + r3.len() <= w2.len() as int {
+                        Some(lemma_commute_rd_rd_right(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
+                    } else if p3 < p2 && p3 + r3.len() <= p2 {
+                        Some(lemma_commute_rd_rd_left(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
+                    } else { None }
+                },
+                _ => None,
+            };
+            match commuted {
+                Some((w2p, s3a, s2a)) => {
+                    lemma_step_preserves_word_valid(data, w2, s3a);
+                    lemma_step_preserves_word_valid(data, w2p, s2a);
+                    if w2p =~= w1 {
+                        // Cancel
+                        assert(apply_step(hp, w1, s2a) == Some(w4)) by { assert(w2p =~= w1); };
+                        lemma_derivation_produces_2(hp, step0, s2a, w, w1, w4);
+                        lemma_zero_count_implies_base(w4, n);
+                        return (w4, seq![step0, s2a], suffix_rest);
+                    }
+                    return lemma_peak_bypass_commuted(
+                        data, w, w1, w2, w2p, w4, w_end,
+                        step0, step1, s3a, s2a, suffix_rest);
+                },
+                None => {},
             }
         }
     }
