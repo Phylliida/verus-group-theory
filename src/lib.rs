@@ -128,3 +128,6 @@ pub mod knuth_bendix_tests;
 
 #[cfg(verus_keep_ghost)]
 pub mod normal_form_free_product;
+
+#[cfg(verus_keep_ghost)]
+pub mod normal_form_amalgamated;
