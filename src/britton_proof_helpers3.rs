@@ -4061,42 +4061,10 @@ pub proof fn lemma_bubble_peak_to_front(
                 lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
                 (wp, sd, one + suffix)
             } else {
-                // Try all commutation combinations
                 assert(stable_letter_count(w_at_peak, n) >= 4nat);
-                lemma_base_implies_count_zero(w_end, n);
-                let commuted = match (step_down, step3) {
-                    (DerivationStep::FreeReduce { position: p2 },
-                     DerivationStep::FreeReduce { position: p3 }) =>
-                        if (p3 < p2 ==> p3 + 2 <= p2) {
-                            Some(lemma_commute_fr_fr(data, w_at_peak, w_after_peak, w4, p2, p3))
-                        } else { None },
-                    (DerivationStep::FreeReduce { position: p2 },
-                     DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
-                        if p3 >= p2 {
-                            Some(lemma_commute_fr_rd_right(data, w_at_peak, w_after_peak, w4, p2, p3, ri3, inv3))
-                        } else if ({ let r3 = get_relator(hp, ri3, inv3); p3 + r3.len() <= p2 }) {
-                            Some(lemma_commute_fr_rd_left(data, w_at_peak, w_after_peak, w4, p2, p3, ri3, inv3))
-                        } else { None },
-                    (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
-                     DerivationStep::FreeReduce { position: p3 }) => {
-                        let r2 = get_relator(hp, ri2, inv2);
-                        let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
-                        if p3a + 2 <= p2 || p3a >= p2 + r2.len() {
-                            Some(lemma_commute_rd_fr(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3))
-                        } else { None }
-                    },
-                    (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
-                     DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
-                        let r2 = get_relator(hp, ri2, inv2);
-                        let r3 = get_relator(hp, ri3, inv3);
-                        if p3 >= p2 && (p3 + r2.len()) as int + r3.len() <= w_at_peak.len() as int {
-                            Some(lemma_commute_rd_rd_right(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3, ri3, inv3))
-                        } else if p3 < p2 && p3 + r3.len() <= p2 {
-                            Some(lemma_commute_rd_rd_left(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3, ri3, inv3))
-                        } else { None }
-                    },
-                    _ => None,
-                };
+                let commuted = try_commute_minus2_steps(
+                    data, hp, w_before_peak, w_at_peak, w_after_peak, w4,
+                    step_up, step_down, step3);
                 match commuted {
                     Some((w2p, s3a, s2a)) => {
                         lemma_step_preserves_word_valid(data, w_at_peak, s3a);
