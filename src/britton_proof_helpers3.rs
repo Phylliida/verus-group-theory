@@ -6823,19 +6823,20 @@ pub proof fn lemma_commute_rd_rd_general(
         let step2_adj = DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 };
         assert forall|k: int| p2 <= k < p2 + r2_len implies w2_prime[k] == w2[k] by {};
         assert(w2_prime.subrange(p2, p2 + r2_len) =~= r2);
-        let result_word = w2_prime.subrange(0, p2) + w2_prime.subrange(p2 + r2_len, w2_prime.len() as int);
-        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
-            if k < p2 { }
-            else if k < p3 {
-                assert(result_word[k] == w2_prime[(k+r2_len) as int]); assert(w2_prime[(k+r2_len) as int] == w2[(k+r2_len) as int]);
-                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k+r2_len) as int]);
-            } else {
-                assert(result_word[k] == w2_prime[(k+r2_len) as int]); assert(w2_prime[(k+r2_len) as int] == w2[(k+r2_len+r3_len) as int]);
-                assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == w2[(k+r3_len+r2_len) as int]);
-            }
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end)) by {
+            let result_word = w2_prime.subrange(0, p2) + w2_prime.subrange(p2 + r2_len, w2_prime.len() as int);
+            assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+                if k < p2 { }
+                else if k < p3 {
+                    assert(result_word[k] == w2_prime[(k+r2_len) as int]); assert(w2_prime[(k+r2_len) as int] == w2[(k+r2_len) as int]);
+                    assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k+r2_len) as int]);
+                } else {
+                    assert(result_word[k] == w2_prime[(k+r2_len) as int]); assert(w2_prime[(k+r2_len) as int] == w2[(k+r2_len+r3_len) as int]);
+                    assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == w2[(k+r3_len+r2_len) as int]);
+                }
+            };
+            assert(w_end =~= result_word);
         };
-        assert(w_end =~= result_word);
-        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     }
 }
