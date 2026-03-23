@@ -685,17 +685,66 @@ pub proof fn lemma_k4_peak_ri_fr(
                                 assert(false); arbitrary()
                             }
                         } else {
-                            // r1[offset] is base (in a_j or inv(b_j) region). gen_idx < n.
-                            // Contradicts gen_idx(w2[p2]) == n.
+                            // r1[offset] is in a_j (if 1 <= offset <= a_j.len()) or
+                            // inv(b_j) (if a_j.len()+2 <= offset < r1_len). Either way, base.
                             lemma_hnn_relator_structure(data, j1);
-                            // TODO: prove r1[offset] is base for general offset
-                            // For now this is a gap - but it's provable as contradiction
+                            let t_inv = stable_letter_inv(data);
+                            let t = stable_letter(data);
+                            assert(r1 =~= seq![t_inv] + a_j1 + seq![t] + inverse_word(b_j1));
+                            if offset >= 1 && offset <= a_j1.len() as int {
+                                // In a_j region: r1[offset] = a_j[offset-1]
+                                assert(r1[offset] == a_j1[(offset - 1) as int]);
+                                assert(generator_index(a_j1[(offset - 1) as int]) < n) by {
+                                    reveal(hnn_data_valid);
+                                    assert(word_valid(a_j1, n));
+                                };
+                            } else {
+                                // In inv(b_j) region: offset >= a_j.len()+2
+                                let inv_off = (offset - a_j1.len() as int - 2) as int;
+                                lemma_inverse_word_valid(b_j1, n);
+                                assert(r1[offset] == inverse_word(b_j1)[inv_off]);
+                                assert(generator_index(inverse_word(b_j1)[inv_off]) < n);
+                            }
+                            assert(generator_index(r1[offset]) < n);
+                            assert(generator_index(w2[p2]) < n);
                             assert(false); arbitrary()
                         }
                     }
                 } else {
-                    // a_j = []: stable at 0 and 1. Only p2 == p1 gives adjacent.
-                    assert(p2 == p1); // forced by structure
+                    // a_j = []: stable at 0 and 1.
+                    // We've proven above that offset != 0 when a_j.len() > 0 (contradiction).
+                    // With a_j = []: r1 = [Inv(n), Gen(n)] + inv(b_j). r1_len = 2+b_j.len().
+                    // p2 >= p1, p2+2 <= p1+r1_len = p1+2+b_j.len().
+                    // Both w2[p2] and w2[p2+1] have gen_idx == n.
+                    // w2[p2] = r1[p2-p1]. For gen_idx == n: p2-p1 must be 0 or 1.
+                    // w2[p2+1] = r1[p2-p1+1]. For gen_idx == n: p2-p1+1 must be 0 or 1.
+                    // Combined: p2-p1 == 0 and p2-p1+1 == 1. So p2 == p1.
+                    let off = (p2 - p1) as int;
+                    if off != 0 {
+                        // off >= 1. r1[off] = Gen(n) if off==1, else base.
+                        // r1[off+1]: if off==1, r1[2] = inv(b_j)[0] if b_j.len()>0 (base), or out of bounds.
+                        // Either way contradicts gen_idx(w2[p2+1]) == n.
+                        if off == 1 {
+                            if b_j1.len() > 0 {
+                                lemma_hnn_relator_structure(data, j1);
+                                lemma_inverse_word_valid(b_j1, n);
+                                assert(generator_index(inverse_word(b_j1)[0int]) < n);
+                                assert(false);
+                            } else {
+                                // r1_len == 2, off == 1, p2+2 = p1+3 > p1+2 = p1+r1_len. Contradiction.
+                                assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
+                                assert(false);
+                            }
+                        } else {
+                            // off >= 2: r1[off] is in inv(b_j) region, base. Contradiction.
+                            lemma_hnn_relator_structure(data, j1);
+                            lemma_inverse_word_valid(b_j1, n);
+                            let inv_off = (off - 2) as int;
+                            assert(generator_index(inverse_word(b_j1)[inv_off]) < n);
+                            assert(false);
+                        }
+                    }
+                    assert(p2 == p1);
                     if b_j1.len() == 0 {
                         // Cancel case: r1 = [Inv(n), Gen(n)]. After RI+FR: w3 = w1.
                         assert(r1_len == 2);
@@ -714,8 +763,48 @@ pub proof fn lemma_k4_peak_ri_fr(
                 lemma_hnn_relator_inverted_stable_positions(data, j1);
                 // Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
                 if a_j1.len() > 0 {
-                    // Similar contradiction: no adjacent stable pair.
-                    assert(false); arbitrary() // TODO: full proof for inverted case
+                    // Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
+                    // Gap between them = a_j.len() > 0. No adjacent stable pair.
+                    // Same logic as non-inverted: r1[p2-p1] at non-stable position → base → contradiction.
+                    let offset = (p2 - p1) as int;
+                    let sb = b_j1.len() as int;
+                    // Stable positions: sb and sb+a_j1.len()+1.
+                    // If offset == sb: r1[offset+1] = inv(a_j)[0] if a_j non-empty (base). Contradiction.
+                    // If offset == sb+a_j1.len()+1: r1[offset+1] past end or Gen(n)+1. Same analysis.
+                    // Otherwise: r1[offset] is base. Contradiction.
+                    // For now: r1[offset] has gen_idx < n unless at stable position.
+                    // At stable position: the next element is base (gap > 0). Contradiction.
+                    if offset == sb {
+                        // r1[sb+1] = inv(a_j)[0], base
+                        assert(generator_index(r1[(sb + 1) as int]) < n) by {
+                            reveal(hnn_data_valid);
+                            lemma_inverse_word_valid(a_j1, n);
+                        };
+                        assert(false);
+                    } else if offset == (sb + a_j1.len() as int + 1) {
+                        // r1[offset+1] = Gen(n)+1... past stable, into next region or past end
+                        assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
+                        if offset + 2 <= r1_len {
+                            // Past Gen(n): nothing left (offset+1 = sb+a_j+2 = r1_len). Out of bounds.
+                            assert(false);
+                        } else {
+                            assert(false); // p2+2 > p1+r1_len, contradicts precondition
+                        }
+                    } else {
+                        // Not at a stable position. r1[offset] is base.
+                        if offset < sb {
+                            assert(generator_index(b_j1[offset]) < n) by {
+                                reveal(hnn_data_valid);
+                                assert(word_valid(b_j1, n));
+                            };
+                        } else {
+                            lemma_inverse_word_valid(a_j1, n);
+                            let ia_off = (offset - sb - 1) as int;
+                            assert(generator_index(inverse_word(a_j1)[ia_off]) < n);
+                        }
+                        assert(false);
+                    }
+                    arbitrary()
                 } else {
                     if b_j1.len() == 0 {
                         assert(r1_len == 2);
