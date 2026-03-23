@@ -509,6 +509,7 @@ pub proof fn lemma_k4_peak_ri_fr(
 ) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
         word_valid(w1, data.base.num_generators + 1),
         word_valid(w2, data.base.num_generators + 1),
         word_valid(w3, data.base.num_generators + 1),
@@ -759,7 +760,9 @@ pub proof fn lemma_k4_peak_ri_fr(
                         assert(false); arbitrary() // contradicts !(w3 =~= w1)
                     } else {
                         // Genuine case: a_j=[], b_j≠[]. Can't commute.
-                        (false, arbitrary(), arbitrary(), arbitrary()) // bypass at caller
+                        // Prove equiv(w1, w3) via isomorphism: inv(b_j) ≡ ε in base.
+                        lemma_overlap_ri_fr_w1_equiv_w3(data, w1, w2, w3, p1, ri1, inv1, p2, j1);
+                        (false, arbitrary(), arbitrary(), arbitrary())
                     }
                 }
             } else {
@@ -818,7 +821,9 @@ pub proof fn lemma_k4_peak_ri_fr(
                         assert(w3 =~= w1);
                         assert(false); arbitrary() // cancel contradiction
                     } else {
-                        // Genuine inverted case
+                        // Genuine inverted case: a_j=[], b_j≠[].
+                        // Prove equiv(w1, w3) via isomorphism: b_j ≡ ε in base.
+                        lemma_overlap_ri_fr_w1_equiv_w3_inverted(data, w1, w2, w3, p1, ri1, inv1, p2, j1);
                         (false, arbitrary(), arbitrary(), arbitrary())
                     }
                 }
@@ -7410,6 +7415,116 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
     };
     assert(w3 =~= left + inv_bj1 + right);
     assert(w3 =~= concat(left, concat(inv_bj1, right)));
+}
+
+/// For the RI+FR overlap case with inverted relator, a_j=[], prove that w1 and w3 differ
+/// only by insertion of b_j (which is trivial by the isomorphism since a_j=[]).
+/// This establishes equiv_in_presentation(data.base, w1, w3) for the inverted overlap case.
+proof fn lemma_overlap_ri_fr_w1_equiv_w3_inverted(
+    data: HNNData,
+    w1: Word, w2: Word, w3: Word,
+    p1: int, ri1: nat, inv1: bool, p2: int,
+    j1: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ri1 as int >= data.base.relators.len(),
+        j1 == (ri1 as int - data.base.relators.len()) as int,
+        0 <= j1 < data.associations.len(),
+        inv1, // inverted case
+        data.associations[j1].0.len() == 0, // a_j = []
+        data.associations[j1].1.len() > 0, // b_j ≠ []
+        ({
+            let hp = hnn_presentation(data);
+            let sb = data.associations[j1].1.len() as int;
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& p2 >= p1
+            &&& p2 + 2 <= p1 + (2 + data.associations[j1].0.len() + data.associations[j1].1.len()) as int
+            &&& p2 - p1 == sb
+        }),
+        !(w3 =~= w1),
+    ensures
+        equiv_in_presentation(data.base, w1, w3),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r1 = get_relator(hp, ri1, inv1);
+    let (a_j1, b_j1) = data.associations[j1];
+
+    // Inverted relator: r1 = b_j + [Inv(n)] + inv(a_j) + [Gen(n)]
+    // With a_j = []: r1 = b_j + [Inv(n), Gen(n)]
+    lemma_hnn_relator_inverted_stable_positions(data, j1);
+    let sb = b_j1.len() as int;
+
+    // w2 = w1[0..p1] + r1 + w1[p1..]
+    assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
+
+    // FR at p2 = p1 + sb removes the [Inv(n), Gen(n)] pair inside the relator
+    // w3 = w2[0..p2] + w2[p2+2..]
+    // w2[0..p2] = w1[0..p1] + r1[0..sb] = w1[0..p1] + b_j
+    // w2[p2+2..] = r1[sb+2..] + w1[p1..] (but r1[sb+2..] = rest of inv(a_j)+[Gen(n)] after the pair)
+    // With a_j = []: r1 = b_j + [Inv(n), Gen(n)], r1_len = sb + 2.
+    // So r1[sb+2..] is empty (since r1_len = sb+2).
+    // w3 = w1[0..p1] + b_j + w1[p1..]
+
+    let left = w1.subrange(0, p1);
+    let right = w1.subrange(p1, w1.len() as int);
+
+    assert(w1 =~= left + right);
+
+    // Prove b_j ≡ ε in base group using isomorphism (a_j = [] implies b_j ≡ ε)
+    lemma_aj_empty_bj_trivial(data, j1);
+    // This gives: equiv_in_presentation(data.base, b_j, empty_word())
+
+    // Use lemma_insert_trivial_equiv: left·right ≡ left·b_j·right
+    reveal(presentation_valid);
+    assert(word_valid(b_j1, n)) by { reveal(hnn_data_valid); };
+    lemma_insert_trivial_equiv(data.base, left, right, b_j1);
+    // equiv_in_presentation(data.base, concat(left, right), concat(left, concat(b_j1, right)))
+    // i.e., equiv_in_presentation(data.base, w1, concat(left, concat(b_j1, right)))
+
+    // Show w3 =~= concat(left, concat(b_j1, right)) = left + b_j + right
+    // r1 structure: b_j + [Inv(n), Gen(n)] with a_j = []
+    assert(a_j1 =~= Seq::<Symbol>::empty());
+    assert(r1.len() == sb + 2) by {
+        assert(r1.len() == 2 + a_j1.len() + b_j1.len());
+    };
+
+    // r1[0..sb] = b_j
+    assert forall|i: int| 0 <= i < sb implies r1[i] == b_j1[i] by {
+        // From the inverted relator structure: r1 = b_j + [Inv(n)] + inv(a_j) + [Gen(n)]
+        // r1[i] = b_j[i] for 0 <= i < sb
+    };
+
+    // Show w3 element-by-element
+    assert forall|k: int| 0 <= k < w3.len() implies w3[k] == (left + b_j1 + right)[k] by {
+        if k < p1 {
+            assert(w3[k] == w2[k]);
+            assert(w2[k] == left[k]);
+            assert((left + b_j1 + right)[k] == left[k]);
+        } else if k < p1 + sb {
+            assert(w3[k] == w2[k]);
+            // w2[k] for p1 <= k < p1+sb: this is in the relator region
+            // w2[k] = r1[k - p1] = b_j[k - p1]
+            assert(w2[k] == r1[(k - p1) as int]);
+            assert(r1[(k - p1) as int] == b_j1[(k - p1) as int]);
+            assert((left + b_j1 + right)[k] == b_j1[(k - p1) as int]);
+        } else {
+            assert(w3[k] == w2[(k + 2) as int]);
+            // w2[k+2] for k >= p1+sb: k+2 >= p1+sb+2 = p1+r1.len()
+            // So w2[k+2] is in the right part: w1[k+2 - r1.len() + p1 - p1] = w1[k - sb]
+            // Actually: w2 = left + r1 + right. w2[k+2] where k+2 >= p1+r1.len() = p1+sb+2
+            // w2[k+2] = right[(k+2 - p1 - (sb+2)) as int] = right[(k - p1 - sb) as int]
+            assert((left + b_j1 + right)[k] == right[(k - p1 - sb) as int]);
+        }
+    };
+    assert(w3 =~= left + b_j1 + right);
+    assert(w3 =~= concat(left, concat(b_j1, right)));
 }
 
 } // verus!
