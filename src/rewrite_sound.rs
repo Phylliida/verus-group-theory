@@ -88,11 +88,9 @@ pub proof fn lemma_one_step_preserves_equiv(
     ensures
         equiv_in_presentation(p, w1, w2),
 {
-    let ri = choose|ri: int| 0 <= ri < sys.rules.len() &&
-        exists|pos: int| matches_at(w1, sys.rules[ri], pos)
-            && w2 == apply_rule_at(w1, sys.rules[ri], pos);
-    let pos = choose|pos: int|
-        matches_at(w1, sys.rules[ri], pos)
+    let (ri, pos) = choose|ri: int, pos: int|
+        0 <= ri < sys.rules.len()
+        && #[trigger] matches_at(w1, sys.rules[ri], pos)
         && w2 == apply_rule_at(w1, sys.rules[ri], pos);
     let rule = sys.rules[ri];
     lemma_rule_preserves_equiv(p, w1, rule, pos);
@@ -109,11 +107,9 @@ pub proof fn lemma_one_step_preserves_word_valid(
     ensures
         word_valid(w2, p.num_generators),
 {
-    let ri = choose|ri: int| 0 <= ri < sys.rules.len() &&
-        exists|pos: int| matches_at(w1, sys.rules[ri], pos)
-            && w2 == apply_rule_at(w1, sys.rules[ri], pos);
-    let pos = choose|pos: int|
-        matches_at(w1, sys.rules[ri], pos)
+    let (ri, pos) = choose|ri: int, pos: int|
+        0 <= ri < sys.rules.len()
+        && #[trigger] matches_at(w1, sys.rules[ri], pos)
         && w2 == apply_rule_at(w1, sys.rules[ri], pos);
     let rule = sys.rules[ri];
     let n = p.num_generators;

@@ -52,9 +52,10 @@ pub open spec fn apply_rule_at(w: Word, rule: RewriteRule, pos: int) -> Word
 
 /// One-step rewrite: w1 rewrites to w2 by applying some rule at some position.
 pub open spec fn rewrites_one_step(sys: RewriteSystem, w1: Word, w2: Word) -> bool {
-    exists|ri: int| 0 <= ri < sys.rules.len() &&
-        exists|pos: int| matches_at(w1, sys.rules[ri], pos)
-            && w2 == apply_rule_at(w1, sys.rules[ri], pos)
+    exists|ri: int, pos: int|
+        0 <= ri < sys.rules.len()
+        && #[trigger] matches_at(w1, sys.rules[ri], pos)
+        && w2 == apply_rule_at(w1, sys.rules[ri], pos)
 }
 
 /// Multi-step rewrite: w1 rewrites to w2 in at most n steps.
@@ -231,10 +232,9 @@ pub proof fn lemma_one_step_decreases_len(sys: RewriteSystem, w1: Word, w2: Word
     ensures
         w2.len() <= w1.len(),
 {
-    let ri = choose|ri: int| 0 <= ri < sys.rules.len() &&
-        exists|pos: int| matches_at(w1, sys.rules[ri], pos)
-            && w2 == apply_rule_at(w1, sys.rules[ri], pos);
-    let pos = choose|pos: int| matches_at(w1, sys.rules[ri], pos)
+    let (ri, pos) = choose|ri: int, pos: int|
+        0 <= ri < sys.rules.len()
+        && #[trigger] matches_at(w1, sys.rules[ri], pos)
         && w2 == apply_rule_at(w1, sys.rules[ri], pos);
     lemma_rule_application_len(w1, sys.rules[ri], pos);
 }
@@ -323,10 +323,9 @@ pub proof fn lemma_one_step_strictly_decreases_len(
     ensures
         w2.len() < w1.len(),
 {
-    let ri = choose|ri: int| 0 <= ri < sys.rules.len() &&
-        exists|pos: int| matches_at(w1, sys.rules[ri], pos)
-            && w2 == apply_rule_at(w1, sys.rules[ri], pos);
-    let pos = choose|pos: int| matches_at(w1, sys.rules[ri], pos)
+    let (ri, pos) = choose|ri: int, pos: int|
+        0 <= ri < sys.rules.len()
+        && #[trigger] matches_at(w1, sys.rules[ri], pos)
         && w2 == apply_rule_at(w1, sys.rules[ri], pos);
     let rule = sys.rules[ri];
     lemma_length_decreasing_implies_wf(sys);
