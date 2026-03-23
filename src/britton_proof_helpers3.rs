@@ -4657,6 +4657,149 @@ pub proof fn lemma_k5_c3_ge6(
 /// insertion region), this function constructs a modified derivation with lower
 /// count_sum and recurses with decreasing fuel.
 ///
+/// Non-cancel sub-case of k=4 FR×FR overlap handler.
+/// After commuting step2/step3, the new peak (step1, step3_adj) is non-cancel.
+proof fn lemma_handle_overlap_k4_fr_fr_noncancel(
+    data: HNNData, w: Word, w_end: Word,
+    w1: Word, w2: Word, w2_prime: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    step3_adj: DerivationStep, step2_adj: DerivationStep,
+    fuel: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w2_prime, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+            &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w2_prime, data.base.num_generators) == 2nat,
+        !is_base_word(w1, data.base.num_generators),
+        !is_base_word(w2_prime, data.base.num_generators),
+        !(w2_prime =~= w1),
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    assert(!is_base_word(w2, n)) by {
+        if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
+    };
+
+    let (w_prime, step3_adj2, step1_adj) =
+        lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
+
+    lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
+    let left_steps: Seq<DerivationStep> = seq![step0, step3_adj2];
+
+    lemma_step_preserves_word_valid(data, w_prime, step1_adj);
+    lemma_derivation_produces_2(hp, step1_adj, step2_adj, w_prime, w2_prime, w_end);
+    let right_steps: Seq<DerivationStep> = seq![step1_adj, step2_adj];
+
+    lemma_overlap_peak_elimination(data, left_steps, w, w_prime, fuel);
+    lemma_overlap_peak_elimination(data, right_steps, w_prime, w_end, fuel);
+    lemma_equiv_transitive(data.base, w, w_prime, w_end);
+}
+
+/// Handle the k=4 overlap case where step1/step2 overlap and step2/step3 are both FR.
+/// Strategy: commute step2 and step3 (both -2, non-overlapping because they act on
+/// different stable letter pairs), then peak-commute (step1, step3_adj) which doesn't
+/// overlap, then recurse on two 2-step sub-derivations.
+pub proof fn lemma_handle_overlap_k4_fr_fr(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    p2: int, p3: int,
+    fuel: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() == 4,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            let n = data.base.num_generators;
+            &&& step0 == steps[0]
+            &&& step1 == steps[1]
+            &&& steps[2] == (DerivationStep::FreeReduce { position: p2 })
+            &&& steps[3] == (DerivationStep::FreeReduce { position: p3 })
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 2nat,
+        !(w3 =~= w1),
+        // step2/step3 non-overlapping in w2
+        p3 < p2 ==> p3 + 2 <= p2,
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+    // Not in recursion group with lemma_overlap_peak_elimination (one-way call only)
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let step2 = DerivationStep::FreeReduce { position: p2 };
+    let step3 = DerivationStep::FreeReduce { position: p3 };
+
+    lemma_base_implies_count_zero(w_end, n);
+
+    let (w2_prime, step3_adj, step2_adj) =
+        lemma_commute_fr_fr(data, w2, w3, w_end, p2, p3);
+
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    if w2_prime =~= w1 {
+        // Cancel: step1 and step3_adj cancel.
+        assert(apply_step(hp, w1, step2_adj) == Some(w_end)) by { assert(w2_prime =~= w1); };
+        let short: Seq<DerivationStep> = seq![step0, step2_adj];
+        lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_end);
+        lemma_overlap_peak_elimination(data, short, w, w_end, fuel);
+    } else {
+        assert(!is_base_word(w2_prime, n)) by {
+            if is_base_word(w2_prime, n) { lemma_base_implies_count_zero(w2_prime, n); }
+        };
+        lemma_handle_overlap_k4_fr_fr_noncancel(
+            data, w, w_end, w1, w2, w2_prime,
+            step0, step1, step3_adj, step2_adj, fuel);
+    }
+}
+
 /// The modified derivation replaces the overlapping peak with its near-cancel
 /// equivalent. The near-cancel inserts trivial base content (e.g., inv(b_j)
 /// from the isomorphism argument) which reduces the peak height.
