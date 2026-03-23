@@ -5001,13 +5001,6 @@ pub proof fn lemma_handle_tfree_overlap(
             let r3 = get_relator(hp, ri3, inv3);
             p3 + r3.len() <= p2 || p3 >= p2 + 2
         },
-        (DerivationStep::FreeReduce { position: p2 },
-         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
-            let r3 = get_relator(hp, ri3, inv3);
-            let p3a: int = if p3 < p2 { p3 } else { (p3 + 2) as int };
-            (p3a + r3.len() <= p2 || p3a >= p2 + 2)
-                && (p3 < p2 ==> p3 + r3.len() <= p2)
-        },
         _ => false,
     };
 
@@ -5023,6 +5016,9 @@ pub proof fn lemma_handle_tfree_overlap(
         (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
          DerivationStep::FreeReduce { position: p3 }) =>
             lemma_commute_fe_fr_general(data, w2, w3, w4, p2, sym2, p3),
+        (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+            lemma_commute_fe_rd_general(data, w2, w3, w4, p2, sym2, p3, ri3, inv3),
         _ => { lemma_overlap_peak_elimination(data, steps, w, w_end, fuel); return; },
     };
 
