@@ -3752,11 +3752,73 @@ pub proof fn lemma_bubble_peak_to_front(
                 assert(derivation_produces(hp, one, wp) == Some(w_after_peak));
                 lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
                 (wp, sd, one + suffix)
-            } else { match (step_down, step3) {
-                (DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::FreeReduce { position: p3 }) => {
-                    if !(p3 < p2 ==> p3 + 2 <= p2) {
-                        // FR positions overlap — fall back
+            } else {
+                // Try all commutation combinations
+                assert(stable_letter_count(w_at_peak, n) >= 4nat);
+                lemma_base_implies_count_zero(w_end, n);
+                let commuted = match (step_down, step3) {
+                    (DerivationStep::FreeReduce { position: p2 },
+                     DerivationStep::FreeReduce { position: p3 }) =>
+                        if (p3 < p2 ==> p3 + 2 <= p2) {
+                            Some(lemma_commute_fr_fr(data, w_at_peak, w_after_peak, w4, p2, p3))
+                        } else { None },
+                    (DerivationStep::FreeReduce { position: p2 },
+                     DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+                        if p3 >= p2 {
+                            Some(lemma_commute_fr_rd_right(data, w_at_peak, w_after_peak, w4, p2, p3, ri3, inv3))
+                        } else if ({ let r3 = get_relator(hp, ri3, inv3); p3 + r3.len() <= p2 }) {
+                            Some(lemma_commute_fr_rd_left(data, w_at_peak, w_after_peak, w4, p2, p3, ri3, inv3))
+                        } else { None },
+                    (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+                     DerivationStep::FreeReduce { position: p3 }) => {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+                        if p3a + 2 <= p2 || p3a >= p2 + r2.len() {
+                            Some(lemma_commute_rd_fr(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3))
+                        } else { None }
+                    },
+                    (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+                     DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+                        let r2 = get_relator(hp, ri2, inv2);
+                        let r3 = get_relator(hp, ri3, inv3);
+                        if p3 >= p2 && (p3 + r2.len()) as int + r3.len() <= w_at_peak.len() as int {
+                            Some(lemma_commute_rd_rd_right(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3, ri3, inv3))
+                        } else if p3 < p2 && p3 + r3.len() <= p2 {
+                            Some(lemma_commute_rd_rd_left(data, w_at_peak, w_after_peak, w4, p2, ri2, inv2, p3, ri3, inv3))
+                        } else { None }
+                    },
+                    _ => None,
+                };
+                match commuted {
+                    Some((w2p, s3a, s2a)) => {
+                        lemma_step_preserves_word_valid(data, w_at_peak, s3a);
+                        if w2p =~= w_before_peak {
+                            // Cancel — fall back to standard
+                            let (wp, sd, su) = lemma_peak_commute_general(
+                                data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
+                            let one: Seq<DerivationStep> = seq![su];
+                            assert(one.first() == su);
+                            assert(one.drop_first() =~= Seq::<DerivationStep>::empty());
+                            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_after_peak) == Some(w_after_peak)) by {
+                                assert(Seq::<DerivationStep>::empty().len() == 0);
+                            };
+                            assert(derivation_produces(hp, one, wp) == Some(w_after_peak));
+                            lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
+                            (wp, sd, one + suffix)
+                        } else {
+                            // Bypass: commute non-overlapping peak (step_up, s3a)
+                            let (wp, s3a_adj, step_up_adj) = lemma_peak_commute_general(
+                                data, w_before_peak, w_at_peak, w2p, step_up, s3a);
+                            lemma_step_preserves_word_valid(data, wp, step_up_adj);
+                            lemma_step_preserves_word_valid(data, w2p, s2a);
+                            let two: Seq<DerivationStep> = seq![step_up_adj, s2a];
+                            lemma_derivation_produces_2(hp, step_up_adj, s2a, wp, w2p, w4);
+                            lemma_derivation_concat(hp, two, suffix_rest, wp, w4, w_end);
+                            (wp, s3a_adj, two + suffix_rest)
+                        }
+                    },
+                    None => {
+                        // Can't commute — use standard peak commutation
                         let (wp, sd, su) = lemma_peak_commute_general(
                             data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
                         let one: Seq<DerivationStep> = seq![su];
@@ -3768,53 +3830,9 @@ pub proof fn lemma_bubble_peak_to_front(
                         assert(derivation_produces(hp, one, wp) == Some(w_after_peak));
                         lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
                         (wp, sd, one + suffix)
-                    } else {
-                    assert(stable_letter_count(w_at_peak, n) >= 4nat);
-                    let (w2p, s3a, s2a) =
-                        lemma_commute_fr_fr(data, w_at_peak, w_after_peak, w4, p2, p3);
-                    lemma_step_preserves_word_valid(data, w_at_peak, s3a);
-
-                    if w2p =~= w_before_peak {
-                        // Cancel at this level — fall back to standard
-                        let (wp, sd, su) = lemma_peak_commute_general(
-                            data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
-                        let one: Seq<DerivationStep> = seq![su];
-                        assert(one.first() == su);
-                        assert(one.drop_first() =~= Seq::<DerivationStep>::empty());
-                        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_after_peak) == Some(w_after_peak)) by {
-                            assert(Seq::<DerivationStep>::empty().len() == 0);
-                        };
-                        assert(derivation_produces(hp, one, wp) == Some(w_after_peak));
-                        lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
-                        (wp, sd, one + suffix)
-                    } else {
-                        // Bypass: commute the non-overlapping peak (step_up, s3a)
-                        let (wp, s3a_adj, step_up_adj) = lemma_peak_commute_general(
-                            data, w_before_peak, w_at_peak, w2p, step_up, s3a);
-                        // step_up_adj: wp → w2p. Build new suffix = [step_up_adj, s2a] ++ suffix_rest
-                        lemma_step_preserves_word_valid(data, wp, step_up_adj);
-                        lemma_step_preserves_word_valid(data, w2p, s2a);
-                        let two: Seq<DerivationStep> = seq![step_up_adj, s2a];
-                        lemma_derivation_produces_2(hp, step_up_adj, s2a, wp, w2p, w4);
-                        lemma_derivation_concat(hp, two, suffix_rest, wp, w4, w_end);
-                        (wp, s3a_adj, two + suffix_rest)
-                    }
-                    } // close else of FR position check
-                },
-                _ => {
-                    let (wp, sd, su) = lemma_peak_commute_general(
-                        data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
-                    let one: Seq<DerivationStep> = seq![su];
-                    assert(one.first() == su);
-                    assert(one.drop_first() =~= Seq::<DerivationStep>::empty());
-                    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w_after_peak) == Some(w_after_peak)) by {
-                        assert(Seq::<DerivationStep>::empty().len() == 0);
-                    };
-                    assert(derivation_produces(hp, one, wp) == Some(w_after_peak));
-                    lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
-                    (wp, sd, one + suffix)
-                },
-            } }
+                    },
+                }
+            }
         } else {
             // Non-overlap: standard commutation
             let (wp, sd, su) = lemma_peak_commute_general(
