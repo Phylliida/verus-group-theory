@@ -151,7 +151,7 @@ pub proof fn lemma_derivation_split(
 }
 
 /// A single derivation step produces an equivalence.
-proof fn lemma_single_step_equiv(
+pub proof fn lemma_single_step_equiv(
     p: Presentation, w: Word, step: DerivationStep, w_next: Word,
 )
     requires
@@ -894,7 +894,7 @@ pub proof fn lemma_base_word_valid_down(w: Word, n: nat)
 /// This means: FreeReduce → always base result; FreeExpand(base sym) → base result;
 /// RelatorDelete(base relator) → base result; RelatorInsert(base relator) → base result.
 /// So only FreeExpand(stable sym) or RelatorInsert/Delete(HNN relator) can produce non-base.
-proof fn lemma_base_to_nonbase_step_type(
+pub proof fn lemma_base_to_nonbase_step_type(
     data: HNNData, w: Word, w1: Word, step: DerivationStep,
 )
     requires
@@ -2782,7 +2782,7 @@ proof fn lemma_k2_relinsert_reldelete(
 }
 
 /// Single segment lemma for k=2.
-proof fn lemma_single_segment_k2(
+pub proof fn lemma_single_segment_k2(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
     requires
@@ -14287,170 +14287,12 @@ proof fn lemma_single_segment_hard(
         lemma_stable_count_reduce_step(data, w1, step1, n);
         let c2 = stable_letter_count(w2, n);
 
-        if c2 == 2 {
-            // Case A: step 1 is T-free — commute it before step 0
-            let (w_prime, step1_base, step0_adj) = match step0 {
-                DerivationStep::FreeExpand { position: p0, symbol: sym } => {
-                    match step1 {
-                        DerivationStep::FreeReduce { position: p1 } =>
-                            lemma_k4_tfree_expand_commute_fr(data, w, w1, w2, p0, sym, p1),
-                        _ =>
-                            lemma_k4_tfree_expand_commute_other(data, w, w1, w2, p0, sym, step1),
-                    }
-                },
-                DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } => {
-                    lemma_k4_tfree_ri_commute(data, w, w1, w2, p0, ri0, inv0, step1)
-                },
-                _ => { assert(false); arbitrary() },
-            };
-
-            // Build (k-1)-step derivation from w' to w_end
-            assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-            // Prove 1-step derivation from w' to w2
-            let one_step: Seq<DerivationStep> = seq![step0_adj];
-            assert(one_step.len() == 1);
-            assert(one_step.first() == step0_adj);
-            assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
-            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w2) == Some(w2));
-            assert(derivation_produces(hp, one_step, w_prime) == Some(w2));
-            // Concat to get full derivation from w'
-            lemma_derivation_concat(hp, one_step, remaining_steps, w_prime, w2, w_end);
-            let new_steps = one_step + remaining_steps;
-            lemma_base_derivation_equiv(data, new_steps, w_prime, w_end);
-            lemma_single_step_equiv(data.base, w, step1_base, w_prime);
-            lemma_equiv_transitive(data.base, w, w_prime, w_end);
-        } else {
-            // Case B: step 1 is +2, c_2 = 4. Peak elimination.
-            assert(c2 == 4nat);
-
-            if steps.len() == 4 {
-                // k=4: c_3 forced to be 2.
-                let step2 = remaining_steps[0int];
-                let step3 = remaining_steps[1int];
-                assert(remaining_steps.len() == 2);
-                assert(apply_step(hp, w2, step2).is_some());
-                let w3 = apply_step(hp, w2, step2).unwrap();
-                lemma_step_preserves_word_valid(data, w2, step2);
-
-                // w3 is non-base intermediate
-                assert(derivation_word_at(hp, steps, w, 3nat) == w3) by {
-                    let r0 = steps.drop_first();
-                    let r1 = r0.drop_first();
-                    assert(derivation_word_at(hp, steps, w, 3nat) ==
-                        derivation_word_at(hp, r0, w1, 2nat));
-                    assert(derivation_word_at(hp, r0, w1, 2nat) ==
-                        derivation_word_at(hp, r1, w2, 1nat));
-                    assert(r1.first() == step2);
-                    lemma_word_at_one(hp, r1, w2);
-                };
-                assert(!is_base_word(w3, n));
-
-                // Prove c_3 = 2 via count4 barrier
-                lemma_stable_count_reduce_step(data, w2, step2, n);
-                let c3 = stable_letter_count(w3, n);
-                // Extract step3 validity
-                lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
-                lemma_word_at_produces(hp, remaining_steps, w2, 1nat);
-                let right_part = remaining_steps.subrange(1, 2);
-                assert(right_part.first() == step3) by {
-                    assert(right_part[0int] == step3);
-                };
-                lemma_derivation_unfold_1(hp, right_part, w3, w_end);
-                assert(apply_step(hp, w3, step3) == Some(w_end));
-
-                if c3 >= 4 {
-                    lemma_count4_step_cant_reach_base(data, w3, w_end, step3);
-                    assert(false);
-                }
-                assert(c3 == 2nat);
-
-                // Peak at steps (1, 2): cancel or commute
-                if w3 =~= w1 {
-                    // Cancel: construct 2-step derivation [step0, step3]
-                    assert(apply_step(hp, w1, step3) == Some(w_end));
-                    lemma_derivation_produces_2(hp, step0, step3, w, w1, w_end);
-                    let short: Seq<DerivationStep> = seq![step0, step3];
-                    lemma_base_derivation_equiv(data, short, w, w_end);
-                } else {
-                    // Non-cancel: commute step2 past step1 to create base intermediate
-                    let (w1_prime, step2_adj, step1_adj) =
-                        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
-
-                    // Build 2-step derivation [step0, step2_adj] from w (base) to w1' (base)
-                    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w1_prime);
-                    let left_steps: Seq<DerivationStep> = seq![step0, step2_adj];
-                    lemma_base_derivation_equiv(data, left_steps, w, w1_prime);
-
-                    // Build 2-step derivation [step1_adj, step3] from w1' (base) to w_end (base)
-                    lemma_step_preserves_word_valid(data, w1_prime, step1_adj);
-                    lemma_derivation_produces_2(hp, step1_adj, step3, w1_prime, w3, w_end);
-                    let right_steps: Seq<DerivationStep> = seq![step1_adj, step3];
-                    lemma_base_derivation_equiv(data, right_steps, w1_prime, w_end);
-
-                    // Chain: w ≡ w1' ≡ w_end in base group
-                    lemma_equiv_transitive(data.base, w, w1_prime, w_end);
-                }
-            } else {
-                // k >= 5 with c_2 = 4: delegate setup + dispatch to helper
-                let step2 = remaining_steps[0int];
-                assert(apply_step(hp, w2, step2).is_some());
-                let w3 = apply_step(hp, w2, step2).unwrap();
-                lemma_step_preserves_word_valid(data, w2, step2);
-                assert(derivation_word_at(hp, steps, w, 3nat) == w3) by {
-                    let r0 = steps.drop_first();
-                    let r1 = r0.drop_first();
-                    assert(derivation_word_at(hp, steps, w, 3nat) ==
-                        derivation_word_at(hp, r0, w1, 2nat));
-                    assert(derivation_word_at(hp, r0, w1, 2nat) ==
-                        derivation_word_at(hp, r1, w2, 1nat));
-                    assert(r1.first() == step2);
-                    lemma_word_at_one(hp, r1, w2);
-                };
-                assert(!is_base_word(w3, n));
-                lemma_stable_count_reduce_step(data, w2, step2, n);
-                let c3 = stable_letter_count(w3, n);
-                lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
-                let tail_steps = remaining_steps.subrange(1, remaining_steps.len() as int);
-                assert(derivation_produces(hp, tail_steps, w3) == Some(w_end));
-
-                // Dispatch based on c3
-                if c3 == 4 {
-                    crate::britton_proof_helpers3::lemma_plus2_step_type(data, w1, w2, step1, n);
-                    let (w_base, base_step, deriv_steps) =
-                        crate::britton_proof_helpers3::lemma_k5_c3_eq4_two_round(
-                            data, steps, w, w_end, w1, w2, w3,
-                            step0, step1, step2, tail_steps);
-                    lemma_single_step_equiv(data.base, w, base_step, w_base);
-                    lemma_base_derivation_equiv(data, deriv_steps, w_base, w_end);
-                    lemma_equiv_transitive(data.base, w, w_base, w_end);
-                } else if c3 >= 6 {
-                    let (w_base, left_s, right_s) = crate::britton_proof_helpers3::lemma_k5_c3_ge6(
-                        data, steps, w, w_end, w1, w2, w3, step0, step1, step2, tail_steps);
-                    if left_s.len() == 0 {
-                        lemma_base_derivation_equiv(data, right_s, w, w_end);
-                    } else {
-                        lemma_base_derivation_equiv(data, left_s, w, w_base);
-                        lemma_base_derivation_equiv(data, right_s, w_base, w_end);
-                        lemma_equiv_transitive(data.base, w, w_base, w_end);
-                    }
-                } else {
-                    assert(c3 == 2nat);
-                    if w3 =~= w1 {
-                        let short = crate::britton_proof_helpers3::lemma_k5_peak_cancel(
-                            data, steps, w, w_end, w1, step0, tail_steps);
-                        lemma_base_derivation_equiv(data, short, w, w_end);
-                    } else {
-                        let (w1_prime, left_steps, right_steps) =
-                            crate::britton_proof_helpers3::lemma_k5_peak_noncancel(
-                                data, steps, w, w_end, w1, w2, w3,
-                                step0, step1, step2, tail_steps);
-                        lemma_base_derivation_equiv(data, left_steps, w, w1_prime);
-                        lemma_base_derivation_equiv(data, right_steps, w1_prime, w_end);
-                        lemma_equiv_transitive(data.base, w, w1_prime, w_end);
-                    }
-                }
-            }
-        }
+        // All k≥4 cases: delegate to overlap peak elimination
+        // This handles c2=2 (T-free commutation), c2=4 (peak elimination),
+        // and all overlap/non-overlap sub-cases uniformly via fuel-based recursion.
+        crate::britton_proof_helpers3::lemma_overlap_peak_elimination(
+            data, steps, w, w_end,
+            derivation_count_sum(hp, steps, w, n));
     }
 }
 
@@ -15029,7 +14871,7 @@ proof fn lemma_derivation_preserves_word_valid(
 }
 
 /// word_valid at each intermediate in a derivation.
-proof fn lemma_word_at_valid(
+pub proof fn lemma_word_at_valid(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, k: nat,
 )
     requires
@@ -15050,7 +14892,7 @@ proof fn lemma_word_at_valid(
 
 /// Find the first k > 0 such that the intermediate is a base word.
 /// Since w_n = ε is base, such k exists.
-spec fn first_base_intermediate(
+pub open spec fn first_base_intermediate(
     p: Presentation, steps: Seq<DerivationStep>, w: Word, n: nat,
 ) -> nat
     recommends
@@ -15073,7 +14915,7 @@ spec fn first_base_intermediate(
 }
 
 /// The first base intermediate gives a base word.
-proof fn lemma_first_base_is_base(
+pub proof fn lemma_first_base_is_base(
     p: Presentation, steps: Seq<DerivationStep>, w: Word, w_end: Word, n: nat,
 )
     requires
@@ -15113,7 +14955,7 @@ proof fn lemma_first_base_is_base(
 }
 
 /// No intermediate before the first base one is base.
-proof fn lemma_no_base_before_first(
+pub proof fn lemma_no_base_before_first(
     p: Presentation, steps: Seq<DerivationStep>, w: Word, w_end: Word, n: nat,
     j: nat,
 )
