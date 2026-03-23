@@ -3245,11 +3245,13 @@ pub proof fn lemma_k5_c3_eq4_two_round(
     // step1_adj on w1' → w3 (+2)
 
     // Round 2: swap step2_adj (T-free) past step0 (+2) at w (BASE)
-    let (w_base, step2_base, step0_adj) = match step0 {
+    let (ok, w_base_try, step2_base_try, step0_adj_try) = match step0 {
         DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
             match step2_adj {
-                DerivationStep::FreeReduce { position: p } =>
-                    lemma_k4_tfree_expand_commute_fr(data, w, w1, w1_prime, p0, sym0, p),
+                DerivationStep::FreeReduce { position: p } => {
+                    let (wp, s1b, s0a) = lemma_k4_tfree_expand_commute_fr(data, w, w1, w1_prime, p0, sym0, p);
+                    (true, wp, s1b, s0a)
+                },
                 _ =>
                     lemma_k4_tfree_expand_commute_other(data, w, w1, w1_prime, p0, sym0, step2_adj),
             }
@@ -3259,14 +3261,42 @@ pub proof fn lemma_k5_c3_eq4_two_round(
         _ => { assert(false); arbitrary() },
     };
 
-    // Build derivation: [step0_adj, step1_adj] ++ tail_steps from w_base to w_end
-    lemma_step_preserves_word_valid(data, w_base, step0_adj);
-    lemma_derivation_produces_2(hp, step0_adj, step1_adj, w_base, w1_prime, w3);
-    let prefix: Seq<DerivationStep> = seq![step0_adj, step1_adj];
-    lemma_derivation_concat(hp, prefix, tail_steps, w_base, w3, w_end);
-    let deriv_steps = prefix + tail_steps;
+    if ok {
+        let w_base = w_base_try;
+        let step2_base = step2_base_try;
+        let step0_adj = step0_adj_try;
 
-    (w_base, step2_base, deriv_steps)
+        // Build derivation: [step0_adj, step1_adj] ++ tail_steps from w_base to w_end
+        lemma_step_preserves_word_valid(data, w_base, step0_adj);
+        lemma_derivation_produces_2(hp, step0_adj, step1_adj, w_base, w1_prime, w3);
+        let prefix: Seq<DerivationStep> = seq![step0_adj, step1_adj];
+        lemma_derivation_concat(hp, prefix, tail_steps, w_base, w3, w_end);
+        let deriv_steps = prefix + tail_steps;
+
+        (w_base, step2_base, deriv_steps)
+    } else {
+        // Overlap fallback: use general T-free swap
+        let (w_base2, step2_adj2, step0_adj2) = match step0 {
+            DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
+                lemma_swap_tfree_past_expand(data, w, w1, w1_prime, p0, sym0, step2_adj)
+            },
+            DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } => {
+                lemma_swap_tfree_past_ri(data, w, w1, w1_prime, p0, ri0, inv0, step2_adj)
+            },
+            _ => { assert(false); arbitrary() },
+        };
+        lemma_zero_count_implies_base(w_base2, n);
+        lemma_t_free_step_is_base_step(data, w, step2_adj2);
+
+        // Build derivation: [step0_adj2, step1_adj] ++ tail_steps from w_base2 to w_end
+        lemma_step_preserves_word_valid(data, w_base2, step0_adj2);
+        lemma_derivation_produces_2(hp, step0_adj2, step1_adj, w_base2, w1_prime, w3);
+        let prefix: Seq<DerivationStep> = seq![step0_adj2, step1_adj];
+        lemma_derivation_concat(hp, prefix, tail_steps, w_base2, w3, w_end);
+        let deriv_steps = prefix + tail_steps;
+
+        (w_base2, step2_adj2, deriv_steps)
+    }
 }
 
 /// Generalized peak commutation: FreeExpand(stable) + FreeReduce at arbitrary count.
@@ -4368,11 +4398,13 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     lemma_base_word_valid_down(w, n);
 
     // Round 3: swap step3_adj2 (T-free) past step0 (+2) at w (BASE)
-    let (w_base, step3_base, step0_adj) = match step0 {
+    let (ok, w_base_try, step3_base_try, step0_adj_try) = match step0 {
         DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
             match step3_adj2 {
-                DerivationStep::FreeReduce { position: p } =>
-                    lemma_k4_tfree_expand_commute_fr(data, w, w1, w1_prime, p0, sym0, p),
+                DerivationStep::FreeReduce { position: p } => {
+                    let (wp, s1b, s0a) = lemma_k4_tfree_expand_commute_fr(data, w, w1, w1_prime, p0, sym0, p);
+                    (true, wp, s1b, s0a)
+                },
                 _ =>
                     lemma_k4_tfree_expand_commute_other(data, w, w1, w1_prime, p0, sym0, step3_adj2),
             }
@@ -4380,6 +4412,24 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
         DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } =>
             lemma_k4_tfree_ri_commute(data, w, w1, w1_prime, p0, ri0, inv0, step3_adj2),
         _ => { assert(false); arbitrary() },
+    };
+
+    let (w_base, step3_base, step0_adj) = if ok {
+        (w_base_try, step3_base_try, step0_adj_try)
+    } else {
+        // Overlap fallback: use general T-free swap
+        let (wb, s3a, s0a) = match step0 {
+            DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
+                lemma_swap_tfree_past_expand(data, w, w1, w1_prime, p0, sym0, step3_adj2)
+            },
+            DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } => {
+                lemma_swap_tfree_past_ri(data, w, w1, w1_prime, p0, ri0, inv0, step3_adj2)
+            },
+            _ => { assert(false); arbitrary() },
+        };
+        lemma_zero_count_implies_base(wb, n);
+        lemma_t_free_step_is_base_step(data, w, s3a);
+        (wb, s3a, s0a)
     };
 
     // Build derivation: [step0_adj, step1_adj, step2_adj] ++ suffix from w_base to w_end
@@ -5725,11 +5775,13 @@ pub proof fn lemma_overlap_peak_elimination(
 
         if c2 == 2 {
             // Step 1 is T-free. Commute past step 0.
-            let (w_prime, step1_base, step0_adj) = match step0 {
+            let (ok, w_prime, step1_base, step0_adj) = match step0 {
                 DerivationStep::FreeExpand { position: p0, symbol: sym } => {
                     match step1 {
-                        DerivationStep::FreeReduce { position: p1 } =>
-                            lemma_k4_tfree_expand_commute_fr(data, w, w1, w2, p0, sym, p1),
+                        DerivationStep::FreeReduce { position: p1 } => {
+                            let (wp, s1b, s0a) = lemma_k4_tfree_expand_commute_fr(data, w, w1, w2, p0, sym, p1);
+                            (true, wp, s1b, s0a)
+                        },
                         _ =>
                             lemma_k4_tfree_expand_commute_other(data, w, w1, w2, p0, sym, step1),
                     }
@@ -5740,21 +5792,49 @@ pub proof fn lemma_overlap_peak_elimination(
                 _ => { assert(false); arbitrary() },
             };
 
-            lemma_single_step_equiv(data.base, w, step1_base, w_prime);
+            if ok {
+                lemma_single_step_equiv(data.base, w, step1_base, w_prime);
 
-            // Build (k-1)-step derivation from w' to w_end
-            let one_step: Seq<DerivationStep> = seq![step0_adj];
-            assert(one_step.first() == step0_adj);
-            assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
-            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w2) == Some(w2)) by {
-                assert(Seq::<DerivationStep>::empty().len() == 0);
-            };
-            assert(derivation_produces(hp, one_step, w_prime) == Some(w2));
-            lemma_derivation_concat(hp, one_step, remaining, w_prime, w2, w_end);
-            let new_steps = one_step + remaining;
-            // (k-1) steps, shorter → recurse
-            lemma_overlap_peak_elimination(data, new_steps, w_prime, w_end, fuel);
-            lemma_equiv_transitive(data.base, w, w_prime, w_end);
+                // Build (k-1)-step derivation from w' to w_end
+                let one_step: Seq<DerivationStep> = seq![step0_adj];
+                assert(one_step.first() == step0_adj);
+                assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
+                assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w2) == Some(w2)) by {
+                    assert(Seq::<DerivationStep>::empty().len() == 0);
+                };
+                assert(derivation_produces(hp, one_step, w_prime) == Some(w2));
+                lemma_derivation_concat(hp, one_step, remaining, w_prime, w2, w_end);
+                let new_steps = one_step + remaining;
+                // (k-1) steps, shorter → recurse
+                lemma_overlap_peak_elimination(data, new_steps, w_prime, w_end, fuel);
+                lemma_equiv_transitive(data.base, w, w_prime, w_end);
+            } else {
+                // Overlap case: fall back to general T-free swap
+                let (w_prime2, step1_adj2, step0_adj2) = match step0 {
+                    DerivationStep::FreeExpand { position: p0, symbol: sym } => {
+                        lemma_swap_tfree_past_expand(data, w, w1, w2, p0, sym, step1)
+                    },
+                    DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } => {
+                        lemma_swap_tfree_past_ri(data, w, w1, w2, p0, ri0, inv0, step1)
+                    },
+                    _ => { assert(false); arbitrary() },
+                };
+                // w_prime2 has count 0 (base) since count(w) = 0 and swap preserves count
+                lemma_zero_count_implies_base(w_prime2, n);
+                lemma_t_free_step_is_base_step(data, w, step1_adj2);
+                lemma_single_step_equiv(data.base, w, step1_adj2, w_prime2);
+                let one2: Seq<DerivationStep> = seq![step0_adj2];
+                assert(one2.first() == step0_adj2);
+                assert(one2.drop_first() =~= Seq::<DerivationStep>::empty());
+                assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w2) == Some(w2)) by {
+                    assert(Seq::<DerivationStep>::empty().len() == 0);
+                };
+                assert(derivation_produces(hp, one2, w_prime2) == Some(w2));
+                lemma_derivation_concat(hp, one2, remaining, w_prime2, w2, w_end);
+                let new_steps2 = one2 + remaining;
+                lemma_overlap_peak_elimination(data, new_steps2, w_prime2, w_end, fuel);
+                lemma_equiv_transitive(data.base, w, w_prime2, w_end);
+            }
         } else {
             // c2 ∈ {0, 4} (from stable_count_reduce_step). c2=0 means base → contradiction.
             if c2 == 0 {

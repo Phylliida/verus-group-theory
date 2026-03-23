@@ -13,7 +13,7 @@ verus! {
 pub proof fn lemma_k4_tfree_ri_commute_fe(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, sym1: Symbol,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -34,13 +34,13 @@ pub proof fn lemma_k4_tfree_ri_commute_fe(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -60,9 +60,9 @@ pub proof fn lemma_k4_tfree_ri_commute_fe(
         let step0_adj = DerivationStep::RelatorInsert { position: p0_adj, relator_index: ri0, inverted: inv0 };
         let ins = w_prime.subrange(0, p0_adj) + r0 + w_prime.subrange(p0_adj, w_prime.len() as int);
         assert(w2 =~= ins);
-        (w_prime, step1_base, step0_adj)
+        (true, w_prime, step1_base, step0_adj)
     } else {
-        assume(false); arbitrary()
+        (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
@@ -70,7 +70,7 @@ pub proof fn lemma_k4_tfree_ri_commute_fe(
 pub proof fn lemma_k4_tfree_ri_commute_ri(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -91,13 +91,13 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -129,9 +129,9 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
         let step0_adj = DerivationStep::RelatorInsert { position: p0_adj, relator_index: ri0, inverted: inv0 };
         let ins = w_prime.subrange(0, p0_adj) + r0 + w_prime.subrange(p0_adj, w_prime.len() as int);
         assert(w2 =~= ins);
-        (w_prime, step1_base, step0_adj)
+        (true, w_prime, step1_base, step0_adj)
     } else {
-        assume(false); arbitrary()
+        (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
@@ -139,7 +139,7 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
 pub proof fn lemma_k4_tfree_ri_commute_rd(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -160,13 +160,13 @@ pub proof fn lemma_k4_tfree_ri_commute_rd(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -193,7 +193,7 @@ pub proof fn lemma_k4_tfree_ri_commute_rd(
         assert forall|k: int| 0 <= k < w2.len() implies w2[k] == ins[k] by {};
         assert(w2 =~= ins);
         assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-        (w_prime, step1_base, step0_adj)
+        (true, w_prime, step1_base, step0_adj)
     } else if p1 >= p0 + r0_len {
         let p1a = (p1 - r0_len) as int;
         assert forall|k: int| p1 <= k < p1 + r1_len implies w1[k] == w[(k - r0_len) as int] by {};
@@ -209,9 +209,9 @@ pub proof fn lemma_k4_tfree_ri_commute_rd(
         assert forall|k: int| 0 <= k < w2.len() implies w2[k] == ins[k] by {};
         assert(w2 =~= ins);
         assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
-        (w_prime, step1_base, step0_adj)
+        (true, w_prime, step1_base, step0_adj)
     } else {
-        assume(false); arbitrary() // overlap/inside relator
+        (false, arbitrary(), arbitrary(), arbitrary()) // overlap/inside relator
     }
 }
 
