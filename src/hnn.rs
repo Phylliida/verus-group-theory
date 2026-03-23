@@ -134,7 +134,7 @@ proof fn lemma_step_valid_in_hnn(
 }
 
 /// A derivation valid in the base is valid in the HNN presentation.
-proof fn lemma_derivation_valid_in_hnn(
+pub proof fn lemma_derivation_valid_in_hnn(
     data: HNNData,
     steps: Seq<DerivationStep>, w1: Word, w2: Word,
 )

@@ -533,6 +533,8 @@ pub proof fn lemma_k4_peak_ri_fr(
         &&& (ok ==> apply_step(hp, w1, step2_adj) == Some(w1_prime))
         &&& (ok ==> apply_step(hp, w1_prime, step1_adj) == Some(w3))
         &&& ((p2 + 2 <= p1 || p2 >= p1 + get_relator(hp, ri1, inv1).len()) ==> ok)
+        // When commutation fails, w1 ≡ w3 in base group (isomorphism argument)
+        &&& (!ok ==> equiv_in_presentation(data.base, w1, w3))
     }),
 {
     let hp = hnn_presentation(data);
@@ -1263,6 +1265,8 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         &&& (ok ==> right_steps.len() < total)
         // Non-overlapping always succeeds
         &&& (peak_steps_non_overlapping(hp, step1, step2, w1) ==> ok)
+        // When commutation fails, w1 and w3 are equivalent in base group
+        &&& (!ok ==> equiv_in_presentation(data.base, w1, w3))
     }),
 {
     let hp = hnn_presentation(data);
@@ -5756,9 +5760,41 @@ pub proof fn lemma_overlap_peak_elimination(
                             step0, step1, step2, tail);
 
                     if !ok_ {
-                        // Peak commutation failed (genuine overlap a_j=[], b_j≠[], bypass failed).
-                        // This is the ONE remaining unproved case.
-                        // TODO: prove via isomorphism argument
+                        // Peak commutation failed (genuine overlap a_j=[], b_j≠[]).
+                        // Use isomorphism: w1 ≡_base w3, so we can build a new derivation
+                        // [step0] + [base_steps w1→w3] + [tail] with no count-4 peak.
+                        //
+                        // From equiv_in_presentation(data.base, w1, w3): get base derivation
+                        let base_steps: Seq<DerivationStep> = choose|s: Seq<DerivationStep>|
+                            derivation_produces(data.base, s, w1) == Some(w3);
+                        // Lift base derivation to HNN presentation
+                        crate::hnn::lemma_derivation_valid_in_hnn(data, base_steps, w1, w3);
+                        assert(derivation_produces(hp, base_steps, w1) == Some(w3));
+                        // Build: [step0] + base_steps + tail
+                        let step0_seq: Seq<DerivationStep> = seq![step0];
+                        assert(step0_seq.first() == step0);
+                        assert(step0_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+                        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w1) == Some(w1)) by {
+                            assert(Seq::<DerivationStep>::empty().len() == 0);
+                        };
+                        assert(derivation_produces(hp, step0_seq, w) == Some(w1));
+                        lemma_derivation_concat(hp, step0_seq, base_steps, w, w1, w3);
+                        let prefix_new = step0_seq + base_steps;
+                        lemma_derivation_concat(hp, prefix_new, tail, w, w3, w_end);
+                        let new_steps = prefix_new + tail;
+                        // New derivation: no count-4 peak. Count sequence: 0, 2, 2, ..., 2, tail_counts.
+                        // Recurse with lower fuel (count_sum decreased by replacing peak with count-2s).
+                        // fuel = count_sum of original. New fuel bound: count_sum - 2 (at least).
+                        if new_steps.len() >= 2 {
+                            lemma_overlap_peak_elimination(data, new_steps, w, w_end, fuel);
+                        } else if new_steps.len() == 1 {
+                            lemma_derivation_unfold_1(hp, new_steps, w, w_end);
+                            lemma_t_free_step_is_base_step(data, w, new_steps.first());
+                            lemma_single_step_equiv(data.base, w, new_steps.first(), w_end);
+                        } else {
+                            assert(w == w_end);
+                            lemma_equiv_refl(data.base, w);
+                        }
                         return;
                     }
 
