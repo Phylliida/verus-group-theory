@@ -2153,7 +2153,7 @@ pub proof fn lemma_swap_fr_past_expand(
 pub proof fn lemma_swap_fe_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int, sym1: Symbol,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
@@ -2167,13 +2167,13 @@ pub proof fn lemma_swap_fe_past_expand(
             &&& apply_step(hp, w2, DerivationStep::FreeExpand { position: p1, symbol: sym1 }) == Some(w3)
         }),
     ensures ({
-        let (w1_prime, step_tfree_adj, step0_adj) = result;
+        let (ok, w1_prime, step_tfree_adj, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& word_valid(w1_prime, n + 1)
-        &&& stable_letter_count(w1_prime, n) == stable_letter_count(w1, n)
-        &&& apply_step(hp, w1, step_tfree_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step0_adj) == Some(w3)
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> stable_letter_count(w1_prime, n) == stable_letter_count(w1, n))
+        &&& (ok ==> apply_step(hp, w1, step_tfree_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step0_adj) == Some(w3))
     }),
 {
     let hp = hnn_presentation(data);
@@ -2189,7 +2189,7 @@ pub proof fn lemma_swap_fe_past_expand(
 
     if p1 == p0 + 1 {
         // Edge case: insert between stable letters — not handled yet
-        assume(false); arbitrary()
+        (false, arbitrary(), arbitrary(), arbitrary())
     } else if p1 <= p0 {
         let w1_prime = w1.subrange(0, p1) + pair1 + w1.subrange(p1, w1.len() as int);
         let step_tfree_adj = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
@@ -2208,7 +2208,7 @@ pub proof fn lemma_swap_fe_past_expand(
         assert forall|k: int| 0 <= k < w3.len() implies w3[k] == result[k] by {};
         assert(w3 =~= result);
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
-        (w1_prime, step_tfree_adj, step0_adj)
+        (true, w1_prime, step_tfree_adj, step0_adj)
     } else {
         assert(p1 >= p0 + 2);
         let p1_adj = (p1 - 2) as int;
@@ -2228,7 +2228,7 @@ pub proof fn lemma_swap_fe_past_expand(
         assert forall|k: int| 0 <= k < w3.len() implies w3[k] == result[k] by {};
         assert(w3 =~= result);
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
-        (w1_prime, step_tfree_adj, step0_adj)
+        (true, w1_prime, step_tfree_adj, step0_adj)
     }
 }
 
@@ -2280,7 +2280,7 @@ pub proof fn lemma_swap_ri_rd_past_expand(
 proof fn lemma_swap_ri_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int, ri1: nat, inv1: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
@@ -2295,13 +2295,13 @@ proof fn lemma_swap_ri_past_expand(
         stable_letter_count(w2, data.base.num_generators) ==
             stable_letter_count(w3, data.base.num_generators),
     ensures ({
-        let (w1_prime, step_tfree_adj, step0_adj) = result;
+        let (ok, w1_prime, step_tfree_adj, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& word_valid(w1_prime, n + 1)
-        &&& stable_letter_count(w1_prime, n) == stable_letter_count(w1, n)
-        &&& apply_step(hp, w1, step_tfree_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step0_adj) == Some(w3)
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> stable_letter_count(w1_prime, n) == stable_letter_count(w1, n))
+        &&& (ok ==> apply_step(hp, w1, step_tfree_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step0_adj) == Some(w3))
     }),
 {
     let hp = hnn_presentation(data);
@@ -2337,7 +2337,7 @@ proof fn lemma_swap_ri_past_expand(
         assert forall|k: int| 0 <= k < w3.len() implies w3[k] == result[k] by {};
         assert(w3 =~= result);
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
-        (w1_prime, step_tfree_adj, step0_adj)
+        (true, w1_prime, step_tfree_adj, step0_adj)
     } else if p1 >= p0 + 2 {
         let p1_adj = (p1 - 2) as int;
         let left = w1.subrange(0, p1_adj);
@@ -2356,9 +2356,9 @@ proof fn lemma_swap_ri_past_expand(
         assert forall|k: int| 0 <= k < w3.len() implies w3[k] == result[k] by {};
         assert(w3 =~= result);
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
-        (w1_prime, step_tfree_adj, step0_adj)
+        (true, w1_prime, step_tfree_adj, step0_adj)
     } else {
-        assume(false); arbitrary()
+        (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
@@ -2642,7 +2642,7 @@ proof fn lemma_swap_fr_fe_past_ri(
 proof fn lemma_swap_fr_past_ri_inner(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, ri0: nat, inv0: bool, p1: int,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
@@ -2657,13 +2657,13 @@ proof fn lemma_swap_fr_past_ri_inner(
         stable_letter_count(w2, data.base.num_generators) ==
             stable_letter_count(w3, data.base.num_generators),
     ensures ({
-        let (w1_prime, step_tfree_adj, step0_adj) = result;
+        let (ok, w1_prime, step_tfree_adj, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& word_valid(w1_prime, n + 1)
-        &&& stable_letter_count(w1_prime, n) == stable_letter_count(w1, n)
-        &&& apply_step(hp, w1, step_tfree_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step0_adj) == Some(w3)
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> stable_letter_count(w1_prime, n) == stable_letter_count(w1, n))
+        &&& (ok ==> apply_step(hp, w1, step_tfree_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step0_adj) == Some(w3))
     }),
 {
     let hp = hnn_presentation(data);
