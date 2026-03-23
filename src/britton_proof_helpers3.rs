@@ -8,6 +8,7 @@ use crate::hnn::*;
 use crate::britton::*;
 use crate::britton_proof::*;
 use crate::tietze::*;
+use crate::benign::*;
 
 verus! {
 
@@ -4996,6 +4997,243 @@ pub proof fn lemma_overlap_peak_elimination(
             }
         }
     }
+}
+
+/// When a_j is empty, b_j is equivalent to ε in the base group.
+/// Uses the HNN isomorphism: a_j ≡ ε iff b_j ≡ ε.
+pub proof fn lemma_aj_empty_bj_trivial(
+    data: HNNData, j: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= j < data.associations.len(),
+        data.associations[j].0.len() == 0, // a_j = []
+    ensures
+        equiv_in_presentation(data.base, data.associations[j].1, empty_word()),
+{
+    let k = data.associations.len();
+    let a_words = Seq::new(k, |i: int| data.associations[i].0);
+    let b_words = Seq::new(k, |i: int| data.associations[i].1);
+    let (a_j, b_j) = data.associations[j];
+
+    // Construct witness word: w = [Gen(j)]
+    let w: Word = seq![Symbol::Gen(j as nat)];
+    assert(word_valid(w, k as nat)) by {
+        assert(w.len() == 1);
+        assert forall|i: int| 0 <= i < w.len() implies generator_index(w[i]) < k as nat by {
+            assert(w[0int] == Symbol::Gen(j as nat));
+            assert(generator_index(Symbol::Gen(j as nat)) == j as nat);
+        };
+    };
+
+    // apply_embedding(a_words, [Gen(j)]) = concat(a_j, empty_word()) = a_j
+    assert(apply_embedding(a_words, w) =~= concat(apply_embedding_symbol(a_words, Symbol::Gen(j as nat)),
+        apply_embedding(a_words, w.drop_first())));
+    assert(w.drop_first() =~= Seq::<Symbol>::empty());
+    assert(apply_embedding(a_words, w.drop_first()) =~= empty_word());
+    assert(apply_embedding_symbol(a_words, Symbol::Gen(j as nat)) =~= a_words[j]);
+    assert(a_words[j] =~= a_j);
+    assert(a_j.len() == 0);
+    assert(a_j =~= empty_word());
+    assert(apply_embedding(a_words, w) =~= concat(empty_word(), empty_word()));
+    assert(concat(empty_word(), empty_word()) =~= empty_word());
+
+    // So apply_embedding(a_words, w) ≡ ε trivially
+    lemma_equiv_refl(data.base, empty_word());
+    assert(equiv_in_presentation(data.base, apply_embedding(a_words, w), empty_word()));
+
+    // By isomorphism: apply_embedding(b_words, w) ≡ ε
+    assert(equiv_in_presentation(data.base, apply_embedding(b_words, w), empty_word()));
+
+    // apply_embedding(b_words, [Gen(j)]) = b_j
+    assert(apply_embedding(b_words, w) =~= concat(apply_embedding_symbol(b_words, Symbol::Gen(j as nat)),
+        apply_embedding(b_words, w.drop_first())));
+    assert(apply_embedding(b_words, w.drop_first()) =~= empty_word());
+    assert(apply_embedding_symbol(b_words, Symbol::Gen(j as nat)) =~= b_words[j]);
+    assert(b_words[j] =~= b_j);
+    assert(apply_embedding(b_words, w) =~= concat(b_j, empty_word()));
+    assert(concat(b_j, empty_word()) =~= b_j);
+}
+
+/// When a_j is empty, inv(b_j) is equivalent to ε in the base group.
+pub proof fn lemma_aj_empty_inv_bj_trivial(
+    data: HNNData, j: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= j < data.associations.len(),
+        data.associations[j].0.len() == 0,
+    ensures
+        equiv_in_presentation(data.base, inverse_word(data.associations[j].1), empty_word()),
+{
+    let (a_j, b_j) = data.associations[j];
+    lemma_aj_empty_bj_trivial(data, j);
+    // b_j ≡ ε → inv(b_j) ≡ ε
+    reveal(presentation_valid);
+    lemma_inverse_word_valid(b_j, data.base.num_generators);
+    crate::tietze::lemma_inverse_of_identity(data.base, b_j);
+}
+
+/// Check if a +2 step and -2 step overlap in their affected regions.
+/// Returns true if they don't overlap (i.e., safe to commute).
+pub open spec fn peak_steps_non_overlapping(
+    hp: Presentation, step_up: DerivationStep, step_down: DerivationStep,
+    w1: Word,
+) -> bool {
+    match step_up {
+        DerivationStep::FreeExpand { position: p1, symbol: sym1 } => {
+            match step_down {
+                DerivationStep::FreeReduce { position: p2 } => {
+                    p2 + 2 <= p1 || p2 >= p1 + 2
+                },
+                DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
+                    let r2 = get_relator(hp, ri2, inv2);
+                    p2 + r2.len() <= p1 || p2 >= p1 + 2
+                },
+                _ => true,
+            }
+        },
+        DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } => {
+            let r1 = get_relator(hp, ri1, inv1);
+            match step_down {
+                DerivationStep::FreeReduce { position: p2 } => {
+                    p2 + 2 <= p1 || p2 >= p1 + r1.len()
+                },
+                DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
+                    let r2 = get_relator(hp, ri2, inv2);
+                    p2 + r2.len() <= p1 || p2 >= p1 + r1.len()
+                },
+                _ => true,
+            }
+        },
+        _ => true,
+    }
+}
+
+/// For the RI+FR overlap case with a_j=[], prove that w1 and w3 differ only by
+/// insertion of inv(b_j) (which is trivial by the isomorphism).
+/// This establishes equiv_in_presentation(data.base, w1, w3) for the overlap case.
+proof fn lemma_overlap_ri_fr_w1_equiv_w3(
+    data: HNNData,
+    w1: Word, w2: Word, w3: Word,
+    p1: int, ri1: nat, inv1: bool, p2: int,
+    j1: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ri1 as int >= data.base.relators.len(),
+        j1 == (ri1 as int - data.base.relators.len()) as int,
+        0 <= j1 < data.associations.len(),
+        !inv1, // non-inverted case
+        data.associations[j1].0.len() == 0, // a_j = []
+        p2 == p1, // FR at relator start (inside case, both elements)
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+        }),
+        !(w3 =~= w1),
+    ensures
+        equiv_in_presentation(data.base, w1, w3),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r1 = get_relator(hp, ri1, inv1);
+    let (a_j1, b_j1) = data.associations[j1];
+
+    // r1 = [Inv(n), Gen(n)] ++ inv(b_j1) since a_j1 = []
+    lemma_hnn_relator_stable_positions(data, j1);
+    assert(r1[0int] == stable_letter_inv(data));
+    assert(r1[1int] == stable_letter(data));
+
+    // w2 = w1[0..p1] + r1 + w1[p1..]
+    assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
+
+    // FR at p1 removes [Inv(n), Gen(n)] from w2
+    // w3 = w2[0..p1] + w2[p1+2..] = w1[0..p1] + r1[2..] + w1[p1..]
+    // r1[2..] = inv(b_j1) (since r1 = [Inv(n), Gen(n)] ++ inv(b_j1))
+    let inv_bj1 = inverse_word(b_j1);
+
+    // Show w3 = w1[0..p1] + inv(b_j1) + w1[p1..]
+    let left = w1.subrange(0, p1);
+    let right = w1.subrange(p1, w1.len() as int);
+
+    // w3 = concat(left, concat(inv_bj1, right))
+    // w1 = concat(left, right)
+    assert(w1 =~= left + right);
+
+    // Prove inv(b_j1) ≡ ε using isomorphism
+    lemma_aj_empty_inv_bj_trivial(data, j1);
+
+    // Now use lemma_insert_trivial_equiv
+    reveal(presentation_valid);
+    lemma_inverse_word_valid(b_j1, n);
+    lemma_insert_trivial_equiv(data.base, left, right, inv_bj1);
+    // This gives: equiv_in_presentation(data.base, concat(left, right), concat(left, concat(inv_bj1, right)))
+    // i.e., equiv_in_presentation(data.base, w1, concat(left, concat(inv_bj1, right)))
+
+    // Need to show w3 =~= concat(left, concat(inv_bj1, right))
+    assert(concat(left, right) =~= w1);
+    assert(concat(left, concat(inv_bj1, right)) =~= left + inv_bj1 + right);
+
+    // Show w3 =~= left + inv_bj1 + right
+    // w3 = w2[0..p1] + w2[p1+2..]
+    // w2[0..p1] = w1[0..p1] = left
+    // w2[p1+2..] = r1[2..] + w1[p1..] where r1[2..] should be inv_bj1
+
+    // r1 structure: r1 = [Inv(n)] ++ a_j1 ++ [Gen(n)] ++ inv(b_j1)
+    // With a_j1 = []: r1 = [Inv(n), Gen(n)] ++ inv(b_j1)
+    // r1_len = 2 + inv_bj1.len()
+    lemma_hnn_relator_structure(data, j1);
+    let t = stable_letter(data);
+    let t_inv = stable_letter_inv(data);
+    assert(hp.relators[ri1 as int] ==
+        Seq::new(1, |_j: int| t_inv) + a_j1 + Seq::new(1, |_j: int| t) + inverse_word(b_j1));
+    assert(a_j1.len() == 0);
+    assert(a_j1 =~= Seq::<Symbol>::empty());
+
+    // r1 = [t_inv, t] ++ inv_bj1
+    assert(hp.relators[ri1 as int] =~= seq![t_inv] + seq![t] + inv_bj1);
+    assert(hp.relators[ri1 as int] =~= seq![t_inv, t] + inv_bj1);
+
+    // get_relator returns hp.relators[ri1] or its inverse
+    // Since inv1 = false: get_relator returns hp.relators[ri1]
+    assert(r1 =~= hp.relators[ri1 as int]);
+    assert(r1 =~= seq![t_inv, t] + inv_bj1);
+
+    // r1.subrange(2, r1.len()) =~= inv_bj1
+    assert(r1.subrange(2, r1.len() as int) =~= inv_bj1);
+
+    // w2[p1+2..] = r1[2..] + right = inv_bj1 + right
+    assert forall|k: int| 0 <= k < w3.len() implies w3[k] == (left + inv_bj1 + right)[k] by {
+        if k < p1 {
+            assert(w3[k] == w2[k]);
+            assert(w2[k] == left[k]);
+            assert((left + inv_bj1 + right)[k] == left[k]);
+        } else if k < p1 + inv_bj1.len() as int {
+            assert(w3[k] == w2[(k + 2) as int]);
+            assert(w2[(k + 2) as int] == r1[(k + 2 - p1) as int]);
+            assert(r1[(k + 2 - p1) as int] == inv_bj1[(k - p1) as int]);
+            assert((left + inv_bj1 + right)[k] == inv_bj1[(k - p1) as int]);
+        } else {
+            assert(w3[k] == w2[(k + 2) as int]);
+            let r1_len = r1.len() as int;
+            assert(w2[(k + 2) as int] == w1[((k + 2) - r1_len + p1 - p1) as int]);
+            // Actually: w2 = left + r1 + right.
+            // w2[k+2] where k+2 >= p1 + r1_len: w2[k+2] = right[(k+2-p1-r1_len) as int] = w1[(k+2-r1_len) as int]
+            // But k >= p1 + inv_bj1.len() means k+2 >= p1 + 2 + inv_bj1.len() = p1 + r1_len.
+            // So w2[k+2] = right[(k - p1 - inv_bj1.len()) as int]
+            assert((left + inv_bj1 + right)[k] == right[(k - p1 - inv_bj1.len()) as int]);
+        }
+    };
+    assert(w3 =~= left + inv_bj1 + right);
+    assert(w3 =~= concat(left, concat(inv_bj1, right)));
 }
 
 } // verus!
