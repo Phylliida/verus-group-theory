@@ -4742,7 +4742,7 @@ pub proof fn lemma_overlap_peak_elimination(
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
-        steps.len() >= 3,
+        steps.len() >= 2,
         derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
         is_base_word(w, data.base.num_generators),
         is_base_word(w_end, data.base.num_generators),
@@ -4750,16 +4750,299 @@ pub proof fn lemma_overlap_peak_elimination(
         word_valid(w_end, data.base.num_generators + 1),
     ensures
         equiv_in_presentation(data.base, w, w_end),
-    decreases fuel,
+    decreases fuel, steps.len(),
 {
-    // This function handles the overlap cases that lemma_single_segment_hard
-    // can't handle via commutation. It constructs a modified derivation
-    // with lower count_sum and recurses.
+    // Strategy: find a peak or T-free step, eliminate it to produce
+    // a shorter or lower-count_sum derivation, then recurse.
     //
-    // For now, delegate to lemma_base_derivation_equiv which handles
-    // shorter derivations. The overlap handler will construct the modified
-    // derivation and call this function recursively with fuel - 1.
-    assume(false); // TODO: implement overlap peak elimination
+    // For shorter derivation: call lemma_base_derivation_equiv (safe,
+    // shorter steps means the mutual recursion terminates).
+    //
+    // For same-length lower-count_sum: call self with fuel-1.
+    //
+    // The implementation follows the standard Britton's lemma peak
+    // elimination, handling both overlap and non-overlap cases.
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // Base case: len=2 (single segment with 2 steps)
+    if steps.len() == 2 {
+        let s0 = steps.first();
+        let w1_check = apply_step(hp, w, s0).unwrap();
+        lemma_step_preserves_word_valid(data, w, s0);
+        if is_base_word(w1_check, n) {
+            // Both steps are T-free → base equivalences
+            lemma_t_free_step_is_base_step(data, w, s0);
+            lemma_single_step_equiv(data.base, w, s0, w1_check);
+            let rest = steps.drop_first();
+            lemma_derivation_unfold_1(hp, rest, w1_check, w_end);
+            let s1 = rest.first();
+            lemma_t_free_step_is_base_step(data, w1_check, s1);
+            lemma_single_step_equiv(data.base, w1_check, s1, w_end);
+            lemma_equiv_transitive(data.base, w, w1_check, w_end);
+        } else {
+            // Single segment k=2
+            lemma_single_segment_k2(data, steps, w, w_end);
+        }
+        return;
+    }
+
+    // Step 0: check for base intermediates (split point)
+    let step0 = steps.first();
+    let w1 = apply_step(hp, w, step0).unwrap();
+    lemma_step_preserves_word_valid(data, w, step0);
+
+    if is_base_word(w1, n) {
+        // w1 is base: T-free step. Apply in base group and recurse on shorter.
+        lemma_t_free_step_is_base_step(data, w, step0);
+        lemma_single_step_equiv(data.base, w, step0, w1);
+        let rest = steps.drop_first();
+        // rest has len >= 2 (since steps.len() >= 3)
+        // Recurse — rest is shorter than steps (fuel, rest.len()) < (fuel, steps.len())
+        lemma_overlap_peak_elimination(data, rest, w1, w_end, fuel);
+        lemma_equiv_transitive(data.base, w, w1, w_end);
+        return;
+    }
+
+    // w1 is non-base. Find first base intermediate.
+    lemma_first_base_is_base(hp, steps, w, w_end, n);
+    let k = first_base_intermediate(hp, steps, w, n);
+    lemma_word_at_one(hp, steps, w);
+    assert(k >= 2) by {
+        assert(!is_base_word(w1, n));
+        assert(derivation_word_at(hp, steps, w, 1nat) == w1);
+        if k == 1 { assert(is_base_word(derivation_word_at(hp, steps, w, k), n)); assert(false); }
+    };
+
+    if k < steps.len() {
+        // Base intermediate at position k < steps.len()
+        // Split and handle each piece separately
+        let w_k = derivation_word_at(hp, steps, w, k);
+        lemma_derivation_split(hp, steps, w, w_end, k);
+        let left_steps = steps.subrange(0, k as int);
+        let right_steps = steps.subrange(k as int, steps.len() as int);
+        lemma_word_at_produces(hp, steps, w, k);
+        lemma_word_at_valid(data, steps, w, k);
+
+        // Left piece: k steps, single segment (shorter → recurse)
+        // left has len k ≥ 2 (since k ≥ 2), shorter than steps
+        lemma_overlap_peak_elimination(data, left_steps, w, w_k, fuel);
+
+        // Right piece: shorter → recurse
+        if right_steps.len() >= 2 {
+            lemma_overlap_peak_elimination(data, right_steps, w_k, w_end, fuel);
+        } else if right_steps.len() == 1 {
+            // Single T-free step
+            lemma_derivation_unfold_1(hp, right_steps, w_k, w_end);
+            lemma_t_free_step_is_base_step(data, w_k, right_steps.first());
+            lemma_single_step_equiv(data.base, w_k, right_steps.first(), w_end);
+        } else {
+            // right_steps.len() == 0: w_k == w_end
+            assert(w_k == w_end);
+            lemma_equiv_refl(data.base, w);
+        }
+
+        lemma_equiv_transitive(data.base, w, w_k, w_end);
+    } else {
+        // k == steps.len(): all intermediates are non-base.
+        // Peak elimination via the standard Britton argument.
+        //
+        // Step 0 is +2 (base → non-base).
+        lemma_base_word_valid_down(w, n);
+        lemma_base_to_nonbase_step_type(data, w, w1, step0);
+        lemma_base_implies_count_zero(w, n);
+        lemma_stable_count_reduce_step(data, w, step0, n);
+        assert(stable_letter_count(w1, n) == 2nat);
+
+        let step1 = steps[1int];
+        assert(apply_step(hp, w1, step1).is_some());
+        let w2 = apply_step(hp, w1, step1).unwrap();
+        lemma_step_preserves_word_valid(data, w1, step1);
+        lemma_stable_count_reduce_step(data, w1, step1, n);
+        let c2 = stable_letter_count(w2, n);
+
+        // Get remaining derivation from w2
+        let rest0 = steps.drop_first();
+        assert(rest0.first() == step1);
+        assert(derivation_produces(hp, rest0, w1) == Some(w_end));
+        let remaining = steps.subrange(2, steps.len() as int);
+        assert(derivation_produces(hp, steps, w).is_some());
+        lemma_derivation_split(hp, steps, w, w_end, 2nat);
+        lemma_word_at_produces(hp, steps, w, 2nat);
+        assert(derivation_word_at(hp, steps, w, 2nat) == w2) by {
+            assert(derivation_word_at(hp, steps, w, 2nat) ==
+                derivation_word_at(hp, rest0, w1, 1nat));
+            lemma_word_at_one(hp, rest0, w1);
+        };
+        assert(derivation_produces(hp, remaining, w2) == Some(w_end));
+
+        // w2 is non-base (all intermediates are non-base since k == steps.len())
+        // Use lemma_no_base_before_first: for j < first_base_intermediate, word at j is non-base
+        if steps.len() >= 3 {
+            lemma_no_base_before_first(hp, steps, w, w_end, n, 2nat);
+            assert(!is_base_word(derivation_word_at(hp, steps, w, 2nat), n));
+        }
+        assert(!is_base_word(w2, n));
+
+        if c2 == 2 {
+            // Step 1 is T-free. Commute past step 0.
+            let (w_prime, step1_base, step0_adj) = match step0 {
+                DerivationStep::FreeExpand { position: p0, symbol: sym } => {
+                    match step1 {
+                        DerivationStep::FreeReduce { position: p1 } =>
+                            lemma_k4_tfree_expand_commute_fr(data, w, w1, w2, p0, sym, p1),
+                        _ =>
+                            lemma_k4_tfree_expand_commute_other(data, w, w1, w2, p0, sym, step1),
+                    }
+                },
+                DerivationStep::RelatorInsert { position: p0, relator_index: ri0, inverted: inv0 } => {
+                    lemma_k4_tfree_ri_commute(data, w, w1, w2, p0, ri0, inv0, step1)
+                },
+                _ => { assert(false); arbitrary() },
+            };
+
+            lemma_single_step_equiv(data.base, w, step1_base, w_prime);
+
+            // Build (k-1)-step derivation from w' to w_end
+            let one_step: Seq<DerivationStep> = seq![step0_adj];
+            assert(one_step.first() == step0_adj);
+            assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
+            assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w2) == Some(w2)) by {
+                assert(Seq::<DerivationStep>::empty().len() == 0);
+            };
+            assert(derivation_produces(hp, one_step, w_prime) == Some(w2));
+            lemma_derivation_concat(hp, one_step, remaining, w_prime, w2, w_end);
+            let new_steps = one_step + remaining;
+            // (k-1) steps, shorter → recurse
+            lemma_overlap_peak_elimination(data, new_steps, w_prime, w_end, fuel);
+            lemma_equiv_transitive(data.base, w, w_prime, w_end);
+        } else {
+            // c2 ∈ {0, 4} (from stable_count_reduce_step). c2=0 means base → contradiction.
+            if c2 == 0 {
+                lemma_zero_count_implies_base(w2, n);
+                assert(false); // w2 is base but all intermediates non-base
+            }
+            assert(c2 == 4nat);
+
+            // Get step2 and w3
+            let step2 = remaining[0int];
+            assert(apply_step(hp, w2, step2).is_some());
+            let w3 = apply_step(hp, w2, step2).unwrap();
+            lemma_step_preserves_word_valid(data, w2, step2);
+            lemma_stable_count_reduce_step(data, w2, step2, n);
+            let c3 = stable_letter_count(w3, n);
+
+            // Split remaining at step2
+            lemma_derivation_split(hp, remaining, w2, w_end, 1nat);
+            let tail = remaining.subrange(1, remaining.len() as int);
+            assert(derivation_produces(hp, tail, w3) == Some(w_end));
+
+            if c3 == 2 {
+                // Peak at steps (1,2). Cancel or commute.
+                if w3 =~= w1 {
+                    // Cancel: remove steps 1,2. Build [step0] ++ tail (k-2 steps)
+                    let prefix_one: Seq<DerivationStep> = seq![step0];
+                    assert(prefix_one.first() == step0);
+                    assert(prefix_one.drop_first() =~= Seq::<DerivationStep>::empty());
+                    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w1) == Some(w1)) by {
+                        assert(Seq::<DerivationStep>::empty().len() == 0);
+                    };
+                    assert(derivation_produces(hp, prefix_one, w) == Some(w1));
+                    lemma_derivation_concat(hp, prefix_one, tail, w, w1, w_end);
+                    let short = prefix_one + tail;
+                    // k-2 steps, shorter → recurse
+                    if short.len() >= 2 {
+                        lemma_overlap_peak_elimination(data, short, w, w_end, fuel);
+                    } else {
+                        // short has 1 step: single T-free step
+                        lemma_derivation_unfold_1(hp, short, w, w_end);
+                        lemma_t_free_step_is_base_step(data, w, short.first());
+                        lemma_single_step_equiv(data.base, w, short.first(), w_end);
+                    }
+                } else {
+                    // Non-cancel peak at (1,2) with counts (2,4,2).
+                    lemma_plus2_step_type(data, w1, w2, step1, n);
+                    let (w_prime, step2_adj, step1_adj) =
+                        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
+
+                    // Build [step0, step2_adj] from w to w_prime (2 steps)
+                    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_prime);
+                    let left: Seq<DerivationStep> = seq![step0, step2_adj];
+
+                    // Build [step1_adj] ++ tail from w_prime to w_end
+                    lemma_step_preserves_word_valid(data, w_prime, step1_adj);
+                    let one_adj: Seq<DerivationStep> = seq![step1_adj];
+                    assert(one_adj.first() == step1_adj);
+                    assert(one_adj.drop_first() =~= Seq::<DerivationStep>::empty());
+                    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
+                        assert(Seq::<DerivationStep>::empty().len() == 0);
+                    };
+                    assert(derivation_produces(hp, one_adj, w_prime) == Some(w3));
+                    lemma_derivation_concat(hp, one_adj, tail, w_prime, w3, w_end);
+                    let right = one_adj + tail;
+
+                    // Both shorter → recurse
+                    lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
+                    if right.len() >= 2 {
+                        lemma_overlap_peak_elimination(data, right, w_prime, w_end, fuel);
+                    } else {
+                        lemma_derivation_unfold_1(hp, right, w_prime, w_end);
+                        lemma_t_free_step_is_base_step(data, w_prime, right.first());
+                        lemma_single_step_equiv(data.base, w_prime, right.first(), w_end);
+                    }
+                    lemma_equiv_transitive(data.base, w, w_prime, w_end);
+                }
+            } else if c3 == 4 && steps.len() >= 5 {
+                // c3 = 4, k≥5: step2 is T-free. Two-round swap.
+                lemma_plus2_step_type(data, w1, w2, step1, n);
+                let (w_base, base_step, deriv_steps) =
+                    lemma_k5_c3_eq4_two_round(
+                        data, steps, w, w_end, w1, w2, w3,
+                        step0, step1, step2, tail);
+                // w_base is base and word_valid (from ensures of two_round)
+                lemma_single_step_equiv(data.base, w, base_step, w_base);
+                // deriv has k-1 steps (< steps.len()), ≥ 4 ≥ 2 → recurse
+                assert(deriv_steps.len() >= 2);
+                lemma_overlap_peak_elimination(data, deriv_steps, w_base, w_end, fuel);
+                lemma_equiv_transitive(data.base, w, w_base, w_end);
+            } else if c3 >= 6 && steps.len() >= 5 {
+                // c3 >= 6, k≥5: delegate to scan handler
+                let (w_base, left_s, right_s) = lemma_k5_c3_ge6(
+                    data, steps, w, w_end, w1, w2, w3,
+                    step0, step1, step2, tail);
+                // w_base is base and word_valid (from ensures of c3_ge6)
+                if left_s.len() == 0 {
+                    // w_base = w, right_s is shorter
+                    assert(right_s.len() >= 2);
+                    lemma_overlap_peak_elimination(data, right_s, w, w_end, fuel);
+                } else if left_s.len() >= 2 {
+                    lemma_overlap_peak_elimination(data, left_s, w, w_base, fuel);
+                    assert(right_s.len() >= 2);
+                    lemma_overlap_peak_elimination(data, right_s, w_base, w_end, fuel);
+                    lemma_equiv_transitive(data.base, w, w_base, w_end);
+                } else {
+                    // left has 1 step (base step)
+                    lemma_derivation_unfold_1(hp, left_s, w, w_base);
+                    lemma_t_free_step_is_base_step(data, w, left_s.first());
+                    lemma_single_step_equiv(data.base, w, left_s.first(), w_base);
+                    assert(right_s.len() >= 2);
+                    lemma_overlap_peak_elimination(data, right_s, w_base, w_end, fuel);
+                    lemma_equiv_transitive(data.base, w, w_base, w_end);
+                }
+            } else {
+                // k=4 with c3=4 or c3>=6: these are impossible.
+                // k=4: count goes 0,2,4,c3,0. c3 must satisfy c3→0 in 1 step.
+                // If c3=4: need -4 in 1 step → impossible.
+                // If c3>=6: even worse.
+                assert(steps.len() == 4);
+                // tail has 1 step. w3(c3) → w_end(0). step reduces by at most 2.
+                // c3 >= 4 → w_end count >= 2 > 0. But w_end is base (count 0).
+                lemma_derivation_unfold_1(hp, tail, w3, w_end);
+                lemma_count4_step_cant_reach_base(data, w3, w_end, tail.first());
+                assert(false);
+            }
+        }
+    }
 }
 
 } // verus!
