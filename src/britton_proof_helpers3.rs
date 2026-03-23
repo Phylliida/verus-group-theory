@@ -1057,7 +1057,7 @@ proof fn lemma_peak_bypass_commuted(
     step0: DerivationStep, step1: DerivationStep,
     s3a: DerivationStep, s2a: DerivationStep,
     suffix_rest: Seq<DerivationStep>,
-) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+) -> (result: (bool, Word, Seq<DerivationStep>, Seq<DerivationStep>))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -1088,18 +1088,16 @@ proof fn lemma_peak_bypass_commuted(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
-        // The commuted step s3a doesn't overlap with step1
-        peak_steps_non_overlapping(hnn_presentation(data), step1, s3a, w1),
     ensures ({
-        let (w_base, left_steps, right_steps) = result;
+        let (ok, w_base, left_steps, right_steps) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_base, n)
-        &&& word_valid(w_base, n + 1)
-        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
-        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
-        &&& left_steps.len() == 2
-        &&& right_steps.len() <= 2 + suffix_rest.len()
+        &&& (ok ==> is_base_word(w_base, n))
+        &&& (ok ==> word_valid(w_base, n + 1))
+        &&& (ok ==> derivation_produces(hp, left_steps, w) == Some(w_base))
+        &&& (ok ==> derivation_produces(hp, right_steps, w_base) == Some(w_end))
+        &&& (ok ==> left_steps.len() == 2)
+        &&& (ok ==> right_steps.len() <= 2 + suffix_rest.len())
     }),
 {
     let hp = hnn_presentation(data);
@@ -1111,12 +1109,20 @@ proof fn lemma_peak_bypass_commuted(
     assert(!is_base_word(w2, n)) by {
         if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
     };
+    // Prove the commuted peak (step1, s3a) doesn't overlap.
+    // Then ok_ is guaranteed true by lemma_k4_peak_noncancel_commute postcondition.
+    // s3a has a known position from the commutation helper's postcondition.
+    // We need: peak_steps_non_overlapping(hp, step1, s3a, w1).
+    // This requires matching on step1 and s3a to check position bounds.
+    // Since s3a acts at step3's adjusted position (outside step1's region in w2),
+    // and the commutation only adjusts by step2's size, it stays outside.
+    //
+    // For now, we call lemma_k4_peak_noncancel_commute and check ok_ at runtime.
     let (ok_, w_base, s3a2, s1a) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2p, step1, s3a);
-    // The commuted peak (step1, s3a) doesn't overlap (precondition).
-    // The only overlap case in lemma_k4_peak_noncancel_commute is RI+FR.
-    // Since s3a doesn't overlap with step1, ok_ must be true.
-    // TODO: prove ok_ == true from peak_steps_non_overlapping precondition
+    if !ok_ {
+        return (false, arbitrary(), Seq::empty(), Seq::empty());
+    }
     lemma_derivation_produces_2(hp, step0, s3a2, w, w1, w_base);
     let left: Seq<DerivationStep> = seq![step0, s3a2];
 
@@ -1126,7 +1132,7 @@ proof fn lemma_peak_bypass_commuted(
     let rp: Seq<DerivationStep> = seq![s1a, s2a];
     lemma_derivation_concat(hp, rp, suffix_rest, w_base, w4, w_end);
     let right = rp + suffix_rest;
-    (w_base, left, right)
+    (true, w_base, left, right)
 }
 
 /// Inner: FR×FR bypass for overlapping count-2 peak.
@@ -1160,7 +1166,6 @@ proof fn try_commute_minus2_steps(
                 &&& word_valid(w2p, data.base.num_generators + 1)
                 &&& stable_letter_count(w2p, data.base.num_generators) ==
                     (stable_letter_count(w2, data.base.num_generators) - 2) as nat
-                &&& peak_steps_non_overlapping(hp, step1, s3a, w1)
             },
             None => true,
         },
@@ -1294,7 +1299,7 @@ pub proof fn lemma_eliminate_peak_with_bypass(
                     let bp = lemma_peak_bypass_commuted(
                         data, w, w1, w2, w2p, w4, w_end,
                         step0, step1, s3a, s2a, suffix_rest);
-                    return (true, bp.0, bp.1, bp.2);
+                    return bp;
                 },
                 None => {},
             }
@@ -5490,8 +5495,6 @@ pub proof fn lemma_handle_overlap_noncancel_general(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
-        // The commuted peak doesn't overlap
-        peak_steps_non_overlapping(hnn_presentation(data), step1, step3_adj, w1),
     ensures
         equiv_in_presentation(data.base, w, w_end),
 {
@@ -5504,8 +5507,24 @@ pub proof fn lemma_handle_overlap_noncancel_general(
 
     let (ok_, w_prime, step3_adj2, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
-    // ok_ is true because peak_steps_non_overlapping is a precondition
-    assert(ok_);
+    // Guard on ok_ — if false, the commuted peak also overlaps
+    if !ok_ {
+        // Fall back to lemma_overlap_peak_elimination on the original steps
+        // Build original steps sequence
+        let orig_prefix: Seq<DerivationStep> = seq![step0, step1];
+        let orig_s3a_seq: Seq<DerivationStep> = seq![step3_adj];
+        let orig_s2a_seq: Seq<DerivationStep> = seq![step2_adj];
+        // We have: step0→w1, step1→w2, step3_adj→w2_prime, step2_adj→w4, tail_rest→w_end
+        // This is a valid derivation. Build it and recurse.
+        lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
+        lemma_derivation_produces_2(hp, step3_adj, step2_adj, w2, w2_prime, w4);
+        let mid: Seq<DerivationStep> = seq![step3_adj, step2_adj];
+        lemma_derivation_concat(hp, orig_prefix, mid, w, w2, w4);
+        lemma_derivation_concat(hp, orig_prefix + mid, tail_rest, w, w4, w_end);
+        let full = orig_prefix + mid + tail_rest;
+        lemma_overlap_peak_elimination(data, full, w, w_end, fuel);
+        return;
+    }
 
     // Left: [step0, step3_adj2] from w to w_prime (2 steps)
     lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
@@ -5769,13 +5788,13 @@ pub proof fn lemma_overlap_peak_elimination(
                             step0, step1, step2, tail);
 
                     if !ok_ {
-                        // Peak commutation failed (genuine overlap, bypass failed).
-                        // TODO: handle via isomorphism argument
-                        // For now this is an unproved case
-                        arbitrary()
+                        // Peak commutation failed (genuine overlap a_j=[], b_j≠[], bypass failed).
+                        // This is the ONE remaining unproved case.
+                        // TODO: prove via isomorphism argument
+                        return;
                     }
 
-                    // Both shorter → recurse. left.len() < total = 3 + tail.len() >= 3, so left.len() >= 2.
+                    // Both shorter → recurse
                     if left.len() >= 2 {
                         lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
                     } else if left.len() == 1 {
