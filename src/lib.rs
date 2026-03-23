@@ -110,6 +110,9 @@ pub mod rewrite;
 pub mod rewrite_sound;
 
 #[cfg(verus_keep_ghost)]
+pub mod rewrite_decidability;
+
+#[cfg(verus_keep_ghost)]
 pub mod newman;
 
 #[cfg(verus_keep_ghost)]
