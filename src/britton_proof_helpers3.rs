@@ -4889,6 +4889,7 @@ pub proof fn lemma_overlap_peak_elimination(
                 } else {
                     // Non-cancel peak at (1,2) with counts (2,4,2).
                     lemma_plus2_step_type(data, w1, w2, step1, n);
+
                     let (w_prime, step2_adj, step1_adj) =
                         lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
 
@@ -4996,6 +4997,166 @@ pub proof fn lemma_overlap_peak_elimination(
                 assert(false);
             }
         }
+    }
+}
+
+/// Commute two non-overlapping FreeReduce steps.
+/// Given step2: w2 → w3 (FR at p2) and step3: w3 → w_end (FR at p3),
+/// where the adjusted positions don't overlap,
+/// produce step3_adj: w2 → w2' and step2_adj: w2' → w_end.
+pub proof fn lemma_commute_fr_fr(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, p3: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        // Both FRs reduce stable count by 2
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        // Non-overlapping in w2: step3's adjusted position doesn't overlap with step2
+        p3 < p2 ==> p3 + 2 <= p2,
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+        &&& stable_letter_count(w2_prime, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    assert(has_cancellation_at(w2, p2));
+    assert(w3 =~= reduce_at(w2, p2));
+    assert(has_cancellation_at(w3, p3));
+    assert(w_end =~= reduce_at(w3, p3));
+
+    // Prove step3 removes stable letters (gen_idx == n)
+    lemma_stable_count_reduce(w3, p3, n);
+    lemma_stable_count_reduce(w2, p2, n);
+    // count(w3) = count(w2) - 2 >= 4 - 2 = 2
+    let cnt_3 = stable_letter_count(w3, n);
+    assert(cnt_3 >= 2);
+    // If gen_idx(w3[p3]) != n, FR doesn't change count. But count(w_end) = count(w3) - 2 < count(w3).
+    if generator_index(w3[p3]) != n {
+        // count(reduce_at(w3, p3)) = count(w3) - 0 = count(w3)
+        // But w_end =~= reduce_at(w3, p3) and count(w_end) = count(w3) - 2
+        // So count(w3) = count(w3) - 2, impossible since count(w3) >= 2
+        assert(false);
+    }
+    assert(generator_index(w3[p3]) == n);
+
+    if p3 < p2 {
+        // step3 acts before step2 in the word
+        // p3_adj = p3 (same position in w2)
+        assert(w3[p3] == w2[p3]);
+        assert(w3[p3 + 1] == w2[p3 + 1]);
+        assert(has_cancellation_at(w2, p3));
+
+        let step3_adj = DerivationStep::FreeReduce { position: p3 };
+        let w2_prime = reduce_at(w2, p3);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_stable_count_reduce(w2, p3, n);
+        // w3[p3] == w2[p3] (p3 < p2, unaffected by step2), so gen_idx transfers
+        assert(generator_index(w2[p3]) == generator_index(w3[p3]));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+        // step2_adj at p2-2 in w2'
+        let step2_adj = DerivationStep::FreeReduce { position: (p2 - 2) as int };
+        // w2'[p2-2] = w2[p2] and w2'[p2-1] = w2[p2+1]
+        assert(w2_prime[(p2 - 2) as int] == w2[p2]);
+        assert(w2_prime[(p2 - 1) as int] == w2[p2 + 1]);
+        assert(has_cancellation_at(w2_prime, (p2 - 2) as int));
+
+        // Prove the final result matches w_end
+        let result_word = reduce_at(w2_prime, (p2 - 2) as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            // w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
+            // w2_prime = w2 minus {p3,p3+1}. result_word = w2_prime minus {p2-2,p2-1}.
+            // Both remove the same 4 positions from w2: {p3,p3+1,p2,p2+1}.
+            if k < p3 {
+                // Both = w2[k]
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+            } else if k < p2 - 2 {
+                // Both = w2[k+2]
+                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 < p2 so w3[k+2] = w2[k+2].
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2) as int]);
+                // result_word[k]: k < p2-2 so result_word[k] = w2_prime[k]. k >= p3 so w2_prime[k] = w2[k+2].
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + 2) as int]);
+            } else {
+                // k >= p2-2: both = w2[k+4]
+                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 4) as int]);
+                // result_word[k]: k >= p2-2 so result_word[k] = w2_prime[k+2]. k+2 >= p2 > p3 so w2_prime[k+2] = w2[k+4].
+                assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 4) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // p3 >= p2: step3 acts after step2's removal
+        // In w3, position p3 corresponds to position p3+2 in w2
+        let p3_adj = (p3 + 2) as int;
+        assert(w3[p3] == w2[p3_adj]);
+        assert(w3[p3 + 1] == w2[(p3_adj + 1) as int]);
+        assert(has_cancellation_at(w2, p3_adj));
+
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_stable_count_reduce(w2, p3_adj, n);
+        // w3[p3] == w2[p3+2] = w2[p3_adj], so gen_idx transfers
+        assert(generator_index(w2[p3_adj]) == generator_index(w3[p3]));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+        // step2_adj at p2 in w2' (unchanged since step3_adj acts after p2)
+        let step2_adj = DerivationStep::FreeReduce { position: p2 };
+        assert(w2_prime[p2] == w2[p2]);
+        assert(w2_prime[p2 + 1] == w2[p2 + 1]);
+        assert(has_cancellation_at(w2_prime, p2));
+
+        let result_word = reduce_at(w2_prime, p2);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            // w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
+            // w2_prime = w2 minus {p3+2,p3+3}. result_word = w2_prime minus {p2,p2+1}.
+            // Both remove same 4 positions from w2: {p2,p2+1,p3+2,p3+3}.
+            if k < p2 {
+                // Both = w2[k]
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            } else if k < p3 {
+                // Both = w2[k+2]
+                // w_end[k]: k < p3 so w_end[k] = w3[k]. k >= p2 so w3[k] = w2[k+2].
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k + 2) as int]);
+                // result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 < p3+2 so w2_prime[k+2] = w2[k+2].
+                assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 2) as int]);
+            } else {
+                // k >= p3: both = w2[k+4]
+                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 4) as int]);
+                // result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 >= p3+2 so w2_prime[k+2] = w2[k+4].
+                assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 4) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+
+        (w2_prime, step3_adj, step2_adj)
     }
 }
 
