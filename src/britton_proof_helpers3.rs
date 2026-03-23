@@ -823,6 +823,190 @@ proof fn lemma_k4_peak_ri_rd_right(
 /// Returns (w1', step2_adj, step1_adj) where w1' is base and:
 ///   apply_step(hp, w1, step2_adj) == Some(w1')
 ///   apply_step(hp, w1', step1_adj) == Some(w3)
+/// Inner: FR×FR bypass for overlapping count-2 peak.
+proof fn lemma_peak_bypass_fr_fr(
+    data: HNNData, w: Word, w1: Word, w2: Word, w3: Word, w4: Word, w_end: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    p2: int, p3: int,
+    suffix_rest: Seq<DerivationStep>,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        word_valid(w4, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w4)
+            &&& derivation_produces(hp, suffix_rest, w4) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 2nat,
+        stable_letter_count(w4, data.base.num_generators) == 0nat,
+        !(w3 =~= w1),
+        p3 < p2 ==> p3 + 2 <= p2,
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+    ensures ({
+        let (w_base, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& is_base_word(w_base, n)
+        &&& word_valid(w_base, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
+        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
+        &&& left_steps.len() == 2
+        &&& right_steps.len() <= 2 + suffix_rest.len()
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    let (w2p, s3a, s2a) =
+        lemma_commute_fr_fr(data, w2, w3, w4, p2, p3);
+    lemma_step_preserves_word_valid(data, w2, s3a);
+
+    if w2p =~= w1 {
+        // Cancel
+        assert(apply_step(hp, w1, s2a) == Some(w4)) by { assert(w2p =~= w1); };
+        lemma_derivation_produces_2(hp, step0, s2a, w, w1, w4);
+        lemma_zero_count_implies_base(w4, n);
+        let left: Seq<DerivationStep> = seq![step0, s2a];
+        (w4, left, suffix_rest)
+    } else {
+        assert(!is_base_word(w2p, n)) by {
+            if is_base_word(w2p, n) { lemma_base_implies_count_zero(w2p, n); }
+        };
+        assert(!is_base_word(w2, n)) by {
+            if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
+        };
+        let (w_base, s3a2, s1a) =
+            lemma_k4_peak_noncancel_commute(data, w1, w2, w2p, step1, s3a);
+        lemma_derivation_produces_2(hp, step0, s3a2, w, w1, w_base);
+        let left: Seq<DerivationStep> = seq![step0, s3a2];
+
+        lemma_step_preserves_word_valid(data, w_base, s1a);
+        lemma_step_preserves_word_valid(data, w2p, s2a);
+        lemma_derivation_produces_2(hp, s1a, s2a, w_base, w2p, w4);
+        let rp: Seq<DerivationStep> = seq![s1a, s2a];
+        lemma_derivation_concat(hp, rp, suffix_rest, w_base, w4, w_end);
+        let right = rp + suffix_rest;
+        (w_base, left, right)
+    }
+}
+
+/// Peak elimination with overlap bypass. Takes full derivation context.
+/// For non-overlap: standard commutation. For overlap with FR×FR suffix[0]: bypass.
+/// Returns (w_base, left, right) where left: w→w_base, right: w_base→w_end.
+pub proof fn lemma_eliminate_peak_with_bypass(
+    data: HNNData, w: Word, w1: Word, w2: Word, w3: Word, w_end: Word,
+    step0: DerivationStep, step1: DerivationStep, step2: DerivationStep,
+    suffix: Seq<DerivationStep>,
+) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& derivation_produces(hp, suffix, w3) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 2nat,
+        !(w3 =~= w1),
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+    ensures ({
+        let (w_base, left_steps, right_steps) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        let total = 3 + suffix.len();
+        &&& is_base_word(w_base, n)
+        &&& word_valid(w_base, n + 1)
+        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
+        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
+        &&& left_steps.len() < total
+        &&& right_steps.len() < total
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // Try overlap bypass: commute step2 with suffix[0]
+    if !peak_steps_non_overlapping(hp, step1, step2, w1) && suffix.len() >= 1 {
+        let step3 = suffix.first();
+        assert(apply_step(hp, w3, step3).is_some());
+        let w4 = apply_step(hp, w3, step3).unwrap();
+        lemma_step_preserves_word_valid(data, w3, step3);
+        lemma_stable_count_reduce_step(data, w3, step3, n);
+        lemma_word_at_one(hp, suffix, w3);
+        lemma_derivation_split(hp, suffix, w3, w_end, 1nat);
+        let suffix_rest = suffix.subrange(1, suffix.len() as int);
+        let c4 = stable_letter_count(w4, n);
+        if c4 == 0 {
+            match (step2, step3) {
+                (DerivationStep::FreeReduce { position: p2 },
+                 DerivationStep::FreeReduce { position: p3 }) => {
+                    if (p3 < p2 ==> p3 + 2 <= p2) {
+                        return lemma_peak_bypass_fr_fr(
+                            data, w, w1, w2, w3, w4, w_end,
+                            step0, step1, p2, p3, suffix_rest);
+                    }
+                },
+                _ => {},
+            }
+        }
+    }
+
+    // Non-overlap or bypass failed: standard commutation
+    let (w_base, step2_adj, step1_adj) =
+        lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
+    lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_base);
+    let left: Seq<DerivationStep> = seq![step0, step2_adj];
+
+    lemma_step_preserves_word_valid(data, w_base, step1_adj);
+    let one: Seq<DerivationStep> = seq![step1_adj];
+    assert(one.first() == step1_adj);
+    assert(one.drop_first() =~= Seq::<DerivationStep>::empty());
+    assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w3) == Some(w3)) by {
+        assert(Seq::<DerivationStep>::empty().len() == 0);
+    };
+    assert(derivation_produces(hp, one, w_base) == Some(w3));
+    lemma_derivation_concat(hp, one, suffix, w_base, w3, w_end);
+    let right = one + suffix;
+    (w_base, left, right)
+}
+
 pub proof fn lemma_k4_peak_noncancel_commute(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     step1: DerivationStep, step2: DerivationStep,
