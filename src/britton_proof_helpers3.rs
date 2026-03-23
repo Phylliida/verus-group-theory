@@ -881,7 +881,7 @@ pub proof fn lemma_k4_peak_ri_fr(
 pub proof fn lemma_k4_peak_ri_rd(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int, ri2: nat, inv2: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
@@ -901,13 +901,15 @@ pub proof fn lemma_k4_peak_ri_rd(
         stable_letter_count(w3, data.base.num_generators) == 2nat,
         !(w3 =~= w1),
     ensures ({
-        let (w1_prime, step2_adj, step1_adj) = result;
+        let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w1_prime, n)
-        &&& word_valid(w1_prime, n + 1)
-        &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        &&& (ok ==> is_base_word(w1_prime, n))
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> apply_step(hp, w1, step2_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step1_adj) == Some(w3))
+        &&& ((p2 + get_relator(hp, ri2, inv2).len() <= p1
+              || p2 >= p1 + get_relator(hp, ri1, inv1).len()) ==> ok)
     }),
 {
     let hp = hnn_presentation(data);
@@ -941,12 +943,14 @@ pub proof fn lemma_k4_peak_ri_rd(
     }
 
     if p2 + r2_len <= p1 {
-        lemma_k4_peak_ri_rd_left(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
+        let r = lemma_k4_peak_ri_rd_left(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2);
+        (true, r.0, r.1, r.2)
     } else if p2 >= p1 + r1_len {
-        lemma_k4_peak_ri_rd_right(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
+        let r = lemma_k4_peak_ri_rd_right(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2);
+        (true, r.0, r.1, r.2)
     } else {
-        // Overlap: relator regions overlap
-        assume(false); arbitrary()
+        // Overlap: relator regions overlap. Can't commute at count 2.
+        (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
@@ -1564,8 +1568,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
-                    let r = lemma_k4_peak_ri_rd(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2);
-                    (true, r.0, r.1, r.2)
+                    lemma_k4_peak_ri_rd(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
                 },
             }
         },
