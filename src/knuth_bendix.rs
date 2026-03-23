@@ -158,6 +158,7 @@ pub fn reduce_to_normal_form_exec(
     loop
         invariant
             current@.len() <= word@.len(),
+            word@.len() < usize::MAX,
             forall|i: int| 0 <= i < sys.rules@.len() ==>
                 (#[trigger] sys.rules@[i]).lhs@.len() > 0
                 && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
@@ -344,6 +345,84 @@ pub fn words_equal_exec(w1: &Vec<RuntimeSymbol>, w2: &Vec<RuntimeSymbol>) -> (ou
 // Main completion loop
 // ============================================================
 
+/// Try to find one unresolved critical pair and add a new rule.
+/// Returns Some(rule) if a new rule was found, None if all CPs resolve.
+/// Returns Err if a non-length-decreasing rule would be needed.
+fn find_new_rule_exec(
+    sys: &RuntimeRewriteSystem,
+) -> (out: Option<Option<RuntimeRule>>)
+    requires
+        forall|i: int| 0 <= i < sys.rules@.len() ==>
+            (#[trigger] sys.rules@[i]).lhs@.len() > 0
+            && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
+    ensures
+        // Some(Some(rule)): new rule found, length-decreasing
+        // Some(None): non-length-decreasing pair found (incomplete)
+        // None: all CPs resolve (confluent)
+        match out {
+            Some(Some(rule)) => rule.lhs@.len() > 0 && rule.rhs@.len() < rule.lhs@.len(),
+            _ => true,
+        },
+{
+    let num_rules = sys.rules.len();
+    let mut i: usize = 0;
+    while i < num_rules
+        invariant
+            0 <= i <= num_rules,
+            num_rules == sys.rules@.len(),
+            forall|k: int| 0 <= k < sys.rules@.len() ==>
+                (#[trigger] sys.rules@[k]).lhs@.len() > 0
+                && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
+        decreases num_rules - i,
+    {
+        let mut j: usize = 0;
+        while j < num_rules
+            invariant
+                0 <= j <= num_rules,
+                0 <= i < num_rules,
+                num_rules == sys.rules@.len(),
+                forall|k: int| 0 <= k < sys.rules@.len() ==>
+                    (#[trigger] sys.rules@[k]).lhs@.len() > 0
+                    && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
+            decreases num_rules - j,
+        {
+            let cps = compute_overlap_cps_exec(&sys.rules[i], &sys.rules[j]);
+            let mut cp_idx: usize = 0;
+            while cp_idx < cps.len()
+                invariant
+                    0 <= cp_idx <= cps.len(),
+                    num_rules == sys.rules@.len(),
+                    forall|k: int| 0 <= k < sys.rules@.len() ==>
+                        (#[trigger] sys.rules@[k]).lhs@.len() > 0
+                        && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
+                decreases cps.len() - cp_idx,
+            {
+                let (ref cp_l, ref cp_r) = cps[cp_idx];
+                if cp_l.len() < usize::MAX && cp_r.len() < usize::MAX {
+                    let nf_l = reduce_to_normal_form_exec(sys, cp_l);
+                    let nf_r = reduce_to_normal_form_exec(sys, cp_r);
+
+                    if !words_equal_exec(&nf_l, &nf_r) {
+                        // Orient: larger → smaller
+                        if nf_l.len() > nf_r.len() {
+                            return Some(Some(RuntimeRule { lhs: nf_l, rhs: nf_r }));
+                        } else if nf_r.len() > nf_l.len() {
+                            return Some(Some(RuntimeRule { lhs: nf_r, rhs: nf_l }));
+                        } else {
+                            // Same length, can't orient as length-decreasing
+                            return Some(None);
+                        }
+                    }
+                }
+                cp_idx = cp_idx + 1;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    None  // all CPs resolve
+}
+
 /// Run Knuth-Bendix completion.
 ///
 /// `initial_rules`: starting rules (from oriented relators + free cancellations)
@@ -354,17 +433,15 @@ pub fn knuth_bendix_exec(
 ) -> (out: KBResult)
     requires
         max_rules > 0,
-        max_rules < 10000,  // reasonable bound to avoid overflow
+        max_rules < 10000,
         initial_rules@.len() <= max_rules,
         forall|i: int| 0 <= i < initial_rules@.len() ==>
             (#[trigger] initial_rules@[i]).lhs@.len() > 0
             && initial_rules@[i].rhs@.len() < initial_rules@[i].lhs@.len(),
 {
     let mut sys = RuntimeRewriteSystem { rules: initial_rules };
-
-    // Fuel-bounded outer loop: at most max_rules iterations (each adds a rule or stops)
     let mut fuel: usize = max_rules;
-    loop
+    while fuel > 0
         invariant
             sys.rules@.len() <= max_rules,
             max_rules < 10000,
@@ -373,104 +450,26 @@ pub fn knuth_bendix_exec(
                 && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
         decreases fuel,
     {
-        if fuel == 0 {
-            return KBResult::Incomplete { system: sys };
-        }
         fuel = fuel - 1;
-
-        let mut found_new_rule = false;
-        let num_rules = sys.rules.len();
-        let mut i: usize = 0;
-
-        while i < num_rules && !found_new_rule
-            invariant_except_break
-                0 <= i <= num_rules,
-                num_rules <= sys.rules@.len(),
-                sys.rules@.len() <= max_rules,
-                max_rules < 10000,
-                !found_new_rule,
-                forall|k: int| 0 <= k < sys.rules@.len() ==>
-                    (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                    && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-            ensures
-                sys.rules@.len() <= max_rules,
-                forall|k: int| 0 <= k < sys.rules@.len() ==>
-                    (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                    && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-            decreases num_rules - i,
-        {
-            let mut j: usize = 0;
-            while j < num_rules && !found_new_rule
-                invariant_except_break
-                    0 <= j <= num_rules,
-                    0 <= i < num_rules,
-                    num_rules <= sys.rules@.len(),
-                    sys.rules@.len() <= max_rules,
-                    max_rules < 10000,
-                    !found_new_rule,
-                    forall|k: int| 0 <= k < sys.rules@.len() ==>
-                        (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                        && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-                ensures
-                    sys.rules@.len() <= max_rules,
-                    forall|k: int| 0 <= k < sys.rules@.len() ==>
-                        (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                        && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-                decreases num_rules - j,
-            {
-                let cps = compute_overlap_cps_exec(&sys.rules[i], &sys.rules[j]);
-                let mut cp_idx: usize = 0;
-                while cp_idx < cps.len() && !found_new_rule
-                    invariant_except_break
-                        0 <= cp_idx <= cps.len(),
-                        sys.rules@.len() <= max_rules,
-                        num_rules <= sys.rules@.len(),
-                        max_rules < 10000,
-                        !found_new_rule,
-                        forall|k: int| 0 <= k < sys.rules@.len() ==>
-                            (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                            && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-                    ensures
-                        sys.rules@.len() <= max_rules,
-                        forall|k: int| 0 <= k < sys.rules@.len() ==>
-                            (#[trigger] sys.rules@[k]).lhs@.len() > 0
-                            && sys.rules@[k].rhs@.len() < sys.rules@[k].lhs@.len(),
-                    decreases cps.len() - cp_idx,
-                {
-                    let (ref cp_l, ref cp_r) = cps[cp_idx];
-                    // CPs from bounded rules have bounded length
-                    if cp_l.len() >= usize::MAX || cp_r.len() >= usize::MAX {
-                        cp_idx = cp_idx + 1;
-                        continue;
-                    }
-                    let nf_l = reduce_to_normal_form_exec(&sys, cp_l);
-                    let nf_r = reduce_to_normal_form_exec(&sys, cp_r);
-
-                    if !words_equal_exec(&nf_l, &nf_r) {
-                        // Orient: larger → smaller
-                        let (new_lhs, new_rhs) = if shortlex_gt_exec(&nf_l, &nf_r) {
-                            (nf_l, nf_r)
-                        } else {
-                            (nf_r, nf_l)
-                        };
-                        if new_lhs.len() > new_rhs.len() && sys.rules.len() < max_rules {
-                            sys.rules.push(RuntimeRule { lhs: new_lhs, rhs: new_rhs });
-                            found_new_rule = true;
-                        } else {
-                            return KBResult::Incomplete { system: sys };
-                        }
-                    }
-                    cp_idx = cp_idx + 1;
-                }
-                j = j + 1;
+        match find_new_rule_exec(&sys) {
+            None => {
+                // All CPs resolve — confluent!
+                return KBResult::Complete { system: sys };
             }
-            i = i + 1;
-        }
-
-        if !found_new_rule {
-            return KBResult::Complete { system: sys };
+            Some(None) => {
+                // Can't orient as length-decreasing
+                return KBResult::Incomplete { system: sys };
+            }
+            Some(Some(new_rule)) => {
+                if sys.rules.len() < max_rules {
+                    sys.rules.push(new_rule);
+                } else {
+                    return KBResult::Incomplete { system: sys };
+                }
+            }
         }
     }
+    KBResult::Incomplete { system: sys }
 }
 
 // ============================================================

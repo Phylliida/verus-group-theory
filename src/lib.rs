@@ -120,4 +120,5 @@ pub mod critical_pairs;
 
 pub mod runtime;
 
+#[cfg(verus_keep_ghost)]
 pub mod knuth_bendix;
