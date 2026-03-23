@@ -324,7 +324,7 @@ pub proof fn lemma_k4_peak_fe_fr(
 pub proof fn lemma_k4_peak_fe_rd(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, sym1: Symbol, p2: int, ri2: nat, inv2: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
@@ -344,13 +344,14 @@ pub proof fn lemma_k4_peak_fe_rd(
         stable_letter_count(w3, data.base.num_generators) == 2nat,
         !(w3 =~= w1),
     ensures ({
-        let (w1_prime, step2_adj, step1_adj) = result;
+        let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w1_prime, n)
-        &&& word_valid(w1_prime, n + 1)
-        &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        &&& (ok ==> is_base_word(w1_prime, n))
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> apply_step(hp, w1, step2_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step1_adj) == Some(w3))
+        &&& ((p2 + get_relator(hp, ri2, inv2).len() <= p1 || p2 >= p1 + 2) ==> ok)
     }),
 {
     let hp = hnn_presentation(data);
@@ -390,7 +391,7 @@ pub proof fn lemma_k4_peak_fe_rd(
         assert(w3 =~= expand_result);
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
 
-        (w1_prime, step2_adj, step1_adj)
+        (true, w1_prime, step2_adj, step1_adj)
     } else if p2 >= p1 + 2 {
         // Relator is entirely after insertion. Translate position back by 2.
         let p2_adj = (p2 - 2) as int;
@@ -415,7 +416,7 @@ pub proof fn lemma_k4_peak_fe_rd(
         assert(w3 =~= expand_result);
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
 
-        (w1_prime, step2_adj, step1_adj)
+        (true, w1_prime, step2_adj, step1_adj)
     } else {
         // Overlap: relator region [p2, p2+r2_len) overlaps insertion [p1, p1+2).
         // The relator contains the FE stable pair. Since w1 has count 2, FE adds 2,
@@ -494,10 +495,8 @@ pub proof fn lemma_k4_peak_fe_rd(
         // Hmm, the originals might NOT be at the same positions in w1 and w3
         // if the relator deletion shifted positions.
         //
-        // This is genuinely hard. For now, use assume(false) with the analysis above
-        // documented. The fix requires tracking the original stable letter positions
-        // through the relator deletion.
-        assume(false); arbitrary()
+        // Overlap: FE pair inside relator region. Can't commute at count 2.
+        (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
@@ -1493,8 +1492,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2, w2.len() as int), n);
                         assert(false);
                     }
-                    let r = lemma_k4_peak_fe_rd(data, w1, w2, w3, p1, sym1, p2, ri2, inv2);
-                    (true, r.0, r.1, r.2)
+                    lemma_k4_peak_fe_rd(data, w1, w2, w3, p1, sym1, p2, ri2, inv2)
                 },
             }
         },
