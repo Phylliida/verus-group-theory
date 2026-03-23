@@ -1130,6 +1130,70 @@ proof fn lemma_peak_bypass_commuted(
 }
 
 /// Inner: FR×FR bypass for overlapping count-2 peak.
+/// Try to commute two -2 steps. Returns None if positions overlap.
+proof fn try_commute_minus2_steps(
+    data: HNNData, hp: Presentation, w2: Word, w3: Word, w4: Word,
+    step2: DerivationStep, step3: DerivationStep,
+) -> (result: Option<(Word, DerivationStep, DerivationStep)>)
+    requires
+        hnn_data_valid(data),
+        hp == hnn_presentation(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w4, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        apply_step(hp, w2, step2) == Some(w3),
+        apply_step(hp, w3, step3) == Some(w4),
+    ensures
+        match result {
+            Some((w2p, s3a, s2a)) => {
+                &&& apply_step(hp, w2, s3a) == Some(w2p)
+                &&& apply_step(hp, w2p, s2a) == Some(w4)
+                &&& word_valid(w2p, data.base.num_generators + 1)
+                &&& stable_letter_count(w2p, data.base.num_generators) ==
+                    (stable_letter_count(w2, data.base.num_generators) - 2) as nat
+            },
+            None => true,
+        },
+{
+    match (step2, step3) {
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            if (p3 < p2 ==> p3 + 2 <= p2) {
+                Some(lemma_commute_fr_fr(data, w2, w3, w4, p2, p3))
+            } else { None },
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+            if p3 >= p2 {
+                Some(lemma_commute_fr_rd_right(data, w2, w3, w4, p2, p3, ri3, inv3))
+            } else if ({ let r3 = get_relator(hp, ri3, inv3); p3 + r3.len() <= p2 }) {
+                Some(lemma_commute_fr_rd_left(data, w2, w3, w4, p2, p3, ri3, inv3))
+            } else { None },
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::FreeReduce { position: p3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+            if p3a + 2 <= p2 || p3a >= p2 + r2.len() {
+                Some(lemma_commute_rd_fr(data, w2, w3, w4, p2, ri2, inv2, p3))
+            } else { None }
+        },
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            let r3 = get_relator(hp, ri3, inv3);
+            if p3 >= p2 && (p3 + r2.len()) as int + r3.len() <= w2.len() as int {
+                Some(lemma_commute_rd_rd_right(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
+            } else if p3 < p2 && p3 + r3.len() <= p2 {
+                Some(lemma_commute_rd_rd_left(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
+            } else { None }
+        },
+        _ => None,
+    }
+}
+
 pub proof fn lemma_eliminate_peak_with_bypass(
     data: HNNData, w: Word, w1: Word, w2: Word, w3: Word, w_end: Word,
     step0: DerivationStep, step1: DerivationStep, step2: DerivationStep,
@@ -1191,45 +1255,24 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         let suffix_rest = suffix.subrange(1, suffix.len() as int);
         let c4 = stable_letter_count(w4, n);
         if c4 == 0 {
-            // Try commuting step2/step3 using all available helpers
             lemma_base_implies_count_zero(w_end, n);
-            let commuted = match (step2, step3) {
-                (DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::FreeReduce { position: p3 }) =>
-                    if (p3 < p2 ==> p3 + 2 <= p2) {
-                        Some(lemma_commute_fr_fr(data, w2, w3, w4, p2, p3))
-                    } else { None },
-                (DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
-                    if p3 >= p2 {
-                        Some(lemma_commute_fr_rd_right(data, w2, w3, w4, p2, p3, ri3, inv3))
-                    } else if ({ let r3 = get_relator(hp, ri3, inv3); p3 + r3.len() <= p2 }) {
-                        Some(lemma_commute_fr_rd_left(data, w2, w3, w4, p2, p3, ri3, inv3))
-                    } else { None },
-                (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
-                 DerivationStep::FreeReduce { position: p3 }) => {
-                    let r2 = get_relator(hp, ri2, inv2);
-                    let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
-                    if p3a + 2 <= p2 || p3a >= p2 + r2.len() {
-                        Some(lemma_commute_rd_fr(data, w2, w3, w4, p2, ri2, inv2, p3))
-                    } else { None }
-                },
-                (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
-                 DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
-                    let r2 = get_relator(hp, ri2, inv2);
-                    let r3 = get_relator(hp, ri3, inv3);
-                    if p3 >= p2 && (p3 + r2.len()) as int + r3.len() <= w2.len() as int {
-                        Some(lemma_commute_rd_rd_right(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
-                    } else if p3 < p2 && p3 + r3.len() <= p2 {
-                        Some(lemma_commute_rd_rd_left(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3))
-                    } else { None }
-                },
-                _ => None,
-            };
+            let commuted = try_commute_minus2_steps(data, hp, w2, w3, w4, step2, step3);
             match commuted {
                 Some((w2p, s3a, s2a)) => {
                     lemma_step_preserves_word_valid(data, w2, s3a);
                     lemma_step_preserves_word_valid(data, w2p, s2a);
+
+                    // Prove: commuted step s3a doesn't overlap with step1.
+                    // step2 is inside step1's region in w2. step3 is outside.
+                    // After commuting, s3a acts at step3's adjusted position, still outside.
+                    // The key: step1 inserts at [p1, p1+r1_len) in w1 → these become
+                    // [p1, p1+r1_len) in w2. step3 acts at p3 in w3 which maps to
+                    // p3 or p3+s2 in w2 (outside step1's region). After commuting,
+                    // s3a acts at the same adjusted position in w2.
+                    // peak_steps_non_overlapping checks step1 vs s3a regions in w2.
+                    // Since s3a is at step3's position (outside step1), non-overlap holds.
+                    assert(peak_steps_non_overlapping(hp, step1, s3a, w1));
+
                     if w2p =~= w1 {
                         // Cancel
                         assert(apply_step(hp, w1, s2a) == Some(w4)) by { assert(w2p =~= w1); };
