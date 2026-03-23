@@ -106,4 +106,7 @@ pub mod shortlex;
 #[cfg(verus_keep_ghost)]
 pub mod rewrite;
 
+#[cfg(verus_keep_ghost)]
+pub mod rewrite_sound;
+
 pub mod runtime;

@@ -287,4 +287,59 @@ pub proof fn lemma_joinable_symmetric(sys: RewriteSystem, w1: Word, w2: Word)
     assert(rewrites_to(sys, w2, w) && rewrites_to(sys, w1, w));
 }
 
+// ============================================================
+// Length-decreasing systems (stronger than shortlex-decreasing)
+// ============================================================
+
+/// Every rule strictly decreases word length: |rhs| < |lhs|.
+/// This is stronger than shortlex_lt but simpler for the Newman's lemma proof.
+/// Most group presentation rules satisfy this (relator → shorter form).
+pub open spec fn system_length_decreasing(sys: RewriteSystem) -> bool {
+    forall|i: int| 0 <= i < sys.rules.len() ==> {
+        let rule = #[trigger] sys.rules[i];
+        rule.lhs.len() > 0 && rule.rhs.len() < rule.lhs.len()
+    }
+}
+
+/// Length-decreasing implies well-formed (shortlex decreasing).
+pub proof fn lemma_length_decreasing_implies_wf(sys: RewriteSystem)
+    requires
+        system_length_decreasing(sys),
+    ensures
+        system_wf(sys),
+{
+    assert forall|i: int| 0 <= i < sys.rules.len()
+        implies rule_wf(#[trigger] sys.rules[i])
+    by {
+        let rule = sys.rules[i];
+        assert(rule.rhs.len() < rule.lhs.len());
+        // shortlex_lt(rhs, lhs) because rhs.len() < lhs.len()
+    }
+}
+
+/// A one-step rewrite in a length-decreasing system strictly decreases length.
+pub proof fn lemma_one_step_strictly_decreases_len(
+    sys: RewriteSystem, w1: Word, w2: Word,
+)
+    requires
+        system_length_decreasing(sys),
+        rewrites_one_step(sys, w1, w2),
+    ensures
+        w2.len() < w1.len(),
+{
+    let ri = choose|ri: int| exists|pos: int|
+        0 <= ri < sys.rules.len()
+        && matches_at(w1, #[trigger] sys.rules[ri], pos)
+        && w2 == apply_rule_at(w1, sys.rules[ri], pos);
+    let pos = choose|pos: int|
+        0 <= ri < sys.rules.len()
+        && matches_at(w1, sys.rules[ri], pos)
+        && w2 == apply_rule_at(w1, sys.rules[ri], pos);
+    let rule = sys.rules[ri];
+    lemma_length_decreasing_implies_wf(sys);
+    lemma_rule_application_len(w1, rule, pos);
+    // w2.len() == w1.len() - rule.lhs.len() + rule.rhs.len()
+    // Since rule.rhs.len() < rule.lhs.len(), we get w2.len() < w1.len()
+}
+
 } // verus!
