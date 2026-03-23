@@ -528,13 +528,10 @@ pub proof fn lemma_k4_peak_ri_fr(
         let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        ok ==> {
-            &&& is_base_word(w1_prime, n)
-            &&& word_valid(w1_prime, n + 1)
-            &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-            &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
-        }
-        // Non-overlapping always succeeds
+        &&& (ok ==> is_base_word(w1_prime, n))
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> apply_step(hp, w1, step2_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step1_adj) == Some(w3))
         &&& ((p2 + 2 <= p1 || p2 >= p1 + get_relator(hp, ri1, inv1).len()) ==> ok)
     }),
 {
@@ -1295,15 +1292,11 @@ pub proof fn lemma_k4_peak_noncancel_commute(
         let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        // When ok is true, the commuted steps are valid
-        ok ==> {
-            &&& is_base_word(w1_prime, n)
-            &&& word_valid(w1_prime, n + 1)
-            &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-            &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
-        }
-        // When the peak doesn't overlap, ok is always true
-        &&& (peak_steps_non_overlapping(hp, step1, step2, w1) ==> ok)
+        &&& (ok ==> is_base_word(w1_prime, n))
+        &&& (ok ==> word_valid(w1_prime, n + 1))
+        &&& (ok ==> apply_step(hp, w1, step2_adj) == Some(w1_prime))
+        &&& (ok ==> apply_step(hp, w1_prime, step1_adj) == Some(w3))
+        &&& (peak_steps_non_overlapping(hp, step1, step2, w1) ==> ok == true)
     }),
 {
     let hp = hnn_presentation(data);
@@ -5433,6 +5426,8 @@ pub proof fn lemma_handle_overlap_noncancel_general(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
+        // The commuted peak doesn't overlap
+        peak_steps_non_overlapping(hnn_presentation(data), step1, step3_adj, w1),
     ensures
         equiv_in_presentation(data.base, w, w_end),
 {
@@ -5445,7 +5440,8 @@ pub proof fn lemma_handle_overlap_noncancel_general(
 
     let (ok_, w_prime, step3_adj2, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
-    // ok_ should be true (commuted peak doesn't overlap)
+    // ok_ is true because peak_steps_non_overlapping is a precondition
+    assert(ok_);
 
     // Left: [step0, step3_adj2] from w to w_prime (2 steps)
     lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
