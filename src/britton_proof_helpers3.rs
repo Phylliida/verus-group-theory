@@ -5001,9 +5001,30 @@ pub proof fn lemma_overlap_peak_elimination(
                         step0, step1, step2, tail);
                 // w_base is base and word_valid (from ensures of two_round)
                 lemma_single_step_equiv(data.base, w, base_step, w_base);
-                // deriv has k-1 steps (< steps.len()), ≥ 4 ≥ 2 → recurse
-                assert(deriv_steps.len() >= 2);
-                lemma_overlap_peak_elimination(data, deriv_steps, w_base, w_end, fuel);
+                // deriv has < steps.len() steps (from ensures). steps.len()>=5 → deriv >= 2.
+                assert(deriv_steps.len() < steps.len());
+                assert(steps.len() >= 5);
+                // deriv could be 0..steps.len()-1. Need >= 2.
+                // Actually deriv = steps.len() - 1 = k-1 since it's one base step peeled off.
+                // But the ensures only says < steps.len(), not == steps.len()-1.
+                // We need a tighter bound. Let me check what the helper actually returns.
+                // lemma_k5_c3_eq4_two_round returns (w_base, base_step, deriv_steps) where
+                // deriv_steps has specific structure: [step0_adj, step1_adj] ++ tail.
+                // tail = [step2_adj] ++ original_tail. So deriv = 2 + 1 + tail.len() = 3 + tail.len().
+                // tail.len() = steps.len() - 4. So deriv = steps.len() - 1.
+                // But the ensures only says < steps.len(). Let me just check >= 2 differently.
+                if deriv_steps.len() < 2 {
+                    if deriv_steps.len() == 0 {
+                        assert(w_base == w_end);
+                        lemma_equiv_refl(data.base, w_base);
+                    } else {
+                        lemma_derivation_unfold_1(hp, deriv_steps, w_base, w_end);
+                        lemma_t_free_step_is_base_step(data, w_base, deriv_steps.first());
+                        lemma_single_step_equiv(data.base, w_base, deriv_steps.first(), w_end);
+                    }
+                } else {
+                    lemma_overlap_peak_elimination(data, deriv_steps, w_base, w_end, fuel);
+                }
                 lemma_equiv_transitive(data.base, w, w_base, w_end);
             } else if c3 >= 6 && steps.len() >= 5 {
                 // c3 >= 6, k≥5: delegate to scan handler
@@ -5011,24 +5032,30 @@ pub proof fn lemma_overlap_peak_elimination(
                     data, steps, w, w_end, w1, w2, w3,
                     step0, step1, step2, tail);
                 // w_base is base and word_valid (from ensures of c3_ge6)
+                // Helper: handle a sub-derivation of any length
+                // For left piece:
                 if left_s.len() == 0 {
-                    // w_base = w, right_s is shorter
-                    assert(right_s.len() >= 2);
-                    lemma_overlap_peak_elimination(data, right_s, w, w_end, fuel);
-                } else if left_s.len() >= 2 {
-                    lemma_overlap_peak_elimination(data, left_s, w, w_base, fuel);
-                    assert(right_s.len() >= 2);
-                    lemma_overlap_peak_elimination(data, right_s, w_base, w_end, fuel);
-                    lemma_equiv_transitive(data.base, w, w_base, w_end);
-                } else {
-                    // left has 1 step (base step)
+                    assert(w_base == w);
+                    lemma_equiv_refl(data.base, w);
+                } else if left_s.len() == 1 {
                     lemma_derivation_unfold_1(hp, left_s, w, w_base);
                     lemma_t_free_step_is_base_step(data, w, left_s.first());
                     lemma_single_step_equiv(data.base, w, left_s.first(), w_base);
-                    assert(right_s.len() >= 2);
-                    lemma_overlap_peak_elimination(data, right_s, w_base, w_end, fuel);
-                    lemma_equiv_transitive(data.base, w, w_base, w_end);
+                } else {
+                    lemma_overlap_peak_elimination(data, left_s, w, w_base, fuel);
                 }
+                // For right piece:
+                if right_s.len() == 0 {
+                    assert(w_base == w_end);
+                    lemma_equiv_refl(data.base, w_base);
+                } else if right_s.len() == 1 {
+                    lemma_derivation_unfold_1(hp, right_s, w_base, w_end);
+                    lemma_t_free_step_is_base_step(data, w_base, right_s.first());
+                    lemma_single_step_equiv(data.base, w_base, right_s.first(), w_end);
+                } else {
+                    lemma_overlap_peak_elimination(data, right_s, w_base, w_end, fuel);
+                }
+                lemma_equiv_transitive(data.base, w, w_base, w_end);
             } else {
                 // k=4 with c3=4 or c3>=6: these are impossible.
                 // k=4: count goes 0,2,4,c3,0. c3 must satisfy c3→0 in 1 step.
