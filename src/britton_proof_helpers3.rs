@@ -506,7 +506,7 @@ pub proof fn lemma_k4_peak_fe_rd(
 pub proof fn lemma_k4_peak_ri_fr(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         word_valid(w1, data.base.num_generators + 1),
