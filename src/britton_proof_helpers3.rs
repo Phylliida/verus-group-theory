@@ -534,6 +534,8 @@ pub proof fn lemma_k4_peak_ri_fr(
             &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
             &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
         }
+        // Non-overlapping always succeeds
+        &&& ((p2 + 2 <= p1 || p2 >= p1 + get_relator(hp, ri1, inv1).len()) ==> ok)
     }),
 {
     let hp = hnn_presentation(data);
@@ -1089,6 +1091,8 @@ proof fn lemma_peak_bypass_commuted(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
+        // The commuted step s3a doesn't overlap with step1
+        peak_steps_non_overlapping(hnn_presentation(data), step1, s3a, w1),
     ensures ({
         let (w_base, left_steps, right_steps) = result;
         let hp = hnn_presentation(data);
@@ -1112,7 +1116,10 @@ proof fn lemma_peak_bypass_commuted(
     };
     let (ok_, w_base, s3a2, s1a) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2p, step1, s3a);
-    // ok_ should be true (commuted peak doesn't overlap) but can't prove to Z3
+    // The commuted peak (step1, s3a) doesn't overlap (precondition).
+    // The only overlap case in lemma_k4_peak_noncancel_commute is RI+FR.
+    // Since s3a doesn't overlap with step1, ok_ must be true.
+    // TODO: prove ok_ == true from peak_steps_non_overlapping precondition
     lemma_derivation_produces_2(hp, step0, s3a2, w, w1, w_base);
     let left: Seq<DerivationStep> = seq![step0, s3a2];
 
@@ -1288,12 +1295,15 @@ pub proof fn lemma_k4_peak_noncancel_commute(
         let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
+        // When ok is true, the commuted steps are valid
         ok ==> {
             &&& is_base_word(w1_prime, n)
             &&& word_valid(w1_prime, n + 1)
             &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
             &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
         }
+        // When the peak doesn't overlap, ok is always true
+        &&& (peak_steps_non_overlapping(hp, step1, step2, w1) ==> ok)
     }),
 {
     let hp = hnn_presentation(data);
