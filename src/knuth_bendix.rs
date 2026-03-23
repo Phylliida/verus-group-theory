@@ -504,6 +504,7 @@ pub fn build_initial_rules_exec(
         invariant
             0 <= g <= num_generators,
             num_generators < 10000,
+            rules@.len() == 2 * g,
             forall|k: int| 0 <= k < rules@.len() ==>
                 (#[trigger] rules@[k]).lhs@.len() > 0
                 && rules@[k].rhs@.len() < rules@[k].lhs@.len(),
@@ -527,6 +528,7 @@ pub fn build_initial_rules_exec(
     while r < relators.len()
         invariant
             0 <= r <= relators.len(),
+            rules@.len() <= 2 * num_generators + r,
             forall|k: int| 0 <= k < rules@.len() ==>
                 (#[trigger] rules@[k]).lhs@.len() > 0
                 && rules@[k].rhs@.len() < rules@[k].lhs@.len(),

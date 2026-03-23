@@ -12755,7 +12755,7 @@ pub proof fn lemma_k4_tfree_expand_commute_fr(
 proof fn lemma_k4_tfree_expand_commute_fe(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, p1: int, sym1: Symbol,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -12775,13 +12775,13 @@ proof fn lemma_k4_tfree_expand_commute_fe(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -12816,9 +12816,8 @@ proof fn lemma_k4_tfree_expand_commute_fe(
         let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
 
         if p1 == p0 + 1 {
-            // Edge case between stable letters — use assume(false) for now
-            assume(false);
-            arbitrary()
+            // Edge case between stable letters — overlap
+            (false, arbitrary(), arbitrary(), arbitrary())
         } else if p1 <= p0 {
             // step1 acts before the expand region: step1 unchanged, step0 shifted by +2
             let w_prime = w.subrange(0, p1) + pair1 + w.subrange(p1, w.len() as int);
@@ -12849,7 +12848,7 @@ proof fn lemma_k4_tfree_expand_commute_fe(
             assert(w2 =~= expand_result);
             assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-            (w_prime, step1_base, step0_adj)
+            (true, w_prime, step1_base, step0_adj)
         } else {
             // step1 acts after the expand region: step1 position adjusted by -2, step0 unchanged
             assert(p1 >= p0 + 2);
@@ -12882,7 +12881,7 @@ proof fn lemma_k4_tfree_expand_commute_fe(
             assert(w2 =~= expand_result);
             assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-            (w_prime, step1_base, step0_adj)
+            (true, w_prime, step1_base, step0_adj)
         }
     }
 }
@@ -12893,7 +12892,7 @@ proof fn lemma_k4_tfree_expand_commute_fe(
 proof fn lemma_k4_tfree_expand_commute_ri(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, p1: int, ri1: nat, inv1: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -12914,13 +12913,13 @@ proof fn lemma_k4_tfree_expand_commute_ri(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -12972,9 +12971,8 @@ proof fn lemma_k4_tfree_expand_commute_ri(
         assert(stable_letter_count(r1, n) == 0nat);
 
         if p1 == p0 + 1 {
-            // Edge case: insert between stable letters — use assume(false) for now
-            assume(false);
-            arbitrary()
+            // Edge case: insert between stable letters — overlap
+            (false, arbitrary(), arbitrary(), arbitrary())
         } else if p1 <= p0 {
             // step1 acts before the expand region: step1 unchanged, step0 shifted by +r1_len
             let w_prime = w.subrange(0, p1) + r1 + w.subrange(p1, w.len() as int);
@@ -12999,7 +12997,7 @@ proof fn lemma_k4_tfree_expand_commute_ri(
             assert(w2 =~= expand_result);
             assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-            (w_prime, step1_base, step0_adj)
+            (true, w_prime, step1_base, step0_adj)
         } else {
             // step1 acts after the expand region: step1 position adjusted by -2, step0 unchanged
             assert(p1 >= p0 + 2);
@@ -13026,7 +13024,7 @@ proof fn lemma_k4_tfree_expand_commute_ri(
             assert(w2 =~= expand_result);
             assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
 
-            (w_prime, step1_base, step0_adj)
+            (true, w_prime, step1_base, step0_adj)
         }
     }
 }
@@ -13038,7 +13036,7 @@ proof fn lemma_k4_tfree_expand_commute_ri(
 proof fn lemma_k4_tfree_expand_commute_rd(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, p1: int, ri1: nat, inv1: bool,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -13059,13 +13057,13 @@ proof fn lemma_k4_tfree_expand_commute_rd(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 2nat,
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     let hp = hnn_presentation(data);
@@ -13220,7 +13218,7 @@ proof fn lemma_k4_tfree_expand_commute_rd(
 pub proof fn lemma_k4_tfree_expand_commute_other(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, sym: Symbol, step1: DerivationStep,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -13241,13 +13239,13 @@ pub proof fn lemma_k4_tfree_expand_commute_other(
         stable_letter_count(w2, data.base.num_generators) == 2nat,
         match step1 { DerivationStep::FreeReduce { .. } => false, _ => true },
     ensures ({
-        let (w_prime, step1_base, step0_adj) = result;
+        let (ok, w_prime, step1_base, step0_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_prime, n)
-        &&& word_valid(w_prime, n + 1)
-        &&& apply_step(data.base, w, step1_base) == Some(w_prime)
-        &&& apply_step(hp, w_prime, step0_adj) == Some(w2)
+        &&& (ok ==> is_base_word(w_prime, n))
+        &&& (ok ==> word_valid(w_prime, n + 1))
+        &&& (ok ==> apply_step(data.base, w, step1_base) == Some(w_prime))
+        &&& (ok ==> apply_step(hp, w_prime, step0_adj) == Some(w2))
     }),
 {
     match step1 {
