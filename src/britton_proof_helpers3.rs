@@ -4652,18 +4652,302 @@ pub proof fn lemma_k5_c3_ge6(
     }
 }
 
-/// Fuel-based peak elimination for overlap cases.
-/// When the peak commutation hits an overlap (step_down acts inside step_up's
-/// insertion region), this function constructs a modified derivation with lower
-/// count_sum and recurses with decreasing fuel.
-///
 /// Non-cancel sub-case of k=4 FR×FR overlap handler.
 /// After commuting step2/step3, the new peak (step1, step3_adj) is non-cancel.
-proof fn lemma_handle_overlap_k4_fr_fr_noncancel(
+/// General k≥4 overlap handler: commute step2/step3, then peak-commute.
+/// Works for any k≥4. Falls back to lemma_overlap_peak_elimination if can't commute.
+pub proof fn lemma_handle_overlap_general(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    step2: DerivationStep, step3: DerivationStep,
+    w4: Word, tail_rest: Seq<DerivationStep>,
+    fuel: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 4,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        word_valid(w4, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& apply_step(hp, w3, step3) == Some(w4)
+            &&& derivation_produces(hp, tail_rest, w4) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 2nat,
+        !(w3 =~= w1),
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    lemma_base_implies_count_zero(w_end, n);
+    lemma_step_preserves_word_valid(data, w3, step3);
+    lemma_stable_count_reduce_step(data, w3, step3, n);
+    // step3 is -2: stable_letter_count(w4) == stable_letter_count(w3) - 2
+    // (w3 has count 2, so w4 has count 0 or 2 or 4. Since step3 is a reduction step
+    // taking count from 2 towards 0, and there must be enough steps to reach base,
+    // w4 has count 0 or 2. But we need the exact -2.)
+    // For k=4: w4 = w_end (count 0), so count(w4) = 0 = 2-2. ✓
+    // For k≥5: w4 may not be base. count(w4) ∈ {0, 2, 4}.
+    // However, the commutation helpers just need count(w4) = count(w3) - 2 OR count(w3).
+    // Actually the helpers require the EXACT -2 relationship.
+    // Let's check: if step3 is FR, lemma_stable_count_reduce gives the exact.
+    // If step3 is RD, the relator count determines the change.
+    // We can use: step2 takes c=4→2 (-2), step3 should take c=2→something.
+    // The precondition doesn't guarantee step3 is -2 for k≥5.
+    // For the commutation to work, we need step3 to reduce count by 2.
+    // If step3 is T-free (count stays 2) or +2 (count goes to 4),
+    // the commutation still works structurally but the count postcondition differs.
+    // Let me just establish the count of w4 from the reduce_step lemma.
+    let c4 = stable_letter_count(w4, n);
+
+    // Only proceed if step3 is -2 (reduces stable count by 2).
+    // The commutation helpers require both steps to be -2.
+    if c4 != (stable_letter_count(w3, n) - 2) as nat {
+        // step3 is not -2 (T-free or +2). Fall back to standard handler.
+        lemma_overlap_peak_elimination(data, steps, w, w_end, fuel);
+        return;
+    }
+
+    // Check if step2/step3 can be commuted
+    let can_commute: bool = match (step2, step3) {
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            p3 < p2 ==> p3 + 2 <= p2,
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r3 = get_relator(hp, ri3, inv3);
+            let p3a: int = if p3 < p2 { p3 } else { (p3 + 2) as int };
+            (p3a + r3.len() <= p2 || p3a >= p2 + 2)
+                && (p3 < p2 ==> p3 + r3.len() <= p2)
+        },
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::FreeReduce { position: p3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+            p3a + 2 <= p2 || p3a >= p2 + r2.len()
+        },
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            let r3 = get_relator(hp, ri3, inv3);
+            let p3a: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+            (p3a + r3.len() <= p2 || p3a >= p2 + r2.len())
+                && (p3 >= p2 ==> p3a + r3.len() <= w2.len() as int)
+                && (p3 < p2 ==> p3 + r3.len() <= p2)
+        },
+        _ => false,
+    };
+
+    if !can_commute {
+        lemma_overlap_peak_elimination(data, steps, w, w_end, fuel);
+        return;
+    }
+
+    // Commute step2 and step3
+    let (w2_prime, step3_adj, step2_adj) = match (step2, step3) {
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            lemma_commute_fr_fr(data, w2, w3, w4, p2, p3),
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+            if p3 >= p2 { lemma_commute_fr_rd_right(data, w2, w3, w4, p2, p3, ri3, inv3) }
+            else { lemma_commute_fr_rd_left(data, w2, w3, w4, p2, p3, ri3, inv3) },
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            lemma_commute_rd_fr(data, w2, w3, w4, p2, ri2, inv2, p3),
+        (DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+            if p3 >= p2 { lemma_commute_rd_rd_right(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3) }
+            else { lemma_commute_rd_rd_left(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3) },
+        _ => { lemma_overlap_peak_elimination(data, steps, w, w_end, fuel); return; },
+    };
+
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+    lemma_step_preserves_word_valid(data, w2_prime, step2_adj);
+
+    if w2_prime =~= w1 {
+        // Cancel: build [step0, step2_adj] + tail_rest
+        assert(apply_step(hp, w1, step2_adj) == Some(w4)) by { assert(w2_prime =~= w1); };
+        let one_s: Seq<DerivationStep> = seq![step0];
+        assert(one_s.first() == step0);
+        assert(one_s.drop_first() =~= Seq::<DerivationStep>::empty());
+        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w1) == Some(w1)) by {
+            assert(Seq::<DerivationStep>::empty().len() == 0);
+        };
+        assert(derivation_produces(hp, one_s, w) == Some(w1));
+        let s2s: Seq<DerivationStep> = seq![step2_adj];
+        assert(s2s.first() == step2_adj);
+        assert(s2s.drop_first() =~= Seq::<DerivationStep>::empty());
+        assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w4) == Some(w4)) by {
+            assert(Seq::<DerivationStep>::empty().len() == 0);
+        };
+        assert(derivation_produces(hp, s2s, w1) == Some(w4));
+        lemma_derivation_concat(hp, s2s, tail_rest, w1, w4, w_end);
+        let right_s = s2s + tail_rest;
+        lemma_derivation_concat(hp, one_s, right_s, w, w1, w_end);
+        let short = one_s + right_s;
+        if short.len() >= 2 {
+            lemma_overlap_peak_elimination(data, short, w, w_end, fuel);
+        } else {
+            lemma_derivation_unfold_1(hp, short, w, w_end);
+            lemma_t_free_step_is_base_step(data, w, short.first());
+            lemma_single_step_equiv(data.base, w, short.first(), w_end);
+        }
+    } else {
+        assert(!is_base_word(w2_prime, n)) by {
+            if is_base_word(w2_prime, n) { lemma_base_implies_count_zero(w2_prime, n); }
+        };
+        lemma_handle_overlap_noncancel_general(
+            data, w, w_end, w1, w2, w2_prime, w4,
+            step0, step1, step3_adj, step2_adj, tail_rest, fuel);
+    }
+}
+
+/// Handle c3=4 T-free overlap: commute step2(T-free) past step3(-2) to create a peak.
+/// Only handles the case where step2 and step3 are both FR (most common).
+/// Falls back to lemma_overlap_peak_elimination for other combinations.
+pub proof fn lemma_handle_tfree_overlap(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
+    w1: Word, w2: Word, w3: Word, w4: Word,
+    step0: DerivationStep, step1: DerivationStep,
+    step2: DerivationStep, step3: DerivationStep,
+    after3: Seq<DerivationStep>,
+    fuel: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        steps.len() >= 5,
+        is_base_word(w, data.base.num_generators),
+        is_base_word(w_end, data.base.num_generators),
+        word_valid(w, data.base.num_generators + 1),
+        word_valid(w_end, data.base.num_generators + 1),
+        word_valid(w1, data.base.num_generators + 1),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        word_valid(w4, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w, step0) == Some(w1)
+            &&& apply_step(hp, w1, step1) == Some(w2)
+            &&& apply_step(hp, w2, step2) == Some(w3)
+            &&& apply_step(hp, w3, step3) == Some(w4)
+            &&& derivation_produces(hp, after3, w4) == Some(w_end)
+        }),
+        stable_letter_count(w1, data.base.num_generators) == 2nat,
+        stable_letter_count(w2, data.base.num_generators) == 4nat,
+        stable_letter_count(w3, data.base.num_generators) == 4nat, // step2 is T-free
+        stable_letter_count(w4, data.base.num_generators) == 2nat, // step3 is -2
+        match step1 {
+            DerivationStep::FreeExpand { position, symbol } =>
+                generator_index(symbol) == data.base.num_generators,
+            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
+                relator_index as int >= data.base.relators.len(),
+            _ => false,
+        },
+        derivation_produces(hnn_presentation(data), steps, w) == Some(w_end),
+    ensures
+        equiv_in_presentation(data.base, w, w_end),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+
+    // Try to commute step2 and step3 based on their types
+    let commuted: bool = match (step2, step3) {
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            (p3 < p2 ==> p3 + 2 <= p2),
+        (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            p3 + 2 <= p2 || p3 >= p2 + 2,
+        _ => false,
+    };
+
+    if !commuted {
+        lemma_overlap_peak_elimination(data, steps, w, w_end, fuel);
+        return;
+    }
+
+    let (w2p, s3a, s2a) = match (step2, step3) {
+        (DerivationStep::FreeReduce { position: p2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            lemma_commute_fr_fr_general(data, w2, w3, w4, p2, p3),
+        (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            lemma_commute_fe_fr_general(data, w2, w3, w4, p2, sym2, p3),
+        _ => { lemma_overlap_peak_elimination(data, steps, w, w_end, fuel); return; },
+    };
+
+    lemma_step_preserves_word_valid(data, w2, s3a);
+    lemma_step_preserves_word_valid(data, w2p, s2a);
+    lemma_stable_count_reduce_step(data, w2, s3a, n);
+    let c_w2p = stable_letter_count(w2p, n);
+    if c_w2p != 2 {
+        lemma_overlap_peak_elimination(data, steps, w, w_end, fuel);
+        return;
+    }
+
+    // Build new steps
+    let prefix4: Seq<DerivationStep> = seq![step0, step1, s3a, s2a];
+    let prefix2: Seq<DerivationStep> = seq![step0, step1];
+    let suffix2: Seq<DerivationStep> = seq![s3a, s2a];
+    lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
+    lemma_derivation_produces_2(hp, s3a, s2a, w2, w2p, w4);
+    lemma_derivation_concat(hp, prefix2, suffix2, w, w2, w4);
+    assert(prefix4 =~= prefix2 + suffix2);
+    lemma_derivation_concat(hp, prefix4, after3, w, w4, w_end);
+    let new_steps = prefix4 + after3;
+
+    if w2p =~= w1 {
+        // Cancel
+        assert(apply_step(hp, w1, s2a) == Some(w4)) by { assert(w2p =~= w1); };
+        let short_s: Seq<DerivationStep> = seq![step0, s2a];
+        lemma_derivation_produces_2(hp, step0, s2a, w, w1, w4);
+        lemma_derivation_concat(hp, short_s, after3, w, w4, w_end);
+        let short_all = short_s + after3;
+        lemma_overlap_peak_elimination(data, short_all, w, w_end, fuel);
+    } else {
+        assert(!is_base_word(w2p, n)) by {
+            if is_base_word(w2p, n) { lemma_base_implies_count_zero(w2p, n); }
+        };
+        lemma_handle_overlap_general(
+            data, new_steps, w, w_end, w1, w2, w2p,
+            step0, step1, s3a, s2a,
+            w4, after3, fuel);
+    }
+}
+
+/// General non-cancel overlap handler: works for any k≥4.
+/// After commuting step2/step3, the peak (step1, step3_adj) is non-cancel.
+/// Builds left=[step0, step3_adj2] and right=[step1_adj, step2_adj]+tail_rest.
+pub proof fn lemma_handle_overlap_noncancel_general(
     data: HNNData, w: Word, w_end: Word,
-    w1: Word, w2: Word, w2_prime: Word,
+    w1: Word, w2: Word, w2_prime: Word, w4: Word,
     step0: DerivationStep, step1: DerivationStep,
     step3_adj: DerivationStep, step2_adj: DerivationStep,
+    tail_rest: Seq<DerivationStep>,
     fuel: nat,
 )
     requires
@@ -4676,12 +4960,14 @@ proof fn lemma_handle_overlap_k4_fr_fr_noncancel(
         word_valid(w1, data.base.num_generators + 1),
         word_valid(w2, data.base.num_generators + 1),
         word_valid(w2_prime, data.base.num_generators + 1),
+        word_valid(w4, data.base.num_generators + 1),
         ({
             let hp = hnn_presentation(data);
             &&& apply_step(hp, w, step0) == Some(w1)
             &&& apply_step(hp, w1, step1) == Some(w2)
             &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
-            &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+            &&& apply_step(hp, w2_prime, step2_adj) == Some(w4)
+            &&& derivation_produces(hp, tail_rest, w4) == Some(w_end)
         }),
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 4nat,
@@ -4709,97 +4995,28 @@ proof fn lemma_handle_overlap_k4_fr_fr_noncancel(
     let (w_prime, step3_adj2, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
 
+    // Left: [step0, step3_adj2] from w to w_prime (2 steps)
     lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
     let left_steps: Seq<DerivationStep> = seq![step0, step3_adj2];
 
+    // Right: [step1_adj, step2_adj] + tail_rest from w_prime to w_end
     lemma_step_preserves_word_valid(data, w_prime, step1_adj);
-    lemma_derivation_produces_2(hp, step1_adj, step2_adj, w_prime, w2_prime, w_end);
-    let right_steps: Seq<DerivationStep> = seq![step1_adj, step2_adj];
+    lemma_derivation_produces_2(hp, step1_adj, step2_adj, w_prime, w2_prime, w4);
+    let prefix2: Seq<DerivationStep> = seq![step1_adj, step2_adj];
+    lemma_derivation_concat(hp, prefix2, tail_rest, w_prime, w4, w_end);
+    let right_steps = prefix2 + tail_rest;
 
+    // Recurse
     lemma_overlap_peak_elimination(data, left_steps, w, w_prime, fuel);
-    lemma_overlap_peak_elimination(data, right_steps, w_prime, w_end, fuel);
+    if right_steps.len() >= 2 {
+        lemma_overlap_peak_elimination(data, right_steps, w_prime, w_end, fuel);
+    } else {
+        lemma_derivation_unfold_1(hp, right_steps, w_prime, w_end);
+        lemma_t_free_step_is_base_step(data, w_prime, right_steps.first());
+        lemma_single_step_equiv(data.base, w_prime, right_steps.first(), w_end);
+    }
     lemma_equiv_transitive(data.base, w, w_prime, w_end);
 }
-
-/// Handle the k=4 overlap case where step1/step2 overlap and step2/step3 are both FR.
-/// Strategy: commute step2 and step3 (both -2, non-overlapping because they act on
-/// different stable letter pairs), then peak-commute (step1, step3_adj) which doesn't
-/// overlap, then recurse on two 2-step sub-derivations.
-pub proof fn lemma_handle_overlap_k4_fr_fr(
-    data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
-    w1: Word, w2: Word, w3: Word,
-    step0: DerivationStep, step1: DerivationStep,
-    p2: int, p3: int,
-    fuel: nat,
-)
-    requires
-        hnn_data_valid(data),
-        hnn_associations_isomorphic(data),
-        steps.len() == 4,
-        is_base_word(w, data.base.num_generators),
-        is_base_word(w_end, data.base.num_generators),
-        word_valid(w, data.base.num_generators + 1),
-        word_valid(w_end, data.base.num_generators + 1),
-        word_valid(w1, data.base.num_generators + 1),
-        word_valid(w2, data.base.num_generators + 1),
-        word_valid(w3, data.base.num_generators + 1),
-        ({
-            let hp = hnn_presentation(data);
-            let n = data.base.num_generators;
-            &&& step0 == steps[0]
-            &&& step1 == steps[1]
-            &&& steps[2] == (DerivationStep::FreeReduce { position: p2 })
-            &&& steps[3] == (DerivationStep::FreeReduce { position: p3 })
-            &&& apply_step(hp, w, step0) == Some(w1)
-            &&& apply_step(hp, w1, step1) == Some(w2)
-            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
-            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
-        }),
-        stable_letter_count(w1, data.base.num_generators) == 2nat,
-        stable_letter_count(w2, data.base.num_generators) == 4nat,
-        stable_letter_count(w3, data.base.num_generators) == 2nat,
-        !(w3 =~= w1),
-        // step2/step3 non-overlapping in w2
-        p3 < p2 ==> p3 + 2 <= p2,
-        match step1 {
-            DerivationStep::FreeExpand { position, symbol } =>
-                generator_index(symbol) == data.base.num_generators,
-            DerivationStep::RelatorInsert { position, relator_index, inverted } =>
-                relator_index as int >= data.base.relators.len(),
-            _ => false,
-        },
-    ensures
-        equiv_in_presentation(data.base, w, w_end),
-    // Not in recursion group with lemma_overlap_peak_elimination (one-way call only)
-{
-    let hp = hnn_presentation(data);
-    let n = data.base.num_generators;
-    let step2 = DerivationStep::FreeReduce { position: p2 };
-    let step3 = DerivationStep::FreeReduce { position: p3 };
-
-    lemma_base_implies_count_zero(w_end, n);
-
-    let (w2_prime, step3_adj, step2_adj) =
-        lemma_commute_fr_fr(data, w2, w3, w_end, p2, p3);
-
-    lemma_step_preserves_word_valid(data, w2, step3_adj);
-
-    if w2_prime =~= w1 {
-        // Cancel: step1 and step3_adj cancel.
-        assert(apply_step(hp, w1, step2_adj) == Some(w_end)) by { assert(w2_prime =~= w1); };
-        let short: Seq<DerivationStep> = seq![step0, step2_adj];
-        lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_end);
-        lemma_overlap_peak_elimination(data, short, w, w_end, fuel);
-    } else {
-        assert(!is_base_word(w2_prime, n)) by {
-            if is_base_word(w2_prime, n) { lemma_base_implies_count_zero(w2_prime, n); }
-        };
-        lemma_handle_overlap_k4_fr_fr_noncancel(
-            data, w, w_end, w1, w2, w2_prime,
-            step0, step1, step3_adj, step2_adj, fuel);
-    }
-}
-
 /// The modified derivation replaces the overlapping peak with its near-cancel
 /// equivalent. The near-cancel inserts trivial base content (e.g., inv(b_j)
 /// from the isomorphism argument) which reduces the peak height.
@@ -5301,6 +5518,644 @@ pub proof fn lemma_commute_fr_fr(
 
         (w2_prime, step3_adj, step2_adj)
     }
+}
+
+/// General commutation of two non-overlapping FreeReduce steps (no stable count restriction).
+/// Works for T-free × -2 and -2 × T-free combinations.
+pub proof fn lemma_commute_fr_fr_general(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, p3: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        p3 < p2 ==> p3 + 2 <= p2,
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    assert(has_cancellation_at(w2, p2));
+    assert(w3 =~= reduce_at(w2, p2));
+    assert(has_cancellation_at(w3, p3));
+
+    if p3 < p2 {
+        assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
+        assert(has_cancellation_at(w2, p3));
+        let step3_adj = DerivationStep::FreeReduce { position: p3 };
+        let w2_prime = reduce_at(w2, p3);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeReduce { position: (p2-2) as int };
+        assert(w2_prime[(p2-2) as int] == w2[p2]); assert(w2_prime[(p2-1) as int] == w2[p2+1]);
+        assert(has_cancellation_at(w2_prime, (p2-2) as int));
+        let r = reduce_at(w2_prime, (p2-2) as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == r[k] by {
+            if k < p3 { } else if k < p2-2 {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2) as int]);
+                assert(r[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k+2) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+2) as int]); assert(r[k] == w2_prime[(k+2) as int]); assert(w2_prime[(k+2) as int] == w2[(k+4) as int]);
+                if (k+2) < p2 { assert(w3[(k+2) as int] == w2[(k+2) as int]); assert(w2_prime[(k+2) as int] == w2[(k+4) as int]); }
+                else { assert(w3[(k+2) as int] == w2[(k+4) as int]); }
+            }
+        };
+        assert(w_end =~= r);
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        let p3_adj = (p3+2) as int;
+        assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
+        assert(has_cancellation_at(w2, p3_adj));
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeReduce { position: p2 };
+        assert(w2_prime[p2] == w2[p2]); assert(w2_prime[p2+1] == w2[p2+1]);
+        assert(has_cancellation_at(w2_prime, p2));
+        let r = reduce_at(w2_prime, p2);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == r[k] by {
+            if k < p2 { } else if k < p3 {
+                assert(r[k] == w2_prime[(k+2) as int]); assert(w2_prime[(k+2) as int] == w2[(k+2) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k+2) as int]);
+            } else {
+                assert(r[k] == w2_prime[(k+2) as int]); assert(w2_prime[(k+2) as int] == w2[(k+4) as int]);
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+4) as int]);
+            }
+        };
+        assert(w_end =~= r);
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// General commutation of non-overlapping FE (step2) × FR (step3).
+/// FE adds 2 elements at p2, FR removes 2 at p3. Non-overlapping regions.
+pub proof fn lemma_commute_fe_fr_general(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, sym2: Symbol, p3: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeExpand { position: p2, symbol: sym2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        // Non-overlapping: FR region doesn't overlap with FE region in w3
+        // FE inserts at p2, creating elements at [p2, p2+2) in w3
+        // FR at p3 in w3: must not overlap with [p2, p2+2)
+        p3 + 2 <= p2 || p3 >= p2 + 2,
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let pair = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+    assert(w3 =~= w2.subrange(0, p2) + pair + w2.subrange(p2, w2.len() as int));
+    assert(has_cancellation_at(w3, p3));
+
+    if p3 + 2 <= p2 {
+        // FR before FE region. In w3, p3 maps to p3 in w2 (before insertion).
+        assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
+        assert(has_cancellation_at(w2, p3));
+        let step3_adj = DerivationStep::FreeReduce { position: p3 };
+        let w2_prime = reduce_at(w2, p3);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeExpand { position: (p2 - 2) as int, symbol: sym2 };
+        let pair2 = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+        let result_word = w2_prime.subrange(0, (p2-2) as int) + pair2 + w2_prime.subrange((p2-2) as int, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p3 { }
+            else if k < p2 - 2 {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2) as int]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k+2) as int]);
+            } else if k < p2 {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == pair[(k+2-p2) as int]);
+                assert(result_word[k] == pair2[(k-(p2-2)) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[k as int]);
+                assert(result_word[k] == w2_prime[(k-2) as int]); assert(w2_prime[(k-2) as int] == w2[k as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // FR after FE region. p3 >= p2+2. In w3, p3 maps to p3-2 in w2.
+        let p3_adj = (p3 - 2) as int;
+        assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
+        assert(has_cancellation_at(w2, p3_adj));
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::FreeExpand { position: p2, symbol: sym2 };
+        let pair2 = Seq::new(1, |_i: int| sym2) + Seq::new(1, |_i: int| inverse_symbol(sym2));
+        let result_word = w2_prime.subrange(0, p2) + pair2 + w2_prime.subrange(p2, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p2 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            } else if k < p2 + 2 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == pair[(k-p2) as int]);
+                assert(result_word[k] == pair2[(k-p2) as int]);
+            } else if k < p3 {
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k-2) as int]);
+                assert(result_word[k] == w2_prime[(k-2) as int]); assert(w2_prime[(k-2) as int] == w2[(k-2) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[k as int]);
+                assert(result_word[k] == w2_prime[(k-2) as int]); assert(w2_prime[(k-2) as int] == w2[k as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// Commute non-overlapping FR (step2) × RD (step3), case p3 >= p2 (RD after FR).
+pub proof fn lemma_commute_fr_rd_right(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        p3 >= p2,
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, n + 1)
+        &&& stable_letter_count(w2_prime, n) == (stable_letter_count(w2, n) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+
+    assert(w3 =~= reduce_at(w2, p2));
+    let p3_adj = (p3 + 2) as int;
+    assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k + 2) as int] by {};
+    assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
+
+    let step3_adj = DerivationStep::RelatorDelete { position: p3_adj, relator_index: ri3, inverted: inv3 };
+    let w2_prime = w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int);
+    assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+    lemma_relator_stable_count(data, ri3, inv3);
+    // step3 reduces stable count by 2 → relator must be HNN (not base)
+    // If base relator: count(r3) = 0, so RD doesn't change stable count.
+    // But count(w_end) = count(w3) - 2, so the relator must have count 2.
+    if (ri3 as int) < data.base.relators.len() {
+        // Base relator: count(r3) = 0. RD removes 0 stable letters.
+        // count(w_end) = count(w3). But precondition says count(w_end) = count(w3) - 2.
+        // count(w3) >= 2 (from count(w2) >= 4, step2 FR removes 2).
+        // So count(w3) = count(w3) - 2 is impossible. Contradiction.
+        lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
+        assert(false);
+    }
+    assert(stable_letter_count(r3, n) == 2nat);
+    lemma_stable_count_subrange(w2, p3_adj, p3_adj + r3_len, n);
+    assert(stable_letter_count(w2.subrange(p3_adj, p3_adj + r3_len), n) == 2nat);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj + r3_len, w2.len() as int), n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj, w2.len() as int), n);
+    // count(w2_prime) = count(w2[0..p3_adj]) + count(w2[p3_adj+r3_len..]) = count(w2) - 2
+    assert(w2_prime =~= w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int));
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    let step2_adj = DerivationStep::FreeReduce { position: p2 };
+    assert(w2_prime[p2] == w2[p2]);
+    assert(w2_prime[p2 + 1] == w2[p2 + 1]);
+    assert(has_cancellation_at(w2_prime, p2));
+    let result_word = reduce_at(w2_prime, p2);
+    assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+        if k < p2 {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+        } else if k < p3 {
+            assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 2) as int]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k + 2) as int]);
+        } else {
+            assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 2 + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len + 2) as int]);
+        }
+    };
+    assert(w_end =~= result_word);
+    (w2_prime, step3_adj, step2_adj)
+}
+
+/// Commute non-overlapping FR (step2) × RD (step3), case p3 < p2 (RD before FR).
+pub proof fn lemma_commute_fr_rd_left(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        p3 < p2,
+        ({
+            let r3 = get_relator(hnn_presentation(data), ri3, inv3);
+            p3 + r3.len() <= p2 // RD region ends before FR region
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, n + 1)
+        &&& stable_letter_count(w2_prime, n) == (stable_letter_count(w2, n) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+
+    assert(w3 =~= reduce_at(w2, p2));
+    // RD at p3 in w3: p3 < p2, so w3[p3..p3+r3_len] = w2[p3..p3+r3_len]
+    assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
+    assert(w2.subrange(p3, p3 + r3_len) =~= r3);
+
+    let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
+    let w2_prime = w2.subrange(0, p3) + w2.subrange(p3 + r3_len, w2.len() as int);
+    assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+
+    // Stable count
+    lemma_relator_stable_count(data, ri3, inv3);
+    if (ri3 as int) < data.base.relators.len() {
+        lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
+        assert(false); // base relator can't reduce count by 2
+    }
+    assert(stable_letter_count(r3, n) == 2nat);
+    lemma_stable_count_subrange(w2, p3, p3 + r3_len, n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3), w2.subrange(p3 + r3_len, w2.len() as int), n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3), w2.subrange(p3, w2.len() as int), n);
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    // FR at adjusted position p2 - r3_len
+    let step2_adj = DerivationStep::FreeReduce { position: (p2 - r3_len) as int };
+    assert(w2_prime[(p2 - r3_len) as int] == w2[p2]);
+    assert(w2_prime[(p2 - r3_len + 1) as int] == w2[p2 + 1]);
+    assert(has_cancellation_at(w2_prime, (p2 - r3_len) as int));
+    let result_word = reduce_at(w2_prime, (p2 - r3_len) as int);
+    assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+        if k < p3 {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+        } else if k < p2 - r3_len {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len) as int]);
+        } else {
+            assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 2 + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len + 2) as int]);
+        }
+    };
+    assert(w_end =~= result_word);
+    (w2_prime, step3_adj, step2_adj)
+}
+
+/// Commute non-overlapping RD (step2) × FR (step3).
+/// step2 = RD(p2, ri2, inv2) on w2→w3, step3 = FR(p3) on w3→w_end.
+pub proof fn lemma_commute_rd_fr(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, ri2: nat, inv2: bool, p3: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        // Non-overlapping: FR region in w2 doesn't overlap with RD region
+        ({
+            let r2 = get_relator(hnn_presentation(data), ri2, inv2);
+            let p3_adj: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
+            p3_adj + 2 <= p2 || p3_adj >= p2 + r2.len()
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, n + 1)
+        &&& stable_letter_count(w2_prime, n) == (stable_letter_count(w2, n) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r2 = get_relator(hp, ri2, inv2);
+    let r2_len = r2.len() as int;
+
+    assert(w2.subrange(p2, p2 + r2_len) =~= r2);
+    assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + r2_len, w2.len() as int));
+    assert(has_cancellation_at(w3, p3));
+
+    // Prove step3 removes stable letters
+    lemma_stable_count_reduce(w3, p3, n);
+    lemma_relator_stable_count(data, ri2, inv2);
+    if generator_index(w3[p3]) != n {
+        assert(stable_letter_count(reduce_at(w3, p3), n) == stable_letter_count(w3, n));
+        assert(false); // count(w3) >= 2, but count(w_end) = count(w3) - 2
+    }
+
+    if p3 < p2 {
+        // FR acts before RD region. p3_adj = p3.
+        let p3_adj = p3;
+        assert(w3[p3] == w2[p3]);
+        assert(w3[p3 + 1] == w2[p3 + 1]);
+        assert(has_cancellation_at(w2, p3_adj));
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_stable_count_reduce(w2, p3_adj, n);
+        assert(generator_index(w2[p3_adj]) == n);
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+        let step2_adj = DerivationStep::RelatorDelete { position: (p2 - 2) as int, relator_index: ri2, inverted: inv2 };
+        assert forall|k: int| p2 <= k < p2 + r2_len implies w2_prime[(k - 2) as int] == w2[k] by {};
+        assert(w2_prime.subrange((p2 - 2) as int, (p2 - 2 + r2_len) as int) =~= r2);
+        let result_word = w2_prime.subrange(0, (p2 - 2) as int) + w2_prime.subrange((p2 - 2 + r2_len) as int, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p3 {
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+            } else if k < p2 - 2 {
+                // After FR removal, before RD removal
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + 2) as int]);
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2) as int]);
+            } else {
+                // After both removals: both shifted by 2 (FR) + r2_len (RD)
+                assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len + 2) as int]);
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2 + r2_len) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // FR acts after RD region. p3_adj = p3 + r2_len.
+        let p3_adj = (p3 + r2_len) as int;
+        assert(w3[p3] == w2[p3_adj]);
+        assert(w3[p3 + 1] == w2[(p3_adj + 1) as int]);
+        assert(has_cancellation_at(w2, p3_adj));
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_stable_count_reduce(w2, p3_adj, n);
+        assert(generator_index(w2[p3_adj]) == n);
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+        let step2_adj = DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 };
+        assert forall|k: int| p2 <= k < p2 + r2_len implies w2_prime[k] == w2[k] by {};
+        assert(w2_prime.subrange(p2, p2 + r2_len) =~= r2);
+        let result_word = w2_prime.subrange(0, p2) + w2_prime.subrange(p2 + r2_len, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p2 {
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+            } else if k < p3 {
+                assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k + r2_len) as int]);
+            } else {
+                assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len + 2) as int]);
+                assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2 + r2_len) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// Commute non-overlapping RD × RD, case p3 < p2 (RD3 before RD2).
+pub proof fn lemma_commute_rd_rd_left(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        p3 < p2,
+        ({
+            let r3 = get_relator(hnn_presentation(data), ri3, inv3);
+            p3 + r3.len() <= p2 // RD3 region ends before RD2 region
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, n + 1)
+        &&& stable_letter_count(w2_prime, n) == (stable_letter_count(w2, n) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r2 = get_relator(hp, ri2, inv2);
+    let r2_len = r2.len() as int;
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+
+    assert(w2.subrange(p2, p2 + r2_len) =~= r2);
+    assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + r2_len, w2.len() as int));
+    assert(w3.subrange(p3, p3 + r3_len) =~= r3);
+
+    lemma_relator_stable_count(data, ri2, inv2);
+    lemma_relator_stable_count(data, ri3, inv3);
+    if (ri3 as int) < data.base.relators.len() {
+        lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
+        assert(false);
+    }
+    assert(stable_letter_count(r3, n) == 2nat);
+    // RD3 before RD2. p3_adj = p3.
+    assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
+    assert(w2.subrange(p3, p3 + r3_len) =~= r3);
+    let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
+    let w2_prime = w2.subrange(0, p3) + w2.subrange(p3 + r3_len, w2.len() as int);
+    assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+    lemma_stable_count_subrange(w2, p3, p3 + r3_len, n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3), w2.subrange(p3 + r3_len, w2.len() as int), n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3), w2.subrange(p3, w2.len() as int), n);
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    let step2_adj = DerivationStep::RelatorDelete { position: (p2 - r3_len) as int, relator_index: ri2, inverted: inv2 };
+    assert forall|k: int| p2 <= k < p2 + r2_len implies w2_prime[(k - r3_len) as int] == w2[k] by {};
+    assert(w2_prime.subrange((p2 - r3_len) as int, (p2 - r3_len + r2_len) as int) =~= r2);
+    let result_word = w2_prime.subrange(0, (p2 - r3_len) as int) + w2_prime.subrange((p2 - r3_len + r2_len) as int, w2_prime.len() as int);
+    assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+        if k < p3 {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+        } else if k < p2 - r3_len {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len) as int]);
+        } else {
+            assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len + r2_len) as int]);
+        }
+    };
+    assert(w_end =~= result_word);
+    assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+    (w2_prime, step3_adj, step2_adj)
+}
+
+/// Commute non-overlapping RD × RD, case p3 >= p2 (RD3 after RD2).
+pub proof fn lemma_commute_rd_rd_right(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        stable_letter_count(w2, data.base.num_generators) >= 4,
+        stable_letter_count(w3, data.base.num_generators) ==
+            (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
+        stable_letter_count(w_end, data.base.num_generators) ==
+            (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
+        p3 >= p2,
+        ({
+            let r2 = get_relator(hnn_presentation(data), ri2, inv2);
+            let r3 = get_relator(hnn_presentation(data), ri3, inv3);
+            (p3 + r2.len()) as int + r3.len() <= w2.len() // adjusted position fits
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        let n = data.base.num_generators;
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, n + 1)
+        &&& stable_letter_count(w2_prime, n) == (stable_letter_count(w2, n) - 2) as nat
+    }),
+{
+    let hp = hnn_presentation(data);
+    let n = data.base.num_generators;
+    let r2 = get_relator(hp, ri2, inv2);
+    let r2_len = r2.len() as int;
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+
+    assert(w2.subrange(p2, p2 + r2_len) =~= r2);
+    assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + r2_len, w2.len() as int));
+    assert(w3.subrange(p3, p3 + r3_len) =~= r3);
+
+    lemma_relator_stable_count(data, ri3, inv3);
+    if (ri3 as int) < data.base.relators.len() {
+        lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
+        lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
+        assert(false);
+    }
+    assert(stable_letter_count(r3, n) == 2nat);
+
+    // RD3 after RD2. p3_adj = p3 + r2_len.
+    let p3_adj = (p3 + r2_len) as int;
+    assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k + r2_len) as int] by {};
+    assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
+    let step3_adj = DerivationStep::RelatorDelete { position: p3_adj, relator_index: ri3, inverted: inv3 };
+    let w2_prime = w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int);
+    assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+    lemma_stable_count_subrange(w2, p3_adj, p3_adj + r3_len, n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj + r3_len, w2.len() as int), n);
+    lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj, w2.len() as int), n);
+    lemma_step_preserves_word_valid(data, w2, step3_adj);
+
+    let step2_adj = DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 };
+    assert forall|k: int| p2 <= k < p2 + r2_len implies w2_prime[k] == w2[k] by {};
+    assert(w2_prime.subrange(p2, p2 + r2_len) =~= r2);
+    let result_word = w2_prime.subrange(0, p2) + w2_prime.subrange(p2 + r2_len, w2_prime.len() as int);
+    assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+        if k < p2 {
+            assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+        } else if k < p3 {
+            assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len) as int]);
+            assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k + r2_len) as int]);
+        } else {
+            assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len + r3_len) as int]);
+            assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len + r2_len) as int]);
+        }
+    };
+    assert(w_end =~= result_word);
+    assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+    (w2_prime, step3_adj, step2_adj)
 }
 
 /// When a_j is empty, b_j is equivalent to ε in the base group.

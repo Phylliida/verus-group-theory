@@ -13846,50 +13846,142 @@ proof fn lemma_single_segment_hard(
         let c2 = stable_letter_count(w2, n);
 
         // All k≥4 cases: delegate to overlap peak elimination.
-        // For k=4 with FR×FR overlap: use specialized handler that commutes
-        // step2/step3 to resolve the overlap.
         let fuel = derivation_count_sum(hp, steps, w, n);
-        if steps.len() == 4 && c2 == 4 {
-            // Check for FR×FR overlap case
-            let step2_check = steps[2int];
-            let step3_check = steps[3int];
-            match (step1, step2_check, step3_check) {
-                (DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 },
-                 DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::FreeReduce { position: p3 }) => {
-                    let r1 = get_relator(hp, ri1, inv1);
-                    // Check overlap between RI and FR
-                    if !(p2 + 2 <= p1 || p2 >= p1 + r1.len())
-                        && ((p3 < p2 && p3 + 2 <= p2) || p3 >= p2)
-                    {
-                        // Extract w3 and verify preconditions
-                        let w3_temp = apply_step(hp, w2, step2_check).unwrap();
-                        lemma_step_preserves_word_valid(data, w2, step2_check);
-                        lemma_stable_count_reduce_step(data, w2, step2_check, n);
-                        let c3_temp = stable_letter_count(w3_temp, n);
-                        if c3_temp == 2 && !(w3_temp =~= w1) {
-                            // k=4, FR×FR overlap, non-cancel
-                            lemma_plus2_step_type(data, w1, w2, step1, n);
-                            // Unfold tail to get step3 applied
-                            let remaining2 = steps.subrange(2, 4);
-                            lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
-                            let tail_part = remaining_steps.subrange(1, remaining_steps.len() as int);
-                            lemma_derivation_unfold_1(hp, tail_part, w3_temp, w_end);
-                            crate::britton_proof_helpers3::lemma_handle_overlap_k4_fr_fr(
-                                data, steps, w, w_end, w1, w2, w3_temp,
-                                step0, step1, p2, p3, fuel);
-                            return;
-                        }
+        // For k≥4 with overlapping peak at (step1,step2): commute step2/step3.
+        // This bypasses assume(false) in peak commutation sub-helpers.
+        if c2 == 4 && remaining_steps.len() >= 2 {
+            let step2_ov = remaining_steps[0int];
+            // Check overlap between step1 and step2
+            if !crate::britton_proof_helpers3::peak_steps_non_overlapping(hp, step1, step2_ov, w1) {
+                let w3_ov = apply_step(hp, w2, step2_ov).unwrap();
+                lemma_step_preserves_word_valid(data, w2, step2_ov);
+                lemma_stable_count_reduce_step(data, w2, step2_ov, n);
+                let c3_ov = stable_letter_count(w3_ov, n);
+                if c3_ov == 2 && !(w3_ov =~= w1) {
+                    lemma_plus2_step_type(data, w1, w2, step1, n);
+                    // Extract step3 from remaining
+                    lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+                    let after_step2 = remaining_steps.subrange(1, remaining_steps.len() as int);
+                    assert(after_step2.len() >= 1);
+                    assert(derivation_produces(hp, after_step2, w3_ov) == Some(w_end));
+                    let step3_ov = after_step2[0int];
+                    assert(after_step2.first() == step3_ov);
+                    // Unfold: derivation applies step3_ov to w3_ov first
+                    lemma_word_at_one(hp, after_step2, w3_ov);
+                    let w4_ov = apply_step(hp, w3_ov, step3_ov).unwrap();
+                    lemma_derivation_split(hp, after_step2, w3_ov, w_end, 1nat);
+                    let tail_rest_ov = after_step2.subrange(1, after_step2.len() as int);
+                    lemma_step_preserves_word_valid(data, w3_ov, step3_ov);
+                    crate::britton_proof_helpers3::lemma_handle_overlap_general(
+                        data, steps, w, w_end, w1, w2, w3_ov,
+                        step0, step1, step2_ov, step3_ov,
+                        w4_ov, tail_rest_ov, fuel);
+                    return;
+                }
+            }
+        }
+        // For c3=4 T-free overlap: commute step2(T-free) past step3(-2) to create peak
+        // This handles the case where the two-round swap would hit assume(false)
+        if c2 == 4 && remaining_steps.len() >= 3 {
+            let step2_tf = remaining_steps[0int];
+            let w3_tf = apply_step(hp, w2, step2_tf).unwrap();
+            lemma_step_preserves_word_valid(data, w2, step2_tf);
+            lemma_stable_count_reduce_step(data, w2, step2_tf, n);
+            let c3_tf = stable_letter_count(w3_tf, n);
+            if c3_tf == 4 && !crate::britton_proof_helpers3::peak_steps_non_overlapping(hp, step1, step2_tf, w1) {
+                // T-free overlap detected. Try commuting with step3.
+                lemma_derivation_split(hp, remaining_steps, w2, w_end, 1nat);
+                let after2 = remaining_steps.subrange(1, remaining_steps.len() as int);
+                assert(derivation_produces(hp, after2, w3_tf) == Some(w_end));
+                let step3_tf = after2[0int];
+                lemma_word_at_one(hp, after2, w3_tf);
+                let w4_tf = apply_step(hp, w3_tf, step3_tf).unwrap();
+                lemma_step_preserves_word_valid(data, w3_tf, step3_tf);
+                lemma_stable_count_reduce_step(data, w3_tf, step3_tf, n);
+                let c4_tf = stable_letter_count(w4_tf, n);
+                lemma_derivation_split(hp, after2, w3_tf, w_end, 1nat);
+                let after3 = after2.subrange(1, after2.len() as int);
+                // Commute step2 (T-free) past step3 (-2) to create a peak
+                if c4_tf == 2 {
+                    lemma_plus2_step_type(data, w1, w2, step1, n);
+                    crate::britton_proof_helpers3::lemma_handle_tfree_overlap(
+                        data, steps, w, w_end, w1, w2, w3_tf, w4_tf,
+                        step0, step1, step2_tf, step3_tf, after3, fuel);
+                    return;
+                }
+                if false {  // Old inline code — now dead, replaced by helper above
+                    match (step2_tf, step3_tf) {
+                        (DerivationStep::FreeReduce { position: p2_tf },
+                         DerivationStep::FreeReduce { position: p3_tf }) => {
+                            if (p3_tf < p2_tf && p3_tf + 2 <= p2_tf) || p3_tf >= p2_tf {
+                                // Commute: now step3 comes first (count 4→2), creating a peak
+                                let (w2p, s3a, s2a) = crate::britton_proof_helpers3::lemma_commute_fr_fr_general(
+                                    data, w2, w3_tf, w4_tf, p2_tf, p3_tf);
+                                // New derivation: [step0, step1, s3a, s2a, after3...]
+                                // Peak at (step1, s3a): counts 2→4→2, handle with overlap general
+                                lemma_plus2_step_type(data, w1, w2, step1, n);
+                                lemma_step_preserves_word_valid(data, w2, s3a);
+                                lemma_step_preserves_word_valid(data, w2p, s2a);
+                                // Build steps for the general handler
+                                let s2a_seq: Seq<DerivationStep> = seq![s2a];
+                                assert(s2a_seq.first() == s2a);
+                                assert(s2a_seq.drop_first() =~= Seq::<DerivationStep>::empty());
+                                assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w4_tf) == Some(w4_tf)) by {
+                                    assert(Seq::<DerivationStep>::empty().len() == 0);
+                                };
+                                assert(derivation_produces(hp, s2a_seq, w2p) == Some(w4_tf));
+                                lemma_derivation_concat(hp, s2a_seq, after3, w2p, w4_tf, w_end);
+                                // Build new steps sequence for the commuted derivation
+                                let prefix4: Seq<DerivationStep> = seq![step0, step1, s3a, s2a];
+                                lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
+                                lemma_derivation_produces_2(hp, s3a, s2a, w2, w2p, w4_tf);
+                                let prefix2: Seq<DerivationStep> = seq![step0, step1];
+                                let suffix2: Seq<DerivationStep> = seq![s3a, s2a];
+                                lemma_derivation_concat(hp, prefix2, suffix2, w, w2, w4_tf);
+                                assert(derivation_produces(hp, prefix4, w) == Some(w4_tf)) by {
+                                    assert(prefix4 =~= prefix2 + suffix2);
+                                };
+                                lemma_derivation_concat(hp, prefix4, after3, w, w4_tf, w_end);
+                                let new_steps = prefix4 + after3;
+                                assert(derivation_produces(hp, new_steps, w) == Some(w_end));
+                                assert(new_steps[0int] == step0);
+                                assert(new_steps[1int] == step1);
+                                assert(new_steps[2int] == s3a);
+                                assert(new_steps[3int] == s2a);
+                                // w2p (= result of s3a on w2) has count 2 or 4
+                                // s3a removes a stable pair (same pair step3 removed)
+                                lemma_stable_count_reduce_step(data, w2, s3a, n);
+                                let c_w2p = stable_letter_count(w2p, n);
+                                if c_w2p != 2 {
+                                    // If s3a doesn't reduce count by 2, fall through
+                                    crate::britton_proof_helpers3::lemma_overlap_peak_elimination(
+                                        data, steps, w, w_end, fuel);
+                                    return;
+                                }
+                                // Check non-cancel
+                                if w2p =~= w1 {
+                                    // Cancel: just use [step0, s2a] + after3
+                                    assert(apply_step(hp, w1, s2a) == Some(w4_tf)) by { assert(w2p =~= w1); };
+                                    let short_s: Seq<DerivationStep> = seq![step0, s2a];
+                                    lemma_derivation_produces_2(hp, step0, s2a, w, w1, w4_tf);
+                                    lemma_derivation_concat(hp, short_s, after3, w, w4_tf, w_end);
+                                    let short_all = short_s + after3;
+                                    crate::britton_proof_helpers3::lemma_overlap_peak_elimination(
+                                        data, short_all, w, w_end, fuel);
+                                } else {
+                                    crate::britton_proof_helpers3::lemma_handle_overlap_general(
+                                        data, new_steps, w, w_end, w1, w2, w2p,
+                                        step0, step1, s3a, s2a,
+                                        w4_tf, after3, fuel);
+                                }
+                                return;
+                            }
+                        },
+                        // FE×FR: handled by general commutation but skipped for rlimit
+                        // (falls through to standard handler which handles most cases)
+                        _ => {},
                     }
-                },
-                (DerivationStep::FreeExpand { position: p1, symbol: sym1 },
-                 DerivationStep::FreeReduce { position: p2 },
-                 DerivationStep::FreeReduce { position: p3 }) => {
-                    // Check FE+FR overlap — but FE+FR overlap is always cancel
-                    // (proved in analysis), so this case won't reach non-cancel.
-                    // Fall through to standard handler.
-                },
-                _ => {},
+                }
             }
         }
         crate::britton_proof_helpers3::lemma_overlap_peak_elimination(
