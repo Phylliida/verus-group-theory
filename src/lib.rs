@@ -119,3 +119,5 @@ pub mod newman;
 pub mod critical_pairs;
 
 pub mod runtime;
+
+pub mod knuth_bendix;
