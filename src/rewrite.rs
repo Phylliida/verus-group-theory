@@ -79,7 +79,8 @@ pub open spec fn rewrites_to(sys: RewriteSystem, w1: Word, w2: Word) -> bool {
 /// No rule applies to w: it is irreducible (a normal form) under the system.
 pub open spec fn is_irreducible(sys: RewriteSystem, w: Word) -> bool {
     forall|ri: int, pos: int|
-        0 <= ri < sys.rules.len() ==> !matches_at(w, #[trigger] sys.rules[ri], pos)
+        0 <= ri < sys.rules.len()
+        ==> !#[trigger] matches_at(w, sys.rules[ri], pos)
 }
 
 /// Two words are joinable: they rewrite to a common word.

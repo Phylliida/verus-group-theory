@@ -5001,6 +5001,17 @@ pub proof fn lemma_handle_tfree_overlap(
             let r3 = get_relator(hp, ri3, inv3);
             p3 + r3.len() <= p2 || p3 >= p2 + 2
         },
+        (DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::FreeReduce { position: p3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            p3 + 2 <= p2 || p3 >= p2 + r2.len()
+        },
+        (DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) => {
+            let r2 = get_relator(hp, ri2, inv2);
+            let r3 = get_relator(hp, ri3, inv3);
+            p3 + r3.len() <= p2 || p3 >= p2 + r2.len()
+        },
         _ => false,
     };
 
@@ -5019,6 +5030,12 @@ pub proof fn lemma_handle_tfree_overlap(
         (DerivationStep::FreeExpand { position: p2, symbol: sym2 },
          DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
             lemma_commute_fe_rd_general(data, w2, w3, w4, p2, sym2, p3, ri3, inv3),
+        (DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::FreeReduce { position: p3 }) =>
+            lemma_commute_ri_fr_general(data, w2, w3, w4, p2, ri2, inv2, p3),
+        (DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 },
+         DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) =>
+            lemma_commute_ri_rd_general(data, w2, w3, w4, p2, ri2, inv2, p3, ri3, inv3),
         _ => { lemma_overlap_peak_elimination(data, steps, w, w_end, fuel); return; },
     };
 
@@ -5947,6 +5964,200 @@ pub proof fn lemma_commute_fe_rd_general(
             } else {
                 assert(w_end[k] == w3[(k + r3_len) as int]); assert(w3[(k + r3_len) as int] == w2[(k + r3_len - 2) as int]);
                 assert(result_word[k] == w2_prime[(k - 2) as int]); assert(w2_prime[(k - 2) as int] == w2[(k - 2 + r3_len) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// General commutation of non-overlapping RI (step2) × FR (step3).
+/// RI inserts relator at p2, FR removes pair at p3. No stable count restriction.
+pub proof fn lemma_commute_ri_fr_general(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, ri2: nat, inv2: bool, p3: int,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
+        }),
+        // Non-overlapping: FR region in w3 doesn't overlap RI region [p2, p2+r2_len)
+        ({
+            let r2 = get_relator(hnn_presentation(data), ri2, inv2);
+            p3 + 2 <= p2 || p3 >= p2 + r2.len()
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let r2 = get_relator(hp, ri2, inv2);
+    let r2_len = r2.len() as int;
+    assert(w3 =~= w2.subrange(0, p2) + r2 + w2.subrange(p2, w2.len() as int));
+    assert(has_cancellation_at(w3, p3));
+
+    if p3 + 2 <= p2 {
+        // FR before RI region. w3[p3] = w2[p3], w3[p3+1] = w2[p3+1].
+        assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
+        assert(has_cancellation_at(w2, p3));
+        let step3_adj = DerivationStep::FreeReduce { position: p3 };
+        let w2_prime = reduce_at(w2, p3);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::RelatorInsert { position: (p2 - 2) as int, relator_index: ri2, inverted: inv2 };
+        let result_word = w2_prime.subrange(0, (p2-2) as int) + r2 + w2_prime.subrange((p2-2) as int, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p3 { }
+            else if k < p2 - 2 {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2) as int]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k+2) as int]);
+            } else if k < p2 - 2 + r2_len {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == r2[(k+2-p2) as int]);
+                assert(result_word[k] == r2[(k-(p2-2)) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2-r2_len) as int]);
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len+2) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // FR after RI region. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
+        let p3_adj = (p3 - r2_len) as int;
+        assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
+        assert(has_cancellation_at(w2, p3_adj));
+        let step3_adj = DerivationStep::FreeReduce { position: p3_adj };
+        let w2_prime = reduce_at(w2, p3_adj);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 };
+        let result_word = w2_prime.subrange(0, p2) + r2 + w2_prime.subrange(p2, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p2 {
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+            } else if k < p2 + r2_len {
+                assert(result_word[k] == r2[(k-p2) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == r2[(k-p2) as int]);
+            } else if k < p3 {
+                // Between RI end and FR: w_end[k] = w3[k] = w2[k-r2_len]
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k-r2_len) as int]);
+            } else {
+                // After FR: w_end[k] = w3[k+2] = w2[k+2-r2_len]
+                assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2-r2_len) as int]);
+                // result_word[k] = w2_prime[k-r2_len]. k-r2_len >= p3-r2_len = p3_adj.
+                // Since k >= p3 and p3_adj = p3-r2_len: k-r2_len >= p3_adj.
+                // w2_prime[k-r2_len] = w2[k-r2_len+2] (shifted by FR at p3_adj).
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]);
+                assert((k - r2_len) as int >= p3_adj);
+                assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len+2) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    }
+}
+
+/// General commutation of non-overlapping RI (step2) × RD (step3).
+/// RI inserts relator r2 at p2, RD removes relator r3 at p3. No stable count restriction.
+pub proof fn lemma_commute_ri_rd_general(
+    data: HNNData, w2: Word, w3: Word, w_end: Word,
+    p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
+) -> (result: (Word, DerivationStep, DerivationStep))
+    requires
+        hnn_data_valid(data),
+        word_valid(w2, data.base.num_generators + 1),
+        word_valid(w3, data.base.num_generators + 1),
+        ({
+            let hp = hnn_presentation(data);
+            &&& apply_step(hp, w2, DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
+            &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
+        }),
+        // Non-overlapping in w3
+        ({
+            let r2 = get_relator(hnn_presentation(data), ri2, inv2);
+            let r3 = get_relator(hnn_presentation(data), ri3, inv3);
+            p3 + r3.len() <= p2 || p3 >= p2 + r2.len()
+        }),
+    ensures ({
+        let (w2_prime, step3_adj, step2_adj) = result;
+        let hp = hnn_presentation(data);
+        &&& apply_step(hp, w2, step3_adj) == Some(w2_prime)
+        &&& apply_step(hp, w2_prime, step2_adj) == Some(w_end)
+        &&& word_valid(w2_prime, data.base.num_generators + 1)
+    }),
+{
+    let hp = hnn_presentation(data);
+    let r2 = get_relator(hp, ri2, inv2);
+    let r2_len = r2.len() as int;
+    let r3 = get_relator(hp, ri3, inv3);
+    let r3_len = r3.len() as int;
+    assert(w3 =~= w2.subrange(0, p2) + r2 + w2.subrange(p2, w2.len() as int));
+    assert(w3.subrange(p3, p3 + r3_len) =~= r3);
+
+    if p3 + r3_len <= p2 {
+        // RD before RI. In w3, RD at p3 maps to p3 in w2.
+        assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
+        assert(w2.subrange(p3, p3 + r3_len) =~= r3);
+        let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
+        let w2_prime = w2.subrange(0, p3) + w2.subrange(p3 + r3_len, w2.len() as int);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::RelatorInsert { position: (p2 - r3_len) as int, relator_index: ri2, inverted: inv2 };
+        let result_word = w2_prime.subrange(0, (p2-r3_len) as int) + r2 + w2_prime.subrange((p2-r3_len) as int, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p3 { }
+            else if k < p2 - r3_len {
+                assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == w2[(k+r3_len) as int]);
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k+r3_len) as int]);
+            } else if k < p2 - r3_len + r2_len {
+                assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == r2[(k+r3_len-p2) as int]);
+                assert(result_word[k] == r2[(k-(p2-r3_len)) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == w2[(k+r3_len-r2_len) as int]);
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len+r3_len) as int]);
+            }
+        };
+        assert(w_end =~= result_word);
+        assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
+        (w2_prime, step3_adj, step2_adj)
+    } else {
+        // RD after RI. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
+        let p3_adj = (p3 - r2_len) as int;
+        assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k-r2_len) as int] by {};
+        assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
+        let step3_adj = DerivationStep::RelatorDelete { position: p3_adj, relator_index: ri3, inverted: inv3 };
+        let w2_prime = w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int);
+        assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
+        lemma_step_preserves_word_valid(data, w2, step3_adj);
+        let step2_adj = DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 };
+        let result_word = w2_prime.subrange(0, p2) + r2 + w2_prime.subrange(p2, w2_prime.len() as int);
+        assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
+            if k < p2 {
+                assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
+            } else if k < p2 + r2_len {
+                assert(result_word[k] == r2[(k-p2) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == r2[(k-p2) as int]);
+            } else if k < p3 {
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len) as int]);
+                assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k-r2_len) as int]);
+            } else {
+                assert(w_end[k] == w3[(k+r3_len) as int]); assert(w3[(k+r3_len) as int] == w2[(k+r3_len-r2_len) as int]);
+                assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len+r3_len) as int]);
             }
         };
         assert(w_end =~= result_word);
