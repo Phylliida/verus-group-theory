@@ -109,4 +109,7 @@ pub mod rewrite;
 #[cfg(verus_keep_ghost)]
 pub mod rewrite_sound;
 
+#[cfg(verus_keep_ghost)]
+pub mod newman;
+
 pub mod runtime;
