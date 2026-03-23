@@ -39,12 +39,14 @@ pub fn matches_at_exec(
 ) -> (out: bool)
     requires
         pos as int + pattern@.len() <= word@.len(),
+        word@.len() < usize::MAX,
 {
     let mut i: usize = 0;
     while i < pattern.len()
         invariant
             0 <= i <= pattern.len(),
-            pos as int + pattern@.len() <= word@.len(),
+            pos + pattern.len() <= word.len(),
+            word.len() < usize::MAX,
         decreases pattern.len() - i,
     {
         if word[pos + i] != pattern[i] {
@@ -62,7 +64,9 @@ pub fn find_match_exec(
 ) -> (out: Option<usize>)
     requires
         pattern@.len() > 0,
-        word@.len() <= usize::MAX,
+        word@.len() < usize::MAX,
+    ensures
+        out.is_some() ==> out.unwrap() as int + pattern@.len() <= word@.len(),
 {
     if word.len() < pattern.len() {
         return None;
@@ -74,7 +78,7 @@ pub fn find_match_exec(
             0 <= pos,
             limit == word.len() - pattern.len(),
             pattern@.len() > 0,
-            pos as int + pattern@.len() <= word@.len() + 1,
+            word@.len() < usize::MAX,
         decreases limit - pos + 1,
     {
         if matches_at_exec(word, pattern, pos) {
@@ -96,15 +100,17 @@ pub fn apply_rule_at_exec(
     requires
         pos as int + lhs_len as int <= word@.len(),
         lhs_len > 0,
+        rhs@.len() < lhs_len,  // length-decreasing
+        word@.len() < usize::MAX,
     ensures
         out@.len() == word@.len() - lhs_len + rhs@.len(),
+        out@.len() < word@.len(),
 {
-    let new_len = word.len() - lhs_len + rhs.len();
     let mut result: Vec<RuntimeSymbol> = Vec::new();
     // prefix
     let mut i: usize = 0;
     while i < pos
-        invariant 0 <= i <= pos, result@.len() == i as int,
+        invariant 0 <= i <= pos, pos <= word.len(), result@.len() == i as int,
         decreases pos - i,
     {
         result.push(word[i]);
@@ -141,7 +147,7 @@ pub fn reduce_to_normal_form_exec(
     word: &Vec<RuntimeSymbol>,
 ) -> (out: Vec<RuntimeSymbol>)
     requires
-        word@.len() <= usize::MAX,
+        word@.len() < usize::MAX,
         forall|i: int| 0 <= i < sys.rules@.len() ==>
             (#[trigger] sys.rules@[i]).lhs@.len() > 0
             && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
@@ -149,8 +155,7 @@ pub fn reduce_to_normal_form_exec(
         out@.len() <= word@.len(),
 {
     let mut current = word.clone();
-    let mut progress = true;
-    while progress
+    loop
         invariant
             current@.len() <= word@.len(),
             forall|i: int| 0 <= i < sys.rules@.len() ==>
@@ -158,7 +163,8 @@ pub fn reduce_to_normal_form_exec(
                 && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
         decreases current.len(),
     {
-        progress = false;
+        let old_len: Ghost<nat> = Ghost(current@.len());
+        let mut progress = false;
         let mut ri: usize = 0;
         while ri < sys.rules.len()
             invariant_except_break
@@ -169,7 +175,6 @@ pub fn reduce_to_normal_form_exec(
                     (#[trigger] sys.rules@[i]).lhs@.len() > 0
                     && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
             ensures
-                progress ==> current@.len() < old(current)@.len(),
                 current@.len() <= word@.len(),
             decreases sys.rules.len() - ri,
         {
@@ -189,8 +194,11 @@ pub fn reduce_to_normal_form_exec(
                 ri = ri + 1;
             }
         }
+        if !progress {
+            return current;
+        }
+        // progress == true, current got shorter, loop decreases
     }
-    current
 }
 
 // ============================================================
@@ -219,7 +227,12 @@ pub fn compute_overlap_cps_exec(
         let mut ok = true;
         let mut k: usize = 0;
         while k < olen
-            invariant 0 <= k <= olen, offset + olen == r1.lhs.len(), offset < r1.lhs.len(),
+            invariant
+                0 <= k <= olen,
+                olen <= r1.lhs.len(),
+                olen <= r2.lhs.len(),
+                offset == r1.lhs.len() - olen,
+                offset + olen == r1.lhs.len(),
             decreases olen - k,
         {
             if r1.lhs[offset + k] != r2.lhs[k] {
@@ -372,7 +385,7 @@ pub fn knuth_bendix_exec(
         while i < num_rules && !found_new_rule
             invariant_except_break
                 0 <= i <= num_rules,
-                num_rules == sys.rules@.len(),
+                num_rules <= sys.rules@.len(),
                 sys.rules@.len() <= max_rules,
                 max_rules < 10000,
                 !found_new_rule,
@@ -391,7 +404,7 @@ pub fn knuth_bendix_exec(
                 invariant_except_break
                     0 <= j <= num_rules,
                     0 <= i < num_rules,
-                    num_rules == sys.rules@.len(),
+                    num_rules <= sys.rules@.len(),
                     sys.rules@.len() <= max_rules,
                     max_rules < 10000,
                     !found_new_rule,
@@ -411,6 +424,7 @@ pub fn knuth_bendix_exec(
                     invariant_except_break
                         0 <= cp_idx <= cps.len(),
                         sys.rules@.len() <= max_rules,
+                        num_rules <= sys.rules@.len(),
                         max_rules < 10000,
                         !found_new_rule,
                         forall|k: int| 0 <= k < sys.rules@.len() ==>
@@ -424,6 +438,11 @@ pub fn knuth_bendix_exec(
                     decreases cps.len() - cp_idx,
                 {
                     let (ref cp_l, ref cp_r) = cps[cp_idx];
+                    // CPs from bounded rules have bounded length
+                    if cp_l.len() >= usize::MAX || cp_r.len() >= usize::MAX {
+                        cp_idx = cp_idx + 1;
+                        continue;
+                    }
                     let nf_l = reduce_to_normal_form_exec(&sys, cp_l);
                     let nf_r = reduce_to_normal_form_exec(&sys, cp_r);
 
