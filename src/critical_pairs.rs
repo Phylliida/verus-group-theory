@@ -431,12 +431,15 @@ pub proof fn lemma_inclusion_reduces_to_cp(
             }
         }
         // w[p2+|l2|..p1+|l1|] = l1[ipos+|l2|..]
-        assert(w.subrange(p2 + r2.lhs.len() as int, p1 + r1.lhs.len() as int)
-            =~= r1.lhs.subrange(ipos + r2.lhs.len() as int, r1.lhs.len() as int)) by {
-            assert forall|k: int| 0 <= k < (r1.lhs.len() - ipos - r2.lhs.len())
-                implies w[(p2 + r2.lhs.len() + k) as int]
-                    == r1.lhs[(ipos + r2.lhs.len() + k) as int]
+        let w_mid = w.subrange(p2 + r2.lhs.len() as int, p1 + r1.lhs.len() as int);
+        let l1_tail = r1.lhs.subrange(ipos + r2.lhs.len() as int, r1.lhs.len() as int);
+        assert(w_mid =~= l1_tail) by {
+            assert(w_mid.len() == l1_tail.len());
+            assert forall|k: int| 0 <= k < w_mid.len()
+                implies #[trigger] w_mid[k] == l1_tail[k]
             by {
+                assert(w_mid[k] == w[(p2 + r2.lhs.len() + k) as int]);
+                assert(l1_tail[k] == r1.lhs[(ipos + r2.lhs.len() + k) as int]);
                 assert(w.subrange(p1, p1 + r1.lhs.len() as int) =~= r1.lhs);
             }
         }
