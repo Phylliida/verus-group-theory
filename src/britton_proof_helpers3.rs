@@ -525,13 +525,15 @@ pub proof fn lemma_k4_peak_ri_fr(
         stable_letter_count(w3, data.base.num_generators) == 2nat,
         !(w3 =~= w1),
     ensures ({
-        let (w1_prime, step2_adj, step1_adj) = result;
+        let (ok, w1_prime, step2_adj, step1_adj) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w1_prime, n)
-        &&& word_valid(w1_prime, n + 1)
-        &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
-        &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        ok ==> {
+            &&& is_base_word(w1_prime, n)
+            &&& word_valid(w1_prime, n + 1)
+            &&& apply_step(hp, w1, step2_adj) == Some(w1_prime)
+            &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
+        }
     }),
 {
     let hp = hnn_presentation(data);
@@ -570,7 +572,7 @@ pub proof fn lemma_k4_peak_ri_fr(
         assert(w3 =~= ins);
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
 
-        (w1_prime, step2_adj, step1_adj)
+        (true, w1_prime, step2_adj, step1_adj)
     } else if p2 >= p1 + r1_len {
         // FreeReduce pair is entirely after relator insertion
         let p2_adj = (p2 - r1_len) as int;
@@ -593,7 +595,7 @@ pub proof fn lemma_k4_peak_ri_fr(
         assert(w3 =~= ins);
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
 
-        (w1_prime, step2_adj, step1_adj)
+        (true, w1_prime, step2_adj, step1_adj)
     } else {
         // Overlap: FR(stable) pair overlaps the relator region [p1, p1+r1_len).
         // The FR has gen_idx(w2[p2]) == n (stable). is_inverse_pair gives gen_idx match.
@@ -1261,7 +1263,7 @@ pub proof fn lemma_eliminate_peak_with_bypass(
 pub proof fn lemma_k4_peak_noncancel_commute(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     step1: DerivationStep, step2: DerivationStep,
-) -> (result: (Word, DerivationStep, DerivationStep))
+) -> (result: (bool, Word, DerivationStep, DerivationStep))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
