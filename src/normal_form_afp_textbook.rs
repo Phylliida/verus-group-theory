@@ -4224,6 +4224,33 @@ proof fn lemma_inverse_pair_g1_subcase_b_merge(
     lemma_subgroup_rcoset_restore(data, full_product2, h);
 }
 
+/// Helper: When the merge case of act_left_sym produces merged_rep = ε,
+/// the result is (combined_h, syllables.drop_first()).
+/// This is a small focused helper to help Z3 unfold act_left_sym.
+proof fn lemma_act_left_sym_merge_absorbed(
+    data: AmalgamatedData, s: Symbol, h: Word, syllables: Seq<Syllable>,
+)
+    requires
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word()),
+        syllables.len() > 0,
+        syllables.first().is_left,
+        a_rcoset_rep(data,
+            concat(concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)),
+                   syllables.first().rep))
+            =~= empty_word(),
+    ensures ({
+        let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+        let full_product = concat(product, syllables.first().rep);
+        act_left_sym(data, s, h, syllables)
+            == (a_rcoset_h(data, full_product), syllables.drop_first())
+    }),
+{
+    // Z3 unfolds act_left_sym: rep ≠ ε, first syl left → merge case
+    // merged_rep = ε → (combined_h, syllables.drop_first())
+}
+
 /// Subcase B: G₁ inverse pair when rep' ≠ ε and first syllable is not left (prepend).
 /// After s: (h', [Syl(left, rep')] + syls). After inv(s): merge absorbs → (h, syls).
 proof fn lemma_inverse_pair_g1_subcase_b(
@@ -4292,25 +4319,15 @@ proof fn lemma_inverse_pair_g1_subcase_b(
     let full_product2 = concat(product_inv, rep_prime);
     assert(full_product2 == concat(concat(inv_s_word, embed_h_prime), rep_prime));
 
-    // Help Z3 connect act_sym → act_left_sym → merge → result
+    // Use the merge helper to establish act_left_sym result
     assert(generator_index(inv_s) == generator_index(s)) by {
         match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
     }
-    assert(generator_index(inv_s) < n1);
-    // The key connection: product_inv and full_product2 in the merge
-    assert(concat(product_inv, new_syls.first().rep) == full_product2);
-    // merged_rep = ε (from subgroup_rcoset_restore)
-    // combined_h = h (from subgroup_rcoset_restore)
-    // new_syls.drop_first() =~= syls
-
-    // Full chain in assert_by:
-    assert(act_word(data, inverse_pair_word(s), h, syls) == (h, syls)) by {
-        // Z3: unfold act_word composition → act_sym(inv_s, h', new_syls)
-        //     unfold act_sym → act_left_sym
-        //     unfold act_left_sym → merge case (rep_inv ≠ ε, first left)
-        //     → (a_rcoset_h(full_product2), new_syls.drop_first())
-        //     = (h, syls) ✓
-    }
+    // The inverse step: act_left_sym(inv_s, h_prime, new_syls)
+    // rep_inv ≠ ε (we need this), first syl left, merged_rep = ε → merge absorbed
+    // Use lemma_act_left_sym_merge_absorbed to get explicit result
+    lemma_act_left_sym_merge_absorbed(data, inv_s, h_prime, new_syls);
+    // act_left_sym(inv_s, h', new_syls) = (a_rcoset_h(full_product2), new_syls.drop_first()) = (h, syls)
 }
 
 } // verus!
