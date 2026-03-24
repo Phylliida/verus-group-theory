@@ -1624,6 +1624,96 @@ proof fn lemma_factors_to_k_word_exists(
     }
 }
 
+/// concat_all distributes over sequence append.
+proof fn lemma_concat_all_append(xs: Seq<Word>, ys: Seq<Word>)
+    ensures
+        concat_all(xs + ys) =~= concat(concat_all(xs), concat_all(ys)),
+    decreases xs.len(),
+{
+    if xs.len() == 0 {
+        assert((xs + ys) =~= ys) by {
+            assert((xs + ys).len() == ys.len());
+            assert forall|k: int| 0 <= k < ys.len()
+                implies (xs + ys)[k] == ys[k] by {}
+        }
+        assert(concat_all(xs) =~= empty_word());
+        assert(concat(empty_word(), concat_all(ys)) =~= concat_all(ys)) by {
+            let c = concat(empty_word(), concat_all(ys));
+            assert(c.len() == concat_all(ys).len());
+            assert forall|k: int| 0 <= k < c.len()
+                implies c[k] == concat_all(ys)[k] by {}
+        }
+    } else {
+        // concat_all(xs ++ ys) = concat(xs.first(), concat_all(xs.drop_first() ++ ys))
+        assert((xs + ys).first() == xs.first());
+        assert((xs + ys).drop_first() =~= xs.drop_first() + ys) by {
+            let lhs = (xs + ys).drop_first();
+            let rhs = xs.drop_first() + ys;
+            assert(lhs.len() == rhs.len());
+            assert forall|k: int| 0 <= k < rhs.len()
+                implies lhs[k] == rhs[k] by {}
+        }
+        // IH: concat_all(xs.drop_first() ++ ys) =~= concat(concat_all(xs.drop_first()), concat_all(ys))
+        lemma_concat_all_append(xs.drop_first(), ys);
+        // concat_all(xs) = concat(xs.first(), concat_all(xs.drop_first()))
+        // concat(concat_all(xs), concat_all(ys)) = concat(concat(xs.first(), concat_all(xs.drop_first())), concat_all(ys))
+        // By concat associativity: = concat(xs.first(), concat(concat_all(xs.drop_first()), concat_all(ys)))
+        // = concat(xs.first(), concat_all(xs.drop_first() ++ ys)) [by IH]
+        // = concat_all(xs ++ ys)
+    }
+}
+
+/// Generated subgroup is closed under concatenation.
+pub proof fn lemma_subgroup_concat(
+    p: Presentation, gens: Seq<Word>, a: Word, b: Word,
+)
+    requires
+        in_generated_subgroup(p, gens, a),
+        in_generated_subgroup(p, gens, b),
+    ensures
+        in_generated_subgroup(p, gens, concat(a, b)),
+{
+    // Extract factor witnesses
+    let fa: Seq<Word> = choose|fa: Seq<Word>|
+        #[trigger] factors_from_generators(gens, fa)
+        && equiv_in_presentation(p, concat_all(fa), a);
+    let fb: Seq<Word> = choose|fb: Seq<Word>|
+        #[trigger] factors_from_generators(gens, fb)
+        && equiv_in_presentation(p, concat_all(fb), b);
+
+    // Combined factors: fa ++ fb
+    let fab = fa + fb;
+    assert(factors_from_generators(gens, fab)) by {
+        assert forall|k: int| 0 <= k < fab.len()
+            implies is_generator_or_inverse(gens, #[trigger] fab[k])
+        by {
+            if k < fa.len() {
+                assert(fab[k] == fa[k]);
+            } else {
+                assert(fab[k] == fb[k - fa.len()]);
+            }
+        }
+    }
+
+    // concat_all(fab) =~= concat(concat_all(fa), concat_all(fb))
+    lemma_concat_all_append(fa, fb);
+    // concat(concat_all(fa), concat_all(fb)) ≡ concat(a, b) by congruence
+    crate::presentation_lemmas::lemma_equiv_concat(p,
+        concat_all(fa), a, concat_all(fb), b);
+    // Since concat_all(fab) =~= concat(concat_all(fa), concat_all(fb)) (extensional eq = eq for Seq),
+    // and equiv(concat(concat_all(fa), concat_all(fb)), concat(a, b)),
+    // we get equiv(concat_all(fab), concat(a, b)).
+}
+
+/// Generated subgroup is closed under equivalence (already proved as lemma_in_subgroup_equiv).
+
+// Generated subgroup is closed under inverse — TODO.
+// Proof sketch: reverse the factor list and invert each factor.
+// Each inv(gen_i) is still a generator-or-inverse.
+// concat_all(reversed_inverted) ≡ inv(concat_all(original)) by lemma_inverse_concat induction.
+// Needs: reverse_invert_factors spec fn + preservation + inverse_concat chain.
+// ~80 lines when complete.
+
 // ============================================================
 // Part K2: action_preserves_canonical
 // ============================================================
