@@ -464,7 +464,215 @@ pub open spec fn same_action(data: AmalgamatedData, w1: Word, w2: Word) -> bool 
 }
 
 // ============================================================
-// Part H: Identity state properties
+// Part H: One-shot decomposition and faithfulness
+// ============================================================
+
+/// For a G₁ word g, its one-shot state: decompose g directly into (h, rep).
+/// If rep = ε, state is (h, []). If rep ≠ ε, state is (h, [left_syl(rep)]).
+/// This is the "answer" the action should give for a G₁-word on the identity state.
+pub open spec fn g1_decompose_state(
+    data: AmalgamatedData,
+    g: Word,
+) -> (Word, Seq<Syllable>) {
+    let rep = left_canonical_rep(data, g);
+    let h = left_h_part(data, g);
+    if rep =~= empty_word() {
+        (h, Seq::empty())
+    } else {
+        (h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }))
+    }
+}
+
+/// The identity state decomposes to (ε, []).
+pub proof fn lemma_g1_decompose_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        g1_decompose_state(data, empty_word())
+            == (empty_word(), Seq::<Syllable>::empty()),
+{
+    lemma_left_rep_identity(data);
+    lemma_left_h_identity(data);
+}
+
+/// If g ≡ ε in G₁, then inv(g) ≡ ε.
+proof fn lemma_inv_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        equiv_in_presentation(data.p1, inverse_word(g), empty_word()),
+{
+    reveal(presentation_valid);
+    let p1 = data.p1;
+    let inv_g = inverse_word(g);
+    // g * inv(g) ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_right(p1, g);
+    // g ≡ ε, so concat(g, inv(g)) ≡ concat(ε, inv(g)) by left-congruence
+    crate::presentation_lemmas::lemma_equiv_concat_left(p1, g, empty_word(), inv_g);
+    // concat(ε, inv(g)) =~= inv(g)
+    assert(concat(empty_word(), inv_g) =~= inv_g) by {
+        let c = concat(empty_word(), inv_g);
+        assert(c.len() == inv_g.len());
+        assert forall|k: int| 0 <= k < c.len() implies c[k] == inv_g[k] by {}
+    }
+    // We have:
+    //   equiv(concat(g, inv_g), ε)                     -- from word_inverse_right
+    //   equiv(concat(g, inv_g), concat(ε, inv_g))      -- from equiv_concat_left
+    // So by symmetry + transitivity:
+    //   equiv(ε, concat(g, inv_g))
+    //   equiv(concat(g, inv_g), concat(ε, inv_g))
+    //   => equiv(ε, concat(ε, inv_g))
+    crate::word::lemma_inverse_word_valid(g, p1.num_generators);
+    crate::word::lemma_concat_word_valid(g, inv_g, p1.num_generators);
+    crate::presentation::lemma_equiv_symmetric(p1, concat(g, inv_g), empty_word());
+    crate::presentation::lemma_equiv_transitive(
+        p1, empty_word(), concat(g, inv_g), concat(empty_word(), inv_g));
+    // Now: equiv(ε, concat(ε, inv_g)) and concat(ε, inv_g) =~= inv_g
+    // So equiv(ε, inv_g), i.e., equiv(inv_g, ε) by symmetry
+    crate::word::lemma_inverse_word_valid(g, p1.num_generators);
+    crate::presentation::lemma_equiv_symmetric(p1, empty_word(), inv_g);
+}
+
+/// If g ≡ ε in G₁, then g is in the left subgroup.
+proof fn lemma_equiv_eps_in_subgroup(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        in_left_subgroup(data, g),
+{
+    reveal(presentation_valid);
+    crate::benign::lemma_identity_in_generated_subgroup(data.p1, a_words(data));
+    crate::presentation::lemma_equiv_symmetric(data.p1, g, empty_word());
+    lemma_in_subgroup_equiv(data.p1, a_words(data), empty_word(), g);
+}
+
+/// If g ≡ ε in G₁, then same_left_coset(g, ε).
+proof fn lemma_same_coset_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        same_left_coset(data, g, empty_word()),
+{
+    reveal(presentation_valid);
+    let inv_g = inverse_word(g);
+    crate::word::lemma_inverse_word_valid(g, data.p1.num_generators);
+    lemma_inv_equiv_eps(data, g);
+    // inv(g) ≡ ε and word_valid(inv(g), n1)
+    lemma_equiv_eps_in_subgroup(data, inv_g);
+    // in_left_subgroup(data, inv(g))
+
+    // same_left_coset(g, ε) = in_left_subgroup(concat(inv(g), ε))
+    // concat(inv(g), ε) =~= inv(g), so same truth value
+    assert(concat(inv_g, empty_word()) =~= inv_g) by {
+        let c = concat(inv_g, empty_word());
+        assert(c.len() == inv_g.len());
+        assert forall|k: int| 0 <= k < c.len() implies c[k] == inv_g[k] by {}
+    }
+}
+
+/// If g ≡ ε in G₁, then left_canonical_rep(g) = ε.
+proof fn lemma_left_rep_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        left_canonical_rep(data, g) =~= empty_word(),
+{
+    lemma_same_coset_equiv_eps(data, g);
+    lemma_left_rep_identity(data);
+    // g and ε are in the same coset.
+    // left_canonical_rep(g): shortlex-min in g's coset.
+    // left_canonical_rep(ε) = ε: shortlex-min in ε's coset.
+    // Same coset → same shortlex-min.
+    // ε is in g's coset, and nothing is shortlex-smaller than ε.
+    let rep_g = left_canonical_rep(data, g);
+    assert(word_valid(empty_word(), data.p1.num_generators)) by {
+        assert(empty_word().len() == 0);
+    }
+    crate::shortlex::lemma_shortlex_total(empty_word(), rep_g);
+    crate::shortlex::lemma_empty_shortlex_minimal(rep_g);
+}
+
+/// If g ≡ ε in G₁, then left_h_part(g) = ε.
+proof fn lemma_left_h_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        left_h_part(data, g) =~= empty_word(),
+{
+    reveal(presentation_valid);
+    lemma_left_rep_equiv_eps(data, g);
+    let rep = left_canonical_rep(data, g);
+    assert(rep =~= empty_word());
+
+    // left_h_part(g) is the shortlex-min K-word h with:
+    //   equiv(p1, embed_a(h), concat(inv(rep), g))
+    // Since rep =~= ε: inv(rep) =~= ε, concat(inv(rep), g) =~= g
+    // And g ≡ ε. So we need embed_a(h) ≡ g ≡ ε.
+    // ε is a K-word with embed_a(ε) = ε ≡ ε ≡ g.
+
+    // Show ε satisfies the choose predicate:
+    let k = k_size(data);
+    assert(word_valid(empty_word(), k)) by { assert(empty_word().len() == 0); }
+    assert(apply_embedding(a_words(data), empty_word()) =~= empty_word());
+
+    // concat(inv(rep), g) ≡ g since rep =~= ε
+    assert(inverse_word(rep) =~= empty_word()) by {
+        assert(rep =~= empty_word());
+        assert(inverse_word(empty_word()).len() == 0);
+    }
+    let target = concat(inverse_word(rep), g);
+    assert(target =~= g) by {
+        assert(inverse_word(rep) =~= empty_word());
+        let c = concat(empty_word(), g);
+        assert(c.len() == g.len());
+        assert forall|j: int| 0 <= j < g.len() implies c[j] == g[j] by {}
+    }
+
+    // embed_a(ε) = ε ≡ g ≡ target
+    crate::presentation::lemma_equiv_refl(data.p1, empty_word());
+    crate::presentation::lemma_equiv_symmetric(data.p1, g, empty_word());
+    // equiv(p1, ε, g) and target =~= g, so equiv(p1, ε, target)
+    assert(equiv_in_presentation(data.p1, apply_embedding(a_words(data), empty_word()), target));
+
+    // ε is shortlex-min
+    let h_g = left_h_part(data, g);
+    assert forall|h2: Word|
+        word_valid(h2, k)
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), h2), target)
+        implies !shortlex_lt(h2, empty_word())
+    by {
+        crate::shortlex::lemma_empty_shortlex_minimal(h2);
+    }
+    crate::shortlex::lemma_shortlex_total(empty_word(), h_g);
+    crate::shortlex::lemma_empty_shortlex_minimal(h_g);
+}
+
+/// If g ≡ ε in G₁, then g1_decompose_state gives the identity state.
+pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        g1_decompose_state(data, g)
+            == (empty_word(), Seq::<Syllable>::empty()),
+{
+    lemma_left_rep_equiv_eps(data, g);
+    lemma_left_h_equiv_eps(data, g);
+}
+
+// ============================================================
+// Part H2: Identity state lemmas for canonical reps
 // ============================================================
 
 /// The empty word is shortlex-minimal: nothing is shortlex-smaller.
