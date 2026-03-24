@@ -4157,6 +4157,73 @@ proof fn lemma_inv_s_rcoset_product_equiv(
     return;
 }
 
+/// Helper for subcase B: the merge step.
+/// Given that act_word([s, inv(s)], h, syls) unfolds to
+/// act_sym(inv(s), h', [Syl(left, rep')] + syls) where the merge gives (h, syls).
+proof fn lemma_inverse_pair_g1_subcase_b_merge(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        is_canonical_state(data, h, syls),
+        generator_index(s) < data.p1.num_generators,
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word()),
+    ensures ({
+        let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+        let h_prime = a_rcoset_h(data, product);
+        let rep_prime = a_rcoset_rep(data, product);
+        let embed_h_prime = apply_embedding(a_words(data), h_prime);
+        let inv_s_word = Seq::new(1, |_i: int| inverse_symbol(s));
+        let full_product2 = concat(concat(inv_s_word, embed_h_prime), rep_prime);
+        &&& a_rcoset_rep(data, full_product2) =~= empty_word()
+        &&& a_rcoset_h(data, full_product2) =~= h
+        &&& word_valid(h_prime, k_size(data))
+    }),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(Seq::new(1, |_i: int| s), embed_h);
+    let rep_prime = a_rcoset_rep(data, product);
+    let inv_s_word = Seq::new(1, |_i: int| inverse_symbol(s));
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    let s_word = Seq::new(1, |_i: int| s);
+    assert(word_valid(s_word, n1)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(#[trigger] s_word[k], n1) by {
+                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            }
+    }
+    crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
+
+    // General helper gives: [inv(s)]·embed_a(h')·rep' ≡ embed_a(h) + word_valid(h')
+    lemma_inv_s_rcoset_product_equiv(data, s, h);
+
+    let h_prime = a_rcoset_h(data, product);
+    let embed_h_prime = apply_embedding(a_words(data), h_prime);
+    let full_product2 = concat(concat(inv_s_word, embed_h_prime), rep_prime);
+
+    assert(word_valid(inv_s_word, n1)) by {
+        assert forall|k: int| 0 <= k < inv_s_word.len()
+            implies symbol_valid(#[trigger] inv_s_word[k], n1) by {
+                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            }
+    }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
+    crate::word::lemma_concat_word_valid(inv_s_word, embed_h_prime, n1);
+    lemma_a_rcoset_rep_props(data, product);
+    crate::word::lemma_concat_word_valid(concat(inv_s_word, embed_h_prime), rep_prime, n1);
+    lemma_subgroup_rcoset_restore(data, full_product2, h);
+}
+
 /// Subcase B: G₁ inverse pair when rep' ≠ ε and first syllable is not left (prepend).
 /// After s: (h', [Syl(left, rep')] + syls). After inv(s): merge absorbs → (h, syls).
 proof fn lemma_inverse_pair_g1_subcase_b(
@@ -4210,32 +4277,40 @@ proof fn lemma_inverse_pair_g1_subcase_b(
     let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep_prime }) + syls;
     lemma_act_word_single(data, inv_s, h_prime, new_syls);
 
-    // General helper: [inv(s)]·embed_a(h')·rep' ≡ embed_a(h)
-    lemma_inv_s_rcoset_product_equiv(data, s, h);
+    // Merge helper gives: a_rcoset_rep(full_product2) = ε, a_rcoset_h(full_product2) = h
+    lemma_inverse_pair_g1_subcase_b_merge(data, s, h, syls);
 
-    // full_product2 ≡ embed_a(h), embed_a(h) in subgroup → restore (h, syls)
+    // Help Z3 with the unfolding
     let embed_h_prime = apply_embedding(a_words(data), h_prime);
-    let full_product2 = concat(concat(inv_s_word, embed_h_prime), rep_prime);
-    assert(word_valid(inv_s_word, n1)) by {
-        assert forall|k: int| 0 <= k < inv_s_word.len()
-            implies symbol_valid(#[trigger] inv_s_word[k], n1) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
-    }
-    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
-    crate::word::lemma_concat_word_valid(inv_s_word, embed_h_prime, n1);
-    lemma_a_rcoset_rep_props(data, product);
-    crate::word::lemma_concat_word_valid(concat(inv_s_word, embed_h_prime), rep_prime, n1);
-    lemma_subgroup_rcoset_restore(data, full_product2, h);
-    // Help Z3 connect to act_left_sym unfolding:
-    // act_left_sym(inv(s), h', new_syls) enters merge case (first syl is left)
-    // full_product in the merge = concat(concat([inv(s)], embed_a(h')), rep')
-    //                           = full_product2
-    // merged_rep = a_rcoset_rep(full_product2) =~= ε → absorbed
-    // combined_h = a_rcoset_h(full_product2) =~= h
-    // Result: (h, new_syls.drop_first()) = (h, syls)
+    let product_inv = concat(inv_s_word, embed_h_prime);
+    let rep_inv = a_rcoset_rep(data, product_inv);
     assert(new_syls.first().is_left);
     assert(new_syls.first().rep == rep_prime);
     assert(new_syls.drop_first() =~= syls);
-    return;
+
+    // Help Z3 see the full_product2 matches the merge product in act_left_sym
+    let full_product2 = concat(product_inv, rep_prime);
+    assert(full_product2 == concat(concat(inv_s_word, embed_h_prime), rep_prime));
+
+    // Help Z3 connect act_sym → act_left_sym → merge → result
+    assert(generator_index(inv_s) == generator_index(s)) by {
+        match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    assert(generator_index(inv_s) < n1);
+    // The key connection: product_inv and full_product2 in the merge
+    assert(concat(product_inv, new_syls.first().rep) == full_product2);
+    // merged_rep = ε (from subgroup_rcoset_restore)
+    // combined_h = h (from subgroup_rcoset_restore)
+    // new_syls.drop_first() =~= syls
+
+    // Full chain in assert_by:
+    assert(act_word(data, inverse_pair_word(s), h, syls) == (h, syls)) by {
+        // Z3: unfold act_word composition → act_sym(inv_s, h', new_syls)
+        //     unfold act_sym → act_left_sym
+        //     unfold act_left_sym → merge case (rep_inv ≠ ε, first left)
+        //     → (a_rcoset_h(full_product2), new_syls.drop_first())
+        //     = (h, syls) ✓
+    }
 }
 
 } // verus!
