@@ -1868,7 +1868,125 @@ proof fn lemma_h_relator(
             // By h_act_concat: process shift(v_i) (G₂) then inv(u_i) (G₁).
             // Symmetric to the non-inverted case.
             // For now: mark as TODO (symmetric argument).
-            assert(false); // TODO: inverted identification (symmetric)
+            // The inverted relator r = inverse_word(raw_rel).
+            // We know: for ANY h' < ct1.num_cosets, h_act_word(raw_rel, h') == h'.
+            // [This is the non-inverted case of this same lemma.]
+            //
+            // Let h' = h_act_word(r, h) = h_act_word(inv(raw_rel), h).
+            // By concat: h_act_word(concat(r, raw_rel), h)
+            //   = h_act_word(raw_rel, h_act_word(r, h)) = h_act_word(raw_rel, h').
+            // By the non-inverted case: h_act_word(raw_rel, h') == h'.
+            //
+            // Also: concat(r, raw_rel) = concat(inv(raw_rel), raw_rel).
+            // This word consists of paired inverse symbols.
+            // By repeatedly applying lemma_h_inv_pair: h_act_word(concat(r, raw_rel), h) == h.
+            //
+            // Combining: h' == h_act_word(raw_rel, h') == h_act_word(concat(r, raw_rel), h) == ...
+            //
+            // Actually, the simplest: h_act_word(raw_rel, h') == h' (non-inverted, with h := h').
+            // AND h_act_word(raw_rel, h') == what h_act_word(concat(r, raw_rel), h) gives.
+            // By concat: h_act_word(concat(r, raw_rel), h) = h_act_word(raw_rel, h').
+            //
+            // We need h' == h. From h_act_word(raw_rel, h') == h' and == h.
+            // But we haven't shown h_act_word(concat(r, raw_rel), h) == h yet.
+            //
+            // Simplest correct approach: observe that r = get_relator(afp, idx, true)
+            // and raw_rel = get_relator(afp, idx, false). We can show:
+            // h_act_word(concat(raw_rel, r), h) == h by:
+            //   h_act_word(r, h_act_word(raw_rel, h)) [concat]
+            //   = h_act_word(r, h) [non-inverted: h_act_word(raw_rel, h) == h]
+            //   = h' [definition of h']
+            // So h_act_word(concat(raw_rel, r), h) = h'.
+            //
+            // But h_act_word(concat(raw_rel, r), h) should also equal h
+            // (since concat(raw_rel, r) = raw_rel · inv(raw_rel), which should act trivially).
+            //
+            // For the concat to act trivially: it's raw_rel followed by its inverse.
+            // raw_rel = u_i · inv(shift(v_i)). inv(raw_rel) = shift(v_i) · inv(u_i).
+            // concat(raw_rel, inv(raw_rel)) = u_i · inv(shift(v_i)) · shift(v_i) · inv(u_i).
+            // The middle part inv(shift(v_i)) · shift(v_i) is inverse pairs → trivial.
+            // So: h_act_word(concat(raw_rel, inv(raw_rel)), h)
+            //   = h_act_word(concat(u_i, concat(inv(shift(v_i)), concat(shift(v_i), inv(u_i)))), h)
+            //   = h_act_word(inv(u_i), h_act_word(shift(v_i), h_act_word(inv(shift(v_i)), h_act_word(u_i, h))))
+            //
+            // This is getting complex. Let me just use the non-inverted result:
+            // We proved: for ALL h' < ct1.num_cosets, h_act_word(raw_rel, h') == h'.
+            // So: h_act_word(raw_rel, h_act_word(r, h)) == h_act_word(r, h).
+            // Also: h_act_word(concat(r, raw_rel), h) == h_act_word(raw_rel, h_act_word(r, h)).
+            // So: h_act_word(concat(r, raw_rel), h) == h_act_word(r, h).
+            //
+            // Now I need: h_act_word(concat(r, raw_rel), h) == h.
+            // But I can't easily show this without the inverse pair decomposition.
+            //
+            // ALTERNATIVE: Just recursively call lemma_h_relator with inverted=false
+            // on h' = h_act_word(r, h), giving h_act_word(raw_rel, h') == h'.
+            // Then use lemma_h_act_concat on concat(r, raw_rel):
+            //   h_act_word(concat(r, raw_rel), h) = h_act_word(raw_rel, h') = h'.
+            // And also: concat(r, raw_rel) = inv(raw_rel) · raw_rel.
+            // The latter is a product of inverse pairs (at the word level).
+            // This needs word_inverse_left type property for the action.
+            //
+            // For expediency: just use the same approach as the G₁ inverted relator —
+            // prove trace(ct1, h, inv(raw_rel)) == Some(h) using trace_inverse_word.
+            // But inv(raw_rel) mixes G₁ and G₂ symbols, so trace through ct1 doesn't
+            // directly work.
+            //
+            // r = inverse_word(raw_rel) = inverse_word(concat(u_i, inv_shifted_v))
+            //   =~= concat(inverse_word(inv_shifted_v), inverse_word(u_i))
+            //   =~= concat(shifted_v, inverse_word(u_i))
+            // [by inverse_concat and inverse_involution]
+            let inv_u = inverse_word(u_i);
+            // Decompose: inverse_word(concat(u_i, inv_shifted_v))
+            //   =~= concat(inverse_word(inv_shifted_v), inverse_word(u_i))
+            //   =~= concat(shifted_v, inv_u)
+            crate::word::lemma_inverse_concat(u_i, inv_shifted_v);
+            assert(inverse_word(concat(u_i, inv_shifted_v))
+                =~= concat(inverse_word(inv_shifted_v), inv_u));
+            crate::word::lemma_inverse_involution(shifted_v);
+            assert(inverse_word(inv_shifted_v) =~= shifted_v);
+            assert(r =~= inverse_word(raw_rel));
+            assert(raw_rel =~= concat(u_i, inv_shifted_v));
+            assert(r =~= concat(shifted_v, inv_u));
+
+            // By h_act_concat: h_act_word(r, h) = h_act_word(inv_u, h_act_word(shifted_v, h))
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, shifted_v, inv_u, h);
+
+            // h_act_word(shifted_v, h): G₂ part.
+            // By h_act_g2_phi_inv_trace: trace(ct2, phi_inv(h), v_i) == Some(phi_inv(h_mid_g2))
+            assert(word_valid(v_i, data.p2.num_generators)) by { reveal(presentation_valid); }
+            assert forall|k: int| 0 <= k < shifted_v.len()
+                implies shifted_v[k] == shift_symbol(#[trigger] v_i[k], n1)
+            by {}
+            lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data, shifted_v, v_i, h);
+            let h_mid_g2 = h_act_word(ct1, ct2, phi, phi_inv, n1, shifted_v, h);
+            // trace(ct2, phi_inv(h), v_i) == Some(phi_inv(h_mid_g2))
+
+            // By word-level ident compatibility:
+            // trace(ct2, phi_inv(h), v_i) == Some(phi_inv(trace(ct1, h, u_i).unwrap()))
+            let _ = data.identifications[ident_idx as int];
+            let _ = ct1.table[h as int];
+            // So phi_inv(h_mid_g2) == phi_inv(trace(ct1, h, u_i).unwrap())
+            // Hence h_mid_g2 == trace(ct1, h, u_i).unwrap()
+
+            // h_act_word(inv_u, h_mid_g2): G₁ part.
+            // inv_u = inverse_word(u_i) is a G₁-word.
+            assert(word_valid(u_i, n1)) by { reveal(presentation_valid); }
+            crate::word::lemma_inverse_word_valid(u_i, n1);
+            assert(is_left_word(inv_u, n1)) by {
+                assert forall|k: int| 0 <= k < inv_u.len()
+                    implies generator_index(inv_u[k]) < n1
+                by { assert(symbol_valid(inv_u[k], n1)); }
+            }
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, shifted_v, h);
+            lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, inv_u, h_mid_g2);
+            // trace(ct1, h_mid_g2, inv_u) == Some(h_act_word(inv_u, h_mid_g2))
+
+            // h_mid_g2 == trace(ct1, h, u_i).unwrap()
+            // By trace_inverse_word: trace(ct1, trace(ct1, h, u_i).unwrap(), inv(u_i)) == Some(h)
+            crate::completeness::lemma_trace_complete(ct1, h, u_i);
+            crate::completeness::lemma_trace_inverse_word(ct1, h, u_i);
+            // trace(ct1, h_mid_g2, inv_u) == Some(h)
+            // So h_act_word(inv_u, h_mid_g2) == h
         }
     }
 }
