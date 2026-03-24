@@ -83,6 +83,9 @@ proof fn lemma_word_lex_rank_base_injective(w1: Word, w2: Word, base: nat)
     decreases w1.len(),
 {
     if w1.len() == 0 {
+        assert(w2.len() == 0);
+        assert forall|k: int| 0 <= k < w1.len() implies w1[k] == w2[k] by {}
+        return;
     } else {
         let col1 = crate::todd_coxeter::symbol_to_column(w1.first());
         let col2 = crate::todd_coxeter::symbol_to_column(w2.first());
@@ -100,9 +103,12 @@ proof fn lemma_word_lex_rank_base_injective(w1: Word, w2: Word, base: nat)
         assert(col1 == col2) by (nonlinear_arith)
             requires col1 + base * rest_rank1 == col2 + base * rest_rank2,
                      col1 < base, col2 < base;
-        assert(rest_rank1 == rest_rank2) by (nonlinear_arith)
+        // col1 == col2, so base * rest1 == base * rest2, so rest1 == rest2 (since base > 0)
+        assert(base * rest_rank1 == base * rest_rank2) by (nonlinear_arith)
             requires col1 + base * rest_rank1 == col2 + base * rest_rank2,
                      col1 == col2;
+        assert(rest_rank1 == rest_rank2) by (nonlinear_arith)
+            requires base * rest_rank1 == base * rest_rank2, base > 0;
         // col1 == col2 → w1.first() == w2.first() (symbol_to_column is injective on symbols)
         // rest_rank1 == rest_rank2 → w1.rest =~= w2.rest (by IH)
         assert forall|k: int| 0 <= k < w1.drop_first().len()
@@ -123,6 +129,10 @@ proof fn lemma_word_lex_rank_base_injective(w1: Word, w2: Word, base: nat)
                 Symbol::Gen(i2) => { assert(2 * i1 + 1 == 2 * i2); } // impossible
                 Symbol::Inv(i2) => { assert(2 * i1 + 1 == 2 * i2 + 1); }
             }
+        }
+        // w1.first() == w2.first() and w1.drop_first() =~= w2.drop_first() → w1 =~= w2
+        assert forall|k: int| 0 <= k < w1.len() implies w1[k] == w2[k] by {
+            if k == 0 {} else { assert(w1[k] == w1.drop_first()[k - 1]); assert(w2[k] == w2.drop_first()[k - 1]); }
         }
     }
 }
