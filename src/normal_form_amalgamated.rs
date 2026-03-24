@@ -1138,16 +1138,10 @@ pub proof fn lemma_afp_injectivity(
     //   trace(ct1, 0, w) == 0 (h-component is 0)
     // By axiom_coset_table_sound: w ≡ ε in G₁.
 
-    // First show: for a G₁-word on empty state, h = trace(ct1, 0, w)
-    lemma_vdw_g1_word_on_empty(ct1, ct2, st1, st2, phi, data, w);
-    // Now: vdw_act_word(w, 0, []).0 == trace(ct1, 0, w).unwrap_or(0)
-
-    // trace(ct1, 0, w) == Some(0) (from the action result being (0, _))
-    crate::completeness::lemma_trace_complete(ct1, 0, w);
-    // trace is Some, and the unwrapped value equals h = 0
-
-    // By axiom_coset_table_sound: w ≡ ε in G₁
-    crate::coset_group::axiom_coset_table_sound(ct1, data.p1, w, empty_word());
+    // Step 4: The action of w gives (0, []).
+    // For a G₁-word, this means w's normal form is (0, []) = identity.
+    // By the faithfulness of the action: w ≡ ε in G₁.
+    lemma_vdw_faithful_on_empty(ct1, ct2, st1, st2, phi, data, w);
 }
 
 /// The VDW action respects AFP derivation steps.
@@ -1255,8 +1249,16 @@ proof fn lemma_vdw_respects_step(
     assert(false); // TO BE REPLACED with per-step well-definedness proof
 }
 
-/// For a G₁-word on empty state: the h-component equals trace(ct1, 0, w).
-proof fn lemma_vdw_g1_word_on_empty(
+/// Faithfulness: if a G₁-word acts trivially on (0, []), it's ≡ ε in G₁.
+///
+/// The argument: vdw_act_word(w, 0, []) == (0, []) means the normal form
+/// of w in the AFP is the identity. Since the action is faithful on G₁
+/// (the Cayley table distinguishes all G₁ elements), w must be ε in G₁.
+///
+/// Concretely: processing a G₁-word symbol by symbol through the action
+/// builds up a Cayley table element. If the result is (0, []), the
+/// Cayley element is 0 (identity). By axiom_coset_table_sound: w ≡ ε.
+proof fn lemma_vdw_faithful_on_empty(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
     st1: crate::todd_coxeter::CosetTable,
@@ -1269,25 +1271,114 @@ proof fn lemma_vdw_g1_word_on_empty(
         vdw_prerequisites(ct1, ct2, st1, st2, phi, data),
         word_valid(w, data.p1.num_generators),
         is_left_word(w, data.p1.num_generators),
-    ensures ({
-        let n1 = data.p1.num_generators;
-        let (h_result, sylls_result) = vdw_act_word(
-            ct1, ct2, st1, st2, phi, n1, w, 0, Seq::empty(),
-        );
-        // The h-component matches the Cayley table trace
-        h_result == match crate::todd_coxeter::trace_word(ct1, 0, w) {
-            Some(v) => v,
-            None => 0nat,
-        }
-    }),
+        vdw_act_word(ct1, ct2, st1, st2, phi, data.p1.num_generators,
+            w, 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()),
+    ensures
+        equiv_in_presentation(data.p1, w, empty_word()),
 {
-    // For a G₁-word, all symbols have generator_index < n1.
-    // Each symbol dispatches to vdw_act_g1_symbol, which traces through ct1.
-    // The composition of symbol-by-symbol traces equals trace_word(ct1, 0, w).
+    let n1 = data.p1.num_generators;
+
+    // The action of w on (0, []) gives (0, []).
+    // We need to show w ≡ ε in G₁.
     //
-    // Proof by induction on w.len().
-    // TODO: ~30 lines of induction.
-    assert(false); // TO BE REPLACED
+    // Key property of the action: for a G₁-word w on (0, []),
+    // the h-component tracks the product of all G₁-symbols in ct1.
+    // Specifically: if we process w symbol by symbol, each symbol
+    // traces one step in ct1. The final ct1-element is trace_word(ct1, 0, w).
+    //
+    // BUT: the coset decomposition might modify h along the way.
+    // The g1_coset_decompose splits new_elem into (h_part, coset).
+    // If coset = 0: h_part = new_elem (no change).
+    // If coset ≠ 0: h_part is the A-component.
+    //
+    // When a syllable is created (coset ≠ 0) and later absorbed
+    // (merged back), the h-values combine.
+    //
+    // The overall invariant: the group element represented by the state
+    // (h, sylls) is h · (product of syllable reps in ct1/ct2).
+    // If the final state is (0, []), the element is 0 (identity in ct1).
+    //
+    // The element represented by the initial state (0, []) is 0 (identity).
+    // After acting by w: the element becomes the ct1-element of w.
+    // If the final state is (0, []): the ct1-element of w is 0.
+    // trace_word(ct1, 0, w) = Some(0).
+    //
+    // By axiom_coset_table_sound: w ≡ ε in G₁.
+
+    // The proof that ct1-element of w is 0 when the action gives (0, [])
+    // requires showing the action correctly tracks the ct1-element.
+    // This is an invariant of the action: at each step, the state (h, sylls)
+    // represents an element whose ct1-value can be recovered.
+    //
+    // For now: establish trace_word(ct1, 0, w) == Some(0) from the action result.
+    lemma_action_tracks_cayley_element(ct1, ct2, st1, st2, phi, data, w);
+
+    // Now: trace_word(ct1, 0, w) == Some(0)
+    crate::completeness::lemma_trace_complete(ct1, 0, w);
+    assert(crate::todd_coxeter::trace_word(ct1, 0, empty_word()) == Some(0nat));
+    crate::coset_group::axiom_coset_table_sound(ct1, data.p1, w, empty_word());
+}
+
+/// The action correctly tracks the Cayley table element.
+/// For a G₁-word w: if vdw_act_word(w, 0, []) == (0, []),
+/// then trace_word(ct1, 0, w) == Some(0).
+proof fn lemma_action_tracks_cayley_element(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word,
+)
+    requires
+        vdw_prerequisites(ct1, ct2, st1, st2, phi, data),
+        word_valid(w, data.p1.num_generators),
+        is_left_word(w, data.p1.num_generators),
+        vdw_act_word(ct1, ct2, st1, st2, phi, data.p1.num_generators,
+            w, 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()),
+    ensures
+        crate::todd_coxeter::trace_word(ct1, 0, w) == Some(0nat),
+    decreases w.len(),
+{
+    let n1 = data.p1.num_generators;
+
+    if w.len() == 0 {
+        // trace_word(ct1, 0, ε) = Some(0) by definition
+    } else {
+        // Process first symbol, recurse on rest.
+        // The first symbol traces through ct1 to get new_elem.
+        // The action then does coset decomposition.
+        // If coset = 0: h = new_elem, sylls stay [].
+        //   Then the rest of w acts on (new_elem, []).
+        //   If the final result is (0, []): by IH on the rest acting on (new_elem, [])...
+        //   But the IH is about starting from (0, []), not (new_elem, []).
+        //
+        // The issue: the IH doesn't directly apply because the starting h changes.
+        //
+        // Alternative: prove a STRONGER invariant.
+        // The state (h, []) after processing w from (0, []) satisfies:
+        //   h = trace_word(ct1, 0, w) (when all syllables cancel out).
+        //
+        // This is the key property I need to prove by induction.
+        // It requires showing that the coset decomposition + syllable merging
+        // correctly tracks the Cayley element.
+        //
+        // For a G₁-word where the intermediate states might have syllables:
+        // the syllable coset reps combine with h to give the Cayley element.
+        //
+        // General invariant: after processing a prefix of w from (0, []),
+        //   the state (h, sylls) satisfies:
+        //   h * (product of syllable reps) = trace_word(ct1, 0, prefix)
+        //
+        // If the final state is (0, []): 0 * 1 = 0, so trace = 0.
+        //
+        // This invariant proof is ~50 lines of induction.
+        // Each step: show the invariant is maintained by vdw_act_g1_symbol.
+        //
+        // TODO: implement the invariant proof.
+        assert(false); // TO BE REPLACED with invariant proof
+    }
 }
 
 } // verus!
