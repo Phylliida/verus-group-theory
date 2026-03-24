@@ -1221,6 +1221,11 @@ proof fn lemma_vdw_respects_derivation(
 }
 
 /// The VDW action respects a single AFP derivation step.
+/// The VDW action respects a single AFP derivation step.
+///
+/// Strategy: for each step, the word changes by inserting or removing a
+/// substring. We use the composition lemma to split at the position,
+/// show the substring acts as identity, and conclude the actions are equal.
 proof fn lemma_vdw_respects_step(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
@@ -1239,47 +1244,239 @@ proof fn lemma_vdw_respects_step(
         vdw_act_word(ct1, ct2, st1, st2, phi, data.p1.num_generators, w, h, sylls)
             == vdw_act_word(ct1, ct2, st1, st2, phi, data.p1.num_generators, w_prime, h, sylls),
 {
+    let afp = amalgamated_free_product(data);
     let n1 = data.p1.num_generators;
 
-    // Each derivation step either:
-    //   - Inserts/removes an inverse pair (FreeExpand/FreeReduce)
-    //   - Inserts/removes a relator (RelatorInsert/RelatorDelete)
+    // For each step type:
+    // The step transforms w to w' by inserting or removing a substring.
+    // w = prefix + [substring] + suffix (for delete: w has it, w' doesn't)
+    // w' = prefix + suffix (for delete) or w' = prefix + [substring] + suffix (for insert)
     //
-    // For FreeReduce: the inverse pair acts trivially (symbol + inverse = identity).
-    // For RelatorInsert: the relator acts trivially on the VDW state.
-    //
-    // The proof works by showing that the inserted/removed substring
-    // acts as the identity on the VDW state.
-    //
-    // Key helper: vdw_act_word(substr, h', sylls') == (h', sylls') for:
-    //   - Inverse pairs: Gen(i)·Inv(i) and Inv(i)·Gen(i)
-    //   - G₁ relators
-    //   - G₂ relators
-    //   - Identification relators u_i · inv(shift(v_i))
-    //
-    // Then: vdw_act_word(w, h, sylls) = vdw_act_word(prefix, h, sylls) applied to
-    //   vdw_act_word(substr, _, _) applied to vdw_act_word(suffix, _, _).
-    //   Since substr acts as identity: the prefix+suffix part equals w'.
-    //
-    // This is the textbook argument: the action is a homomorphism,
-    // so relators act trivially.
+    // Using composition: vdw_act(w) = vdw_act(suffix, vdw_act(substring, vdw_act(prefix, state)))
+    // If substring acts as identity: vdw_act(w) = vdw_act(suffix, vdw_act(prefix, state)) = vdw_act(w')
 
-    // TODO: Implement the case analysis for each step type.
-    // Each case shows the inserted/removed content acts trivially.
-    // FreeReduce: ~20 lines (table consistency)
-    // FreeExpand: ~20 lines (same, reverse direction)
-    // RelatorInsert/Delete for G₁ relators: ~20 lines (ct1 relator-closed)
-    // RelatorInsert/Delete for G₂ relators: ~20 lines (ct2 relator-closed)
-    // RelatorInsert/Delete for identification relators: ~40 lines (phi compatibility)
-    //
-    // Total: ~140 lines for the complete well-definedness proof.
-    //
-    // PLACEHOLDER: to be filled in.
-    // The mathematical argument is clear; the Verus proof is mechanical.
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            // w has inverse pair at position, position+1.
+            // w' = w[0..position] + w[position+2..]
+            // The pair [w[position], w[position+1]] acts as identity.
+            let prefix = w.subrange(0, position);
+            let pair = w.subrange(position, position + 2);
+            let suffix = w.subrange(position + 2, w.len() as int);
 
-    // For now, this is the single remaining gap.
-    // Everything else (18 functions) verifies correctly.
-    assert(false); // TO BE REPLACED with per-step well-definedness proof
+            assert(w =~= prefix + pair + suffix) by {
+                assert((prefix + pair + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + pair + suffix)[k] == w[k] by {
+                    if k < position { }
+                    else if k < position + 2 { assert((prefix + pair + suffix)[k] == pair[k - position]); }
+                    else { assert((prefix + pair + suffix)[k] == suffix[k - position - 2]); }
+                }
+            }
+            assert(w_prime =~= prefix + suffix) by {
+                assert(w_prime =~= reduce_at(w, position));
+            }
+
+            // Show: vdw_act(w) == vdw_act(w') using composition
+            // vdw_act(w) = vdw_act(prefix + pair + suffix)
+            //            = vdw_act(suffix, vdw_act(pair, vdw_act(prefix, state)))
+            // vdw_act(w') = vdw_act(prefix + suffix)
+            //             = vdw_act(suffix, vdw_act(prefix, state))
+            // Need: vdw_act(pair, any_state) == any_state
+            // This follows from table consistency: Gen(i) followed by Inv(i) returns to start.
+
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, pair + suffix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, suffix, h, sylls);
+
+            let (h_mid, sylls_mid) = vdw_act_word(ct1, ct2, st1, st2, phi, n1, prefix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, pair, suffix, h_mid, sylls_mid);
+
+            // Need: vdw_act_word(pair, h_mid, sylls_mid) == (h_mid, sylls_mid)
+            lemma_vdw_inverse_pair_trivial(ct1, ct2, st1, st2, phi, n1,
+                w[position], w[position + 1], h_mid, sylls_mid);
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            // w' = w[0..position] + [symbol, inv(symbol)] + w[position..]
+            // Reverse of FreeReduce: pair is inserted into w to get w'.
+            let prefix = w.subrange(0, position);
+            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+            let suffix = w.subrange(position, w.len() as int);
+
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by {
+                    if k < position { } else { }
+                }
+            }
+            assert(w_prime =~= prefix + pair + suffix);
+
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, suffix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, pair + suffix, h, sylls);
+
+            let (h_mid, sylls_mid) = vdw_act_word(ct1, ct2, st1, st2, phi, n1, prefix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, pair, suffix, h_mid, sylls_mid);
+
+            lemma_vdw_inverse_pair_trivial(ct1, ct2, st1, st2, phi, n1,
+                symbol, inverse_symbol(symbol), h_mid, sylls_mid);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            // w' = w[0..position] + relator + w[position..]
+            let r = get_relator(afp, relator_index, inverted);
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position, w.len() as int);
+
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by {
+                    if k < position { } else { }
+                }
+            }
+            assert(w_prime =~= prefix + r + suffix);
+
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, suffix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, r + suffix, h, sylls);
+
+            let (h_mid, sylls_mid) = vdw_act_word(ct1, ct2, st1, st2, phi, n1, prefix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, r, suffix, h_mid, sylls_mid);
+
+            // Need: vdw_act_word(r, h_mid, sylls_mid) == (h_mid, sylls_mid)
+            lemma_vdw_relator_trivial(ct1, ct2, st1, st2, phi, data,
+                relator_index, inverted, h_mid, sylls_mid);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            // w = w'[0..position] + relator + w'[position..]
+            // Reverse of RelatorInsert.
+            let r = get_relator(afp, relator_index, inverted);
+            let rlen = r.len();
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position + rlen as int, w.len() as int);
+
+            assert(w =~= prefix + r + suffix) by {
+                assert((prefix + r + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + r + suffix)[k] == w[k] by {
+                    if k < position { }
+                    else if k < position + rlen as int {
+                        assert((prefix + r + suffix)[k] == r[k - position]);
+                        assert(w.subrange(position, position + rlen as int) == r);
+                        assert(r[k - position] == w[k]);
+                    }
+                    else { assert((prefix + r + suffix)[k] == suffix[k - position - rlen]); }
+                }
+            }
+            assert(w_prime =~= prefix + suffix);
+
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, r + suffix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, prefix, suffix, h, sylls);
+
+            let (h_mid, sylls_mid) = vdw_act_word(ct1, ct2, st1, st2, phi, n1, prefix, h, sylls);
+            lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, r, suffix, h_mid, sylls_mid);
+
+            lemma_vdw_relator_trivial(ct1, ct2, st1, st2, phi, data,
+                relator_index, inverted, h_mid, sylls_mid);
+        },
+    }
+}
+
+/// An inverse pair [s, inv(s)] acts trivially on any VDW state.
+/// This follows from coset table consistency.
+proof fn lemma_vdw_inverse_pair_trivial(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    n1: nat,
+    s1: Symbol, s2: Symbol,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        is_inverse_pair(s1, s2),
+        crate::todd_coxeter::coset_table_consistent(ct1),
+        crate::todd_coxeter::coset_table_consistent(ct2),
+    ensures ({
+        let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+        vdw_act_word(ct1, ct2, st1, st2, phi, n1, pair, h, sylls) == (h, sylls)
+    }),
+{
+    // The pair [s1, s2] where s2 = inv(s1).
+    // Processing s1: traces one step in ct1 or ct2.
+    // Processing s2 = inv(s1): traces the inverse step, returning to start.
+    // By table consistency: table[c][col] = d implies table[d][inv_col] = c.
+    //
+    // The VDW action of s1 might do coset decomposition, changing h and sylls.
+    // Then s2 undoes it (because the underlying ct1/ct2 trace returns to start).
+    //
+    // This is tricky to prove in general because the coset decomposition
+    // might create/absorb syllables. The round-trip through s1 then s2
+    // must undo all syllable changes.
+    //
+    // For now: this is a key helper that needs careful case analysis.
+    // The case analysis follows from table consistency + the coset decomposition
+    // being deterministic.
+    //
+    // TODO: ~40 lines of case analysis.
+    assert(false); // TO BE REPLACED
+}
+
+/// An AFP relator acts trivially on any VDW state.
+/// This is the core well-definedness check.
+proof fn lemma_vdw_relator_trivial(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    relator_index: nat, inverted: bool,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        vdw_prerequisites(ct1, ct2, st1, st2, phi, data),
+        relator_index < amalgamated_free_product(data).relators.len(),
+        h < ct1.num_cosets,
+    ensures ({
+        let afp = amalgamated_free_product(data);
+        let r = get_relator(afp, relator_index, inverted);
+        let n1 = data.p1.num_generators;
+        vdw_act_word(ct1, ct2, st1, st2, phi, n1, r, h, sylls) == (h, sylls)
+    }),
+{
+    let afp = amalgamated_free_product(data);
+    let n1 = data.p1.num_generators;
+    let r = get_relator(afp, relator_index, inverted);
+    let n_g1 = data.p1.relators.len();
+    let n_g2 = data.p2.relators.len();
+
+    lemma_afp_relators(data);
+
+    // Classify the relator:
+    if relator_index < n_g1 {
+        // G₁ relator: all symbols have gen_index < n1.
+        // The action traces through ct1 only.
+        // ct1 is relator-closed: tracing the relator returns to start.
+        // Therefore the action is trivial.
+        //
+        // TODO: prove by showing trace_word(ct1, c, r) == Some(c)
+        // and connecting this to vdw_act_word.
+        // ~30 lines.
+        assert(false); // TO BE REPLACED
+    } else if relator_index < n_g1 + n_g2 {
+        // G₂ relator: all symbols have gen_index >= n1.
+        // The action traces through ct2 only.
+        // ct2 is relator-closed.
+        // TODO: ~30 lines.
+        assert(false); // TO BE REPLACED
+    } else {
+        // Identification relator: u_i · inv(shift(v_i)).
+        // u_i acts through G₁ (stays in A).
+        // inv(shift(v_i)) acts through G₂ (stays in B).
+        // Combined: trivial via phi.
+        // TODO: ~50 lines using phi homomorphism.
+        assert(false); // TO BE REPLACED
+    }
 }
 
 /// Faithfulness: if a G₁-word acts trivially on (0, []), it's ≡ ε in G₁.
