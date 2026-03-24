@@ -1213,17 +1213,99 @@ proof fn lemma_h_relator(
     requires
         h_prereqs(ct1, ct2, phi, phi_inv, data),
         relator_index < amalgamated_free_product(data).relators.len(),
+        h < ct1.num_cosets,
     ensures ({
         let r = get_relator(amalgamated_free_product(data), relator_index, inverted);
         let n1 = data.p1.num_generators;
         h_act_word(ct1, ct2, phi, phi_inv, n1, r, h) == h
     }),
 {
-    // TODO: classify relator, prove each acts trivially
-    // G₁ relator: ct1 relator-closed → trace returns to start
-    // G₂ relator: ct2 relator-closed → trace returns to start, phi round-trips
-    // Identification: u_i then inv(shift(v_i)) → phi/phi_inv round-trip
-    assert(false);
+    let afp = amalgamated_free_product(data);
+    let n1 = data.p1.num_generators;
+    let r = get_relator(afp, relator_index, inverted);
+    lemma_afp_relators(data);
+
+    if relator_index < data.p1.relators.len() {
+        // G₁ relator: r is a G₁-word, trace returns to start.
+        lemma_afp_relator_g1(data, relator_index);
+        // r = get_relator(p1, relator_index, inverted) — same relator
+        // r is a left word (all generators < n1 from presentation_valid)
+        reveal(presentation_valid);
+        let raw = data.p1.relators[relator_index as int];
+        assert(word_valid(raw, n1));
+        // r is either raw or inverse_word(raw), both word_valid for n1
+        assert(is_left_word(r, n1)) by {
+            if inverted {
+                crate::word::lemma_inverse_word_valid(raw, n1);
+                assert(word_valid(inverse_word(raw), n1));
+                assert forall|k: int| 0 <= k < r.len()
+                    implies generator_index(r[k]) < n1
+                by { assert(symbol_valid(r[k], n1)); }
+            } else {
+                assert forall|k: int| 0 <= k < r.len()
+                    implies generator_index(r[k]) < n1
+                by { assert(symbol_valid(r[k], n1)); }
+            }
+        }
+        // By h_act_is_trace: trace_word(ct1, h, r) == Some(h_act_word(..., r, h))
+        lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, r, h);
+        // trace_word(ct1, h, r) == Some(h) by relator_closed
+        // relator_closed says: for all c, trace_word(ct1, c, p1.relators[i]) == Some(c)
+        // We need: trace_word(ct1, h, r) == Some(h)
+        // r = get_relator(p1, relator_index, inverted)
+        // If not inverted: r = p1.relators[relator_index]. relator_closed gives trace == Some(h).
+        // If inverted: r = inverse_word(p1.relators[relator_index]).
+        //   Need trace of inverse relator also returns to start.
+        //   This follows from table consistency: trace(w) = h iff trace(inv(w)) = h
+        //   (since the table is consistent, tracing back along inverse returns to start).
+        //
+        // For the non-inverted case:
+        if !inverted {
+            // r == p1.relators[relator_index]
+            // relator_closed(ct1, p1) says trace_word(ct1, h, r) == Some(h)
+            // The ensures of relator_closed uses the relator index.
+            // relator_closed = forall c, r_idx: trace_word(ct1, c, p1.relators[r_idx]) == Some(c)
+            // But ct1 is relator-closed for p1 (from valid_cayley).
+            // So trace_word(ct1, h, data.p1.relators[relator_index]) == Some(h).
+            reveal(crate::todd_coxeter::relator_closed);
+            // Fire triggers: ct1.table[h] and data.p1.relators[relator_index]
+            let _ = ct1.table[h as int];
+            let _ = data.p1.relators[relator_index as int];
+            assert(crate::todd_coxeter::trace_word(ct1, h, data.p1.relators[relator_index as int]) == Some(h));
+            assert(r == data.p1.relators[relator_index as int]);
+        } else {
+            // Inverted: r = inverse_word(p1.relators[relator_index])
+            // trace(ct1, h, inv(relator)) also returns h because:
+            // trace(ct1, h, relator) == Some(h) means h --relator--> h in the table.
+            // By consistency: h --inv(relator)--> h as well.
+            // This is a standard property of consistent relator-closed tables.
+            // Use lemma_trace_word_concat: trace(h, relator ++ inv(relator)) = trace(trace(h, relator), inv(relator))
+            // And trace(h, relator) = h. So trace(h, inv(relator)) follows from
+            // trace(h, relator ++ inv(relator)) = h (since relator ++ inv(relator) traces to h
+            // because relator-closed on the trivial word... hmm, this isn't quite right).
+            //
+            // Actually: for a consistent complete table, trace(c, inv(w)) is the unique d such that
+            // trace(d, w) = c. Since trace(h, w) = h: trace(h, inv(w)) = h.
+            // This follows from a lemma about inverse word traces.
+            // For now: assume this standard property.
+            // TODO: prove or call existing lemma for inverse-word trace.
+            // trace(ct1, h, relator) == Some(h) by relator_closed
+            reveal(crate::todd_coxeter::relator_closed);
+            let _ = ct1.table[h as int];
+            let _ = data.p1.relators[relator_index as int];
+            assert(crate::todd_coxeter::trace_word(ct1, h, raw) == Some(h));
+            // By lemma_trace_inverse_word: trace(h, inv(relator)) == Some(h)
+            crate::completeness::lemma_trace_inverse_word(ct1, h, raw);
+            assert(crate::todd_coxeter::trace_word(ct1, h, inverse_word(raw)) == Some(h));
+            assert(r == inverse_word(raw));
+        }
+    } else {
+        // G₂ or identification relator
+        // TODO: these cases are more involved.
+        // G₂: similar to G₁ but using ct2 + phi compatibility.
+        // Identification: use h_act_is_trace for G₁ part + phi for G₂ part.
+        assert(false); // TODO: G₂ and identification cases
+    }
 }
 
 /// H-only action respects AFP derivation.
@@ -1326,10 +1408,13 @@ proof fn lemma_h_act_is_trace(
         //   But h_act_word continues with 0, not h. This is a discrepancy.
         //   For complete tables: entry is always Some, so None doesn't happen.
         //
-        // The fundamental issue: the ensures for None case says "h" but
-        // h_act_word would continue with 0. These don't match.
-        // Fix: change the None case in ensures to 0, or add completeness as requires.
-        // Better: add completeness as requires so None never happens.
+        // With completeness: entry is always Some, so next_h < ct1.num_cosets.
+        reveal(crate::todd_coxeter::coset_table_wf);
+        reveal(crate::finite::coset_table_complete);
+        assert(col < 2 * ct1.num_gens) by {
+            match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        assert(next_h < ct1.num_cosets);
         lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, rest, next_h);
     }
 }
