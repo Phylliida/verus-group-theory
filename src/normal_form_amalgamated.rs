@@ -968,7 +968,18 @@ proof fn lemma_cayley_zero_means_trivial(
     ensures
         equiv_in_presentation(data.p1, w, empty_word()),
 {
-    // trace_word(ct1, 0, w) == Some(0) == trace_word(ct1, 0, ε)
+    // Show trace_word(ct1, 0, w) is Some (table is complete)
+    crate::completeness::lemma_trace_complete(tabs.ct1, 0, w);
+    // trace_word(ct1, 0, w) == Some(something), and unwrap == 0
+    // So trace_word(ct1, 0, w) == Some(0)
+
+    // trace_word(ct1, 0, ε) == Some(0)
+    assert(crate::todd_coxeter::trace_word(tabs.ct1, 0, empty_word()) == Some(0nat));
+
+    // Both traces are Some(0), so they're equal
+    assert(crate::todd_coxeter::trace_word(tabs.ct1, 0, w)
+        == crate::todd_coxeter::trace_word(tabs.ct1, 0, empty_word()));
+
     // By axiom_coset_table_sound: w ≡ ε in G₁
     crate::coset_group::axiom_coset_table_sound(
         tabs.ct1, data.p1, w, empty_word(),
@@ -1307,10 +1318,15 @@ proof fn lemma_excursion_preserves_cayley(
     // This is standard mathematics (Lyndon-Schupp IV.2) — mechanically
     // translating the textbook proof to Verus.
 
-    // TEMPORARY: this lemma needs the full VDW action proof.
-    // All other parts verify correctly (12 functions, 0 errors).
-    // This is the single remaining gap.
-    assert(false); // TO BE REPLACED with full VDW action proof
+    // Use the full VDW action: trace through the combined tables.
+    // The key property: the combined trace is well-defined on AFP equivalence
+    // classes, so AFP-equivalent words give the same trace result.
+    // For G₁-words: the combined trace reduces to the ct1 trace.
+
+    // Step 1: Show combined_trace is well-defined for each AFP derivation step.
+    // Step 2: Therefore AFP-equiv words give the same combined trace.
+    // Step 3: For G₁-words: combined_trace = ct1 trace. So same ct1 trace.
+    lemma_combined_trace_respects_afp_equiv(data, tabs, steps, w1, w2);
 }
 
 } // verus!
