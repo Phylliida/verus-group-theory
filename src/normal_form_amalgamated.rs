@@ -921,4 +921,345 @@ proof fn lemma_vdw_concat(
     }
 }
 
+// ============================================================
+// Part H: Prerequisites bundle
+// ============================================================
+
+/// Cayley table validity.
+pub open spec fn valid_cayley(t: crate::todd_coxeter::CosetTable, p: Presentation) -> bool {
+    &&& crate::todd_coxeter::coset_table_wf(t)
+    &&& crate::todd_coxeter::coset_table_consistent(t)
+    &&& crate::finite::coset_table_complete(t)
+    &&& crate::todd_coxeter::relator_closed(t, p)
+    &&& t.num_gens == p.num_generators
+    &&& presentation_valid(p)
+    &&& crate::coset_group::has_schreier_system(t, p)
+    &&& t.num_cosets > 0
+}
+
+/// Subgroup coset table validity (no Schreier system required).
+pub open spec fn valid_sub_table(t: crate::todd_coxeter::CosetTable, p: Presentation) -> bool {
+    &&& crate::todd_coxeter::coset_table_wf(t)
+    &&& crate::todd_coxeter::coset_table_consistent(t)
+    &&& crate::finite::coset_table_complete(t)
+    &&& crate::todd_coxeter::relator_closed(t, p)
+    &&& t.num_gens == p.num_generators
+    &&& presentation_valid(p)
+    &&& t.num_cosets > 0
+}
+
+/// phi is a valid B→A isomorphism at the Cayley table level.
+pub open spec fn valid_phi(
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    data: AmalgamatedData,
+) -> bool {
+    &&& phi(0nat) == 0nat
+    &&& phi_inv(0nat) == 0nat
+    &&& (forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets)
+    &&& (forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets)
+    // phi and phi_inv are inverses
+    &&& (forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b)
+    &&& (forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a)
+    // phi respects identification generators
+    &&& (forall|i: int| #![trigger data.identifications[i]]
+        0 <= i < data.identifications.len() ==> ({
+        let u_elem = crate::todd_coxeter::trace_word(ct1, 0, data.identifications[i].0);
+        let v_elem = crate::todd_coxeter::trace_word(ct2, 0, data.identifications[i].1);
+        u_elem is Some && v_elem is Some && phi(v_elem.unwrap()) == u_elem.unwrap()
+    }))
+    // phi is a homomorphism
+    &&& (forall|x: nat, y: nat|
+        x < ct2.num_cosets && y < ct2.num_cosets ==>
+        phi(crate::coset_group::coset_mul(ct2, x, y))
+            == crate::coset_group::coset_mul(ct1, phi(x), phi(y)))
+    // phi respects inverses
+    &&& (forall|x: nat|
+        x < ct2.num_cosets ==>
+        phi(crate::coset_group::coset_inv(ct2, x))
+            == crate::coset_group::coset_inv(ct1, phi(x)))
+}
+
+/// All VDW prerequisites bundled.
+pub open spec fn vdw_prereqs(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+) -> bool {
+    &&& amalgamated_data_valid(data)
+    &&& identifications_isomorphic(data)
+    &&& valid_cayley(ct1, data.p1)
+    &&& valid_cayley(ct2, data.p2)
+    &&& valid_sub_table(st1, data.p1)
+    &&& valid_sub_table(st2, data.p2)
+    &&& ct1.num_gens == st1.num_gens
+    &&& ct2.num_gens == st2.num_gens
+    &&& valid_phi(phi, phi_inv, ct1, ct2, data)
+    // Subgroup generators trace to coset 0 in subgroup tables
+    &&& (forall|i: int| 0 <= i < data.identifications.len() ==>
+        crate::todd_coxeter::trace_word(st1, 0, data.identifications[i].0) == Some(0nat))
+    &&& (forall|i: int| 0 <= i < data.identifications.len() ==>
+        crate::todd_coxeter::trace_word(st2, 0, data.identifications[i].1) == Some(0nat))
+}
+
+// ============================================================
+// Part I: AFP injectivity theorem
+// ============================================================
+
+/// AFP injectivity for finite groups.
+///
+/// If w is a G₁-word and w ≡ ε in the AFP, then w ≡ ε in G₁.
+///
+/// Proof: the VDW action is well-defined on AFP equivalence classes
+/// (each relator acts trivially). Therefore w ≡ ε implies
+/// vdw_word(w) == vdw_word(ε) == (0, []). For a G₁-word, this means
+/// the Cayley table element is 0, so w ≡ ε in G₁.
+pub proof fn lemma_afp_injectivity(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word,
+)
+    requires
+        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        word_valid(w, data.p1.num_generators),
+        equiv_in_presentation(amalgamated_free_product(data), w, empty_word()),
+    ensures
+        equiv_in_presentation(data.p1, w, empty_word()),
+{
+    let n1 = data.p1.num_generators;
+    let afp = amalgamated_free_product(data);
+    let d = choose|d: Derivation| derivation_valid(afp, d, w, empty_word());
+
+    // Step 1: VDW action is well-defined — AFP derivation preserves the action
+    lemma_vdw_deriv(ct1, ct2, st1, st2, phi, phi_inv, data, d.steps,
+        w, empty_word(), 0, Seq::empty());
+    // Now: vdw_word(w, 0, []) == vdw_word(ε, 0, []) == (0, [])
+
+    // Step 2: (0, []) means trivial in G₁
+    // vdw_word(ε, 0, []) == (0, []) trivially
+    assert(vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1,
+        empty_word(), 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()));
+
+    // Step 3: vdw_word(w, 0, []) == (0, [])
+    // → Cayley element of w is 0 → w ≡ ε in G₁
+    lemma_vdw_faithful(ct1, ct2, st1, st2, phi, phi_inv, data, w);
+}
+
+/// VDW action respects AFP derivation.
+proof fn lemma_vdw_deriv(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    steps: Seq<DerivationStep>,
+    w1: Word, w2: Word,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        derivation_produces(amalgamated_free_product(data), steps, w1) == Some(w2),
+    ensures
+        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w1, h, sylls)
+            == vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w2, h, sylls),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        assert(w1 == w2);
+    } else {
+        let afp = amalgamated_free_product(data);
+        let step = steps.first();
+        let w_mid = apply_step(afp, w1, step).unwrap();
+        lemma_vdw_step(ct1, ct2, st1, st2, phi, phi_inv, data, w1, step, w_mid, h, sylls);
+        lemma_vdw_deriv(ct1, ct2, st1, st2, phi, phi_inv, data, steps.drop_first(),
+            w_mid, w2, h, sylls);
+    }
+}
+
+/// VDW action respects a single derivation step.
+/// This is the core well-definedness check: each AFP relator acts trivially.
+proof fn lemma_vdw_step(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word, step: DerivationStep, w_prime: Word,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        apply_step(amalgamated_free_product(data), w, step) == Some(w_prime),
+    ensures
+        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w, h, sylls)
+            == vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w_prime, h, sylls),
+{
+    let n1 = data.p1.num_generators;
+    let afp = amalgamated_free_product(data);
+
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            let prefix = w.subrange(0, position);
+            let pair = w.subrange(position, position + 2);
+            let suffix = w.subrange(position + 2, w.len() as int);
+            assert(w =~= prefix + pair + suffix) by {
+                assert((prefix + pair + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + pair + suffix)[k] == w[k] by {
+                    if k < position {} else if k < position + 2 {} else {}
+                }
+            }
+            assert(w_prime =~= prefix + suffix);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, pair + suffix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
+            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, suffix, hm, sm);
+            lemma_vdw_inv_pair(ct1, ct2, st1, st2, phi, phi_inv, n1,
+                w[position], w[position + 1], hm, sm);
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            let prefix = w.subrange(0, position);
+            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+            let suffix = w.subrange(position, w.len() as int);
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
+            }
+            assert(w_prime =~= prefix + pair + suffix);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, pair + suffix, h, sylls);
+            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, suffix, hm, sm);
+            lemma_vdw_inv_pair(ct1, ct2, st1, st2, phi, phi_inv, n1,
+                symbol, inverse_symbol(symbol), hm, sm);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            let r = get_relator(afp, relator_index, inverted);
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position, w.len() as int);
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
+            }
+            assert(w_prime =~= prefix + r + suffix);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, r + suffix, h, sylls);
+            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, r, suffix, hm, sm);
+            lemma_vdw_relator(ct1, ct2, st1, st2, phi, phi_inv, data,
+                relator_index, inverted, hm, sm);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            let r = get_relator(afp, relator_index, inverted);
+            let rlen = r.len();
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position + rlen as int, w.len() as int);
+            assert(w =~= prefix + r + suffix) by {
+                assert((prefix + r + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + r + suffix)[k] == w[k] by {
+                    if k < position {} else if k < position + rlen as int {
+                        assert(w.subrange(position, position + rlen as int) == r);
+                    } else {}
+                }
+            }
+            assert(w_prime =~= prefix + suffix);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, r + suffix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
+            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
+            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, r, suffix, hm, sm);
+            lemma_vdw_relator(ct1, ct2, st1, st2, phi, phi_inv, data,
+                relator_index, inverted, hm, sm);
+        },
+    }
+}
+
+/// Inverse pair acts trivially.
+proof fn lemma_vdw_inv_pair(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    n1: nat,
+    s1: Symbol, s2: Symbol,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires is_inverse_pair(s1, s2),
+    ensures ({
+        let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, h, sylls) == (h, sylls)
+    }),
+{
+    // TODO: case analysis on G₁ vs G₂ symbol, use table consistency
+    assert(false);
+}
+
+/// AFP relator acts trivially.
+proof fn lemma_vdw_relator(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    relator_index: nat, inverted: bool,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        relator_index < amalgamated_free_product(data).relators.len(),
+    ensures ({
+        let r = get_relator(amalgamated_free_product(data), relator_index, inverted);
+        let n1 = data.p1.num_generators;
+        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, r, h, sylls) == (h, sylls)
+    }),
+{
+    // TODO: classify relator (G₁/G₂/identification), prove each acts trivially
+    assert(false);
+}
+
+/// Faithfulness: vdw_word(w, 0, []) == (0, []) implies w ≡ ε in G₁.
+proof fn lemma_vdw_faithful(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word,
+)
+    requires
+        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        word_valid(w, data.p1.num_generators),
+        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators,
+            w, 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()),
+    ensures
+        equiv_in_presentation(data.p1, w, empty_word()),
+{
+    // TODO: prove trace_word(ct1, 0, w) == Some(0) from the action result,
+    // then use axiom_coset_table_sound
+    assert(false);
+}
+
 } // verus!
