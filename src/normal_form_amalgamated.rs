@@ -1559,14 +1559,12 @@ proof fn lemma_h_act_bound(
     }
 }
 
-/// For a pure G₂-word: phi_inv of the h_act_word result equals the ct2 trace.
-/// Simpler formulation: phi_inv(h_act_word(w, h)) == trace_word(ct2, phi_inv(h), unshift(w)).
+/// For a pure G₂-word (shifted as `sw`, unshifted as `uw`):
+/// phi_inv(h_act_word(sw, h)) == trace_word(ct2, phi_inv(h), uw) (when Some).
 ///
-/// We prove this by tracking phi_inv of the accumulator through each symbol.
-/// Each G₂ symbol s acts as: h → phi(ct_lookup(ct2, phi_inv(h), col)).
-/// So phi_inv(h') = ct_lookup(ct2, phi_inv(h), col) — just one ct2 step.
-/// This matches trace_word's single-step unfolding exactly.
-proof fn lemma_h_act_g2_phi_inv(
+/// Each G₂ symbol's action: h → phi(ct_lookup(ct2, phi_inv(h), col)).
+/// So phi_inv(h') = ct_lookup(ct2, phi_inv(h), col) — exactly one ct2 trace step.
+proof fn lemma_h_act_g2_phi_inv_trace(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
@@ -1642,15 +1640,60 @@ proof fn lemma_h_act_g2_relator(
         h_act_word(ct1, ct2, phi, phi_inv, n1, r, h) == h
     }),
 {
-    // The shifted G₂ relator: each symbol has gen_index >= n1.
-    // h_act_word processes each symbol through ct2 (via phi_inv/phi).
-    // The composition = phi(trace(ct2, phi_inv(h), unshifted_relator)).
-    // By relator_closed: trace returns to phi_inv(h).
-    // So result = phi(phi_inv(h)) = h.
+    // Use the phi compatibility: each G₂ symbol action via phi equals a ct1 trace step.
+    // phi(ct_lookup(ct2, phi_inv(h), col)) == ct_lookup(ct1, h, col) [phi compatibility]
+    // So h_act_word on a shifted G₂ word acts the same as tracing the UNSHIFTED word through ct1.
+    // But the relator is from p2, and ct1 is for p1. Unless p1 == p2...
     //
-    // This proof is complex. For now, mark as TODO.
-    // The mathematical argument is clear; the Z3 proof needs careful unfolding.
-    assert(false); // TODO: G₂ relator via phi + relator_closed(ct2)
+    // Better approach: track phi_inv through the word.
+    // phi_inv(h_act_word(shifted_relator, h)) = trace_word(ct2, phi_inv(h), unshifted_relator)
+    // By relator_closed(ct2, p2): = phi_inv(h)
+    // phi of both sides: h_act_word = phi(phi_inv(h)) = h.
+    //
+    // We prove this using lemma_h_act_g2_phi_inv_trace which establishes the phi_inv tracking.
+    let n1 = data.p1.num_generators;
+    let raw = data.p2.relators[g2_idx as int];
+    let shifted = shift_word(raw, n1);
+    let r = if inverted { inverse_word(shifted) } else { shifted };
+
+    // For the non-inverted case: use h_act_g2_phi_inv_trace on the shifted relator
+    if !inverted {
+        lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data, shifted, raw, h);
+        // Now: phi_inv(h_act_word(shifted, h)) == match trace_word(ct2, phi_inv(h), raw) { Some(v) => v, None => phi_inv(h) }
+        // By relator_closed(ct2, p2): trace_word(ct2, phi_inv(h), raw) == Some(phi_inv(h))
+        reveal(crate::todd_coxeter::relator_closed);
+        let _ = ct2.table[phi_inv(h) as int];
+        let _ = data.p2.relators[g2_idx as int];
+        assert(crate::todd_coxeter::trace_word(ct2, phi_inv(h), raw) == Some(phi_inv(h)));
+        // phi_inv(h_act_word(shifted, h)) == phi_inv(h)
+        // h_act_word(shifted, h) == h (since phi is injective on the range)
+    } else {
+        // Inverted: r = inverse_word(shifted)
+        // trace(ct2, phi_inv(h), raw) == Some(phi_inv(h)) by relator_closed
+        // trace(ct2, phi_inv(h), inverse_word(raw)) == Some(phi_inv(h)) by lemma_trace_inverse_word
+        reveal(crate::todd_coxeter::relator_closed);
+        let _ = ct2.table[phi_inv(h) as int];
+        let _ = data.p2.relators[g2_idx as int];
+        assert(crate::todd_coxeter::trace_word(ct2, phi_inv(h), raw) == Some(phi_inv(h)));
+        crate::completeness::lemma_trace_inverse_word(ct2, phi_inv(h), raw);
+        // trace(ct2, phi_inv(h), inverse_word(raw)) == Some(phi_inv(h))
+
+        // Now need to connect inverse_word(shifted) to shifted(inverse_word(raw))
+        // inverse_word(shift_word(raw, n1)): reverses and inverts each symbol.
+        // shift_word(inverse_word(raw), n1): shifts each symbol of the inverse.
+        // These are NOT the same in general... inverse reverses order, shift doesn't.
+        // Actually: inverse_word(shift_word(w, n)) =~= shift_word(inverse_word(w), n)
+        // This is because shift preserves inverse pairs and commutes with reversal.
+        // Let me use the existing lemma_shift_inverse_word from free_product.rs.
+        crate::free_product::lemma_shift_inverse_word(raw, n1);
+        // inverse_word(shift_word(raw, n1)) =~= shift_word(inverse_word(raw), n1)
+        // So r =~= shift_word(inverse_word(raw), n1)
+
+        lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data,
+            shift_word(inverse_word(raw), n1), inverse_word(raw), h);
+        // phi_inv(h_act_word(shift_word(inverse_word(raw), n1), h))
+        //   == trace(ct2, phi_inv(h), inverse_word(raw)) == phi_inv(h)
+    }
 }
 
 /// AFP injectivity for finite groups.
