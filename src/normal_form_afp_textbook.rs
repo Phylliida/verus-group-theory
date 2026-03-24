@@ -86,35 +86,46 @@ pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
 // Part B2: Well-ordering and transversal existence
 // ============================================================
 
-/// Well-ordering principle for nats: any inhabited predicate has a minimum.
-proof fn lemma_nat_well_ordering(p: spec_fn(nat) -> bool, bound: nat)
+/// No value less than m satisfies p (recursive, avoids quantifier trigger issues).
+pub open spec fn no_pred_below(p: spec_fn(nat) -> bool, m: nat) -> bool
+    decreases m,
+{
+    if m == 0 { true }
+    else { !p((m - 1) as nat) && no_pred_below(p, (m - 1) as nat) }
+}
+
+/// m is the minimum of predicate p.
+pub open spec fn is_nat_min(p: spec_fn(nat) -> bool, m: nat) -> bool {
+    p(m) && no_pred_below(p, m)
+}
+
+/// Well-ordering: scan from `current` to `bound` to find the minimum of p.
+proof fn lemma_nat_scan_for_min(p: spec_fn(nat) -> bool, current: nat, bound: nat)
     requires
         p(bound),
+        current <= bound,
+        no_pred_below(p, current),
     ensures
-        exists|m: nat| m <= bound && p(m) && (forall|k: nat| k < m ==> !p(k)),
-    decreases bound,
+        exists|m: nat| current <= m && m <= bound && #[trigger] is_nat_min(p, m),
+    decreases bound - current,
 {
-    if bound == 0 {
-        // p(0) holds, and there's no k < 0
+    if p(current) {
+        assert(is_nat_min(p, current));
     } else {
-        if exists|k: nat| k < bound && p(k) {
-            let smaller: nat = choose|k: nat| k < bound && p(k);
-            lemma_nat_well_ordering(p, smaller);
-        } else {
-            // No k < bound with p(k), so bound is the minimum
-        }
+        // !p(current) && no_pred_below(p, current) => no_pred_below(p, current + 1)
+        lemma_nat_scan_for_min(p, current + 1, bound);
     }
 }
 
-/// The minimum length of any valid word in the same left coset as g.
-/// Well-defined because g.len() is an upper bound and min over nats exists.
-pub open spec fn min_coset_length_left(data: AmalgamatedData, g: Word) -> nat {
-    choose|l: nat|
-        (exists|w: Word| word_valid(w, data.p1.num_generators)
-            && same_left_coset(data, g, w)
-            && w.len() == l)
-        && (forall|w2: Word| word_valid(w2, data.p1.num_generators)
-            && same_left_coset(data, g, w2) ==> w2.len() >= l)
+/// Well-ordering principle for nats: any inhabited predicate has a minimum.
+pub proof fn lemma_nat_well_ordering(p: spec_fn(nat) -> bool, bound: nat)
+    requires
+        p(bound),
+    ensures
+        exists|m: nat| m <= bound && #[trigger] is_nat_min(p, m),
+{
+    // no_pred_below(p, 0) is trivially true (base case of recursion)
+    lemma_nat_scan_for_min(p, 0, bound);
 }
 
 /// The generated subgroup is closed under equivalence.
@@ -301,6 +312,75 @@ pub open spec fn act_word(
         let (new_h, new_syls) = act_sym(data, w.first(), h, syllables);
         act_word(data, w.drop_first(), new_h, new_syls)
     }
+}
+
+// ============================================================
+// Part E: Composition lemma
+// ============================================================
+
+/// act_word(concat(w1, w2), h, syls) == act_word(w2, act_word(w1, h, syls)).
+/// This is the fundamental composition property.
+pub proof fn lemma_act_word_concat(
+    data: AmalgamatedData,
+    w1: Word, w2: Word,
+    h: Word,
+    syllables: Seq<Syllable>,
+)
+    ensures
+        act_word(data, concat(w1, w2), h, syllables)
+            == act_word(data, w2,
+                act_word(data, w1, h, syllables).0,
+                act_word(data, w1, h, syllables).1),
+    decreases w1.len(),
+{
+    if w1.len() == 0 {
+        // concat(ε, w2) = w2 and act_word(ε, h, syls) = (h, syls)
+        assert(concat(w1, w2) =~= w2) by {
+            assert(w1.len() == 0);
+            assert forall|k: int| 0 <= k < w2.len()
+                implies concat(w1, w2)[k] == w2[k] by {}
+        }
+    } else {
+        // concat(w1, w2) = [w1.first()] ++ concat(w1.drop_first(), w2)
+        // act_word(concat(w1, w2), h, syls):
+        //   = act_word(concat(w1, w2).drop_first(), act_sym(concat(w1, w2).first(), h, syls))
+        //   = act_word(concat(w1.drop_first(), w2), act_sym(w1.first(), h, syls))
+        assert(concat(w1, w2).first() == w1.first());
+        assert(concat(w1, w2).drop_first() =~= concat(w1.drop_first(), w2)) by {
+            let cw = concat(w1, w2);
+            let rest = concat(w1.drop_first(), w2);
+            assert(cw.drop_first().len() == rest.len());
+            assert forall|k: int| 0 <= k < rest.len()
+                implies cw.drop_first()[k] == rest[k]
+            by {
+                assert(cw.drop_first()[k] == cw[k + 1]);
+                if k < w1.len() - 1 {
+                    assert(cw[k + 1] == w1[k + 1]);
+                    assert(rest[k] == w1.drop_first()[k]);
+                } else {
+                    assert(cw[k + 1] == w2[(k + 1 - w1.len() as int)]);
+                    assert(rest[k] == w2[(k - (w1.len() - 1) as int)]);
+                }
+            }
+        }
+
+        let (mid_h, mid_syls) = act_sym(data, w1.first(), h, syllables);
+        // IH: act_word(concat(w1.drop_first(), w2), mid_h, mid_syls)
+        //    = act_word(w2, act_word(w1.drop_first(), mid_h, mid_syls))
+        lemma_act_word_concat(data, w1.drop_first(), w2, mid_h, mid_syls);
+    }
+}
+
+/// act_word of the empty word is the identity.
+pub proof fn lemma_act_word_empty(
+    data: AmalgamatedData,
+    h: Word,
+    syllables: Seq<Syllable>,
+)
+    ensures
+        act_word(data, empty_word(), h, syllables) == (h, syllables),
+{
+    // Direct from the definition: empty_word().len() == 0
 }
 
 } // verus!
