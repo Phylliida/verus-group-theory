@@ -1617,6 +1617,82 @@ proof fn lemma_left_h_part_props(
 }
 
 // ============================================================
+// Part J0: H-witness existence
+// ============================================================
+
+/// For any valid G₁-word g, there exists a K-word h with embed_a(h) ≡ target,
+/// where target = inv(rep) · g. This follows from same_left_coset(g, rep),
+/// subgroup closure under inverse, and subgroup_to_k_word.
+pub proof fn lemma_h_witness_exists(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        exists|h: Word| word_valid(h, k_size(data))
+            && equiv_in_presentation(data.p1,
+                apply_embedding(a_words(data), h),
+                concat(inverse_word(left_canonical_rep(data, g)), g)),
+{
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+
+    // same_left_coset(g, rep) from left_rep_props
+    lemma_left_rep_props(data, g);
+    // same_left_coset(g, rep) = in_left_subgroup(inv(g) · rep)
+    // inv(inv(g) · rep) = inv(rep) · g = target
+    // subgroup closed under inverse → target ∈ subgroup
+
+    // word_valid for inv(g), rep, concat(inv(g), rep), etc.
+    let n1 = data.p1.num_generators;
+    crate::word::lemma_inverse_word_valid(g, n1);
+    crate::word::lemma_concat_word_valid(inverse_word(g), rep, n1);
+
+    // in_left_subgroup(concat(inv(g), rep))
+    // → lemma_subgroup_inverse → in_left_subgroup(inverse_word(concat(inv(g), rep)))
+    // inverse_word(concat(inv(g), rep)) =~= concat(inverse_word(rep), inverse_word(inverse_word(g)))
+    //   =~= concat(inverse_word(rep), g) = target
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+
+    lemma_subgroup_inverse(data.p1, a_words(data),
+        concat(inverse_word(g), rep));
+
+    // Show inverse_word(concat(inv(g), rep)) =~= target
+    crate::word::lemma_inverse_concat(inverse_word(g), rep);
+    crate::word::lemma_inverse_involution(g);
+    // Chain: inverse_word(concat(inv(g), rep))
+    //   =~= concat(inv(rep), inv(inv(g)))   [by inverse_concat]
+    //   =~= concat(inv(rep), g)             [by inverse_involution on g]
+    //   == target
+    let inv_concat = inverse_word(concat(inverse_word(g), rep));
+    assert(inv_concat =~= concat(inverse_word(rep), inverse_word(inverse_word(g))));
+    assert(inverse_word(inverse_word(g)) =~= g);
+    // Help Z3 see the element-wise equality
+    assert forall|k: int| 0 <= k < target.len()
+        implies inv_concat[k] == target[k]
+    by {
+        if k < inverse_word(rep).len() {
+            assert(inv_concat[k] == inverse_word(rep)[k]);
+        } else {
+            let j = k - inverse_word(rep).len() as int;
+            assert(inv_concat[k] == inverse_word(inverse_word(g))[j]);
+            assert(target[k] == g[j]);
+        }
+    }
+    assert(inv_concat =~= target);
+    // in_generated_subgroup(p1, a_words, inv_concat) and inv_concat =~= target
+    // → in_generated_subgroup(p1, a_words, target)
+
+    assert(in_generated_subgroup(data.p1, a_words(data), target));
+    lemma_subgroup_to_k_word(data.p1, a_words(data), target);
+    // a_words(data).len() == k_size(data)
+    assert(a_words(data).len() == k_size(data));
+}
+
+// ============================================================
 // Part J: Per-relator triviality — inverse pairs on identity
 // ============================================================
 
@@ -2827,6 +2903,325 @@ pub proof fn lemma_afp_injectivity_textbook(
         equiv_in_presentation(data.p1, w, empty_word()),
 {
     lemma_g1_decompose_converse(data, w, h_witness);
+}
+
+// ============================================================
+// Part L: H-part equivalence invariance
+// ============================================================
+
+/// Transfer h-witnesses between equivalent targets.
+/// If target1 ≡ target2 and there's a K-word h with embed_a(h) ≡ target1,
+/// then embed_a(h) ≡ target2 too (by transitivity).
+proof fn lemma_h_witness_transfer(
+    data: AmalgamatedData, target1: Word, target2: Word, l: nat,
+)
+    requires
+        has_left_h_witness_of_len(data, target1, l),
+        equiv_in_presentation(data.p1, target1, target2),
+        presentation_valid(data.p1),
+    ensures
+        has_left_h_witness_of_len(data, target2, l),
+{
+    let h: Word = choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), h), target1);
+    crate::presentation::lemma_equiv_transitive(
+        data.p1, apply_embedding(a_words(data), h), target1, target2);
+}
+
+/// Transfer h-witness with lex rank between equivalent targets.
+proof fn lemma_h_witness_rank_transfer(
+    data: AmalgamatedData, target1: Word, target2: Word, l: nat, r: nat,
+)
+    requires
+        has_left_h_witness_of_len_rank(data, target1, l, r),
+        equiv_in_presentation(data.p1, target1, target2),
+        presentation_valid(data.p1),
+    ensures
+        has_left_h_witness_of_len_rank(data, target2, l, r),
+{
+    let h: Word = choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), h), target1);
+    crate::presentation::lemma_equiv_transitive(
+        data.p1, apply_embedding(a_words(data), h), target1, target2);
+}
+
+/// If no_smaller_h_lex(target, l, m) and has_h_witness_rank(target, l, k), then k >= m.
+proof fn lemma_no_smaller_h_lex_implies_ge(
+    data: AmalgamatedData, target: Word, l: nat, m: nat, k: nat,
+)
+    requires
+        no_smaller_h_lex(data, target, l, m),
+        has_left_h_witness_of_len_rank(data, target, l, k),
+    ensures
+        k >= m,
+    decreases m,
+{
+    if m == 0 {
+    } else if k == m - 1 {
+        // no_smaller_h_lex says !has_rank(k) but we have has_rank(k) → contradiction
+    } else if k < m - 1 {
+        lemma_no_smaller_h_lex_implies_ge(data, target, l, (m - 1) as nat, k);
+    }
+}
+
+/// If g1 ≡ g2 in G₁, then same_left_coset(g1, g2).
+/// Proof: inv(g1) · g2 ≡ inv(g1) · g1 ≡ ε, and ε is in the subgroup.
+proof fn lemma_same_left_coset_from_equiv(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+    ensures
+        same_left_coset(data, g1, g2),
+{
+    // inv(g1) · g2 ≡ inv(g1) · g1 ≡ ε
+    crate::presentation::lemma_equiv_symmetric(data.p1, g1, g2);
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        data.p1, inverse_word(g1), g2, g1);
+    crate::presentation_lemmas::lemma_word_inverse_left(data.p1, g1);
+    crate::presentation::lemma_equiv_transitive(data.p1,
+        concat(inverse_word(g1), g2), concat(inverse_word(g1), g1), empty_word());
+
+    // ε is in the subgroup (empty factors)
+    let empty_factors = Seq::<Word>::empty();
+    assert(crate::benign::factors_from_generators(a_words(data), empty_factors));
+    assert(crate::benign::concat_all(empty_factors) =~= empty_word());
+    crate::presentation::lemma_equiv_refl(data.p1, empty_word());
+    // equiv(ε, inv(g1) · g2) by symmetry
+    crate::word::lemma_inverse_word_valid(g1, data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(inverse_word(g1), g2, data.p1.num_generators);
+    crate::presentation::lemma_equiv_symmetric(data.p1,
+        concat(inverse_word(g1), g2), empty_word());
+    assert(in_generated_subgroup(data.p1, a_words(data), empty_word()));
+    lemma_in_subgroup_equiv(data.p1, a_words(data),
+        empty_word(), concat(inverse_word(g1), g2));
+}
+
+/// Helper: derive target1 ≡ target2 from g1 ≡ g2 (using coset rep invariance).
+proof fn lemma_targets_equiv(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+    ensures ({
+        let target1 = concat(inverse_word(left_canonical_rep(data, g1)), g1);
+        let target2 = concat(inverse_word(left_canonical_rep(data, g2)), g2);
+        equiv_in_presentation(data.p1, target1, target2)
+    }),
+{
+    let rep1 = left_canonical_rep(data, g1);
+    let rep2 = left_canonical_rep(data, g2);
+    // rep1 =~= rep2 by coset invariance
+    lemma_left_rep_props(data, g1);
+    lemma_left_rep_props(data, g2);
+    lemma_same_left_coset_from_equiv(data, g1, g2);
+    lemma_left_rep_coset_invariant(data, g1, g2);
+    // rep1 =~= rep2, so inverse_word(rep1) =~= inverse_word(rep2)
+    // equiv(inv(rep1), inv(rep2)) by refl (same word)
+    crate::presentation::lemma_equiv_refl(data.p1, inverse_word(rep1));
+    // target1 ≡ target2 by equiv_concat
+    crate::presentation_lemmas::lemma_equiv_concat(
+        data.p1, inverse_word(rep1), inverse_word(rep2), g1, g2);
+}
+
+/// Min h-length is invariant under G₁-equivalence of the input word.
+/// If g1 ≡ g2 in G₁, then left_h_min_len(g1) == left_h_min_len(g2).
+proof fn lemma_left_h_min_len_equiv_invariant(
+    data: AmalgamatedData, g1: Word, g2: Word,
+    h_witness1: Word, h_witness2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+        word_valid(h_witness1, k_size(data)),
+        word_valid(h_witness2, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness1),
+            concat(inverse_word(left_canonical_rep(data, g1)), g1)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness2),
+            concat(inverse_word(left_canonical_rep(data, g2)), g2)),
+    ensures
+        left_h_min_len(data, g1) == left_h_min_len(data, g2),
+{
+    let target1 = concat(inverse_word(left_canonical_rep(data, g1)), g1);
+    let target2 = concat(inverse_word(left_canonical_rep(data, g2)), g2);
+
+    // target1 ≡ target2
+    lemma_targets_equiv(data, g1, g2);
+
+    // Establish satisfiability for both sides
+    assert(has_left_h_witness_of_len(data, target1, h_witness1.len() as nat));
+    assert(has_left_h_witness_of_len(data, target2, h_witness2.len() as nat));
+    let pred1 = |l: nat| has_left_h_witness_of_len(data, target1, l);
+    let pred2 = |l: nat| has_left_h_witness_of_len(data, target2, l);
+    assert(pred1(h_witness1.len() as nat));
+    assert(pred2(h_witness2.len() as nat));
+    lemma_nat_well_ordering(pred1, h_witness1.len() as nat);
+    lemma_nat_well_ordering(pred2, h_witness2.len() as nat);
+
+    let l1 = left_h_min_len(data, g1);
+    let l2 = left_h_min_len(data, g2);
+
+    // Transfer: has_witness(target1, l1) → has_witness(target2, l1)
+    lemma_h_witness_transfer(data, target1, target2, l1);
+    // Transfer: has_witness(target2, l2) → has_witness(target1, l2)
+    lemma_left_rep_props(data, g1);
+    crate::word::lemma_inverse_word_valid(left_canonical_rep(data, g1), data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(inverse_word(left_canonical_rep(data, g1)), g1, data.p1.num_generators);
+    crate::presentation::lemma_equiv_symmetric(data.p1, target1, target2);
+    lemma_h_witness_transfer(data, target2, target1, l2);
+
+    // Bidirectional ≥
+    lemma_no_pred_below_implies_ge(pred2, l2, l1);
+    lemma_no_pred_below_implies_ge(pred1, l1, l2);
+}
+
+/// Min h-lex rank is invariant under G₁-equivalence.
+proof fn lemma_left_h_min_lex_equiv_invariant(
+    data: AmalgamatedData, g1: Word, g2: Word,
+    h_witness1: Word, h_witness2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+        word_valid(h_witness1, k_size(data)),
+        word_valid(h_witness2, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness1),
+            concat(inverse_word(left_canonical_rep(data, g1)), g1)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness2),
+            concat(inverse_word(left_canonical_rep(data, g2)), g2)),
+    ensures
+        left_h_min_lex(data, g1) == left_h_min_lex(data, g2),
+{
+    let target1 = concat(inverse_word(left_canonical_rep(data, g1)), g1);
+    let target2 = concat(inverse_word(left_canonical_rep(data, g2)), g2);
+
+    // target1 ≡ target2
+    lemma_targets_equiv(data, g1, g2);
+
+    // l1 == l2
+    lemma_left_h_min_len_equiv_invariant(data, g1, g2, h_witness1, h_witness2);
+    let l = left_h_min_len(data, g1);
+
+    // Establish lex satisfiability for both
+    lemma_left_h_min_lex_satisfiable(data, g1, h_witness1);
+    lemma_left_h_min_lex_satisfiable(data, g2, h_witness2);
+
+    let r1 = left_h_min_lex(data, g1);
+    let r2 = left_h_min_lex(data, g2);
+
+    // Transfer: has_rank(target1, l, r1) → has_rank(target2, l, r1)
+    assert(is_min_h_lex(data, target1, l, r1));
+    assert(is_min_h_lex(data, target2, l, r2));
+    lemma_h_witness_rank_transfer(data, target1, target2, l, r1);
+    lemma_left_rep_props(data, g1);
+    crate::word::lemma_inverse_word_valid(left_canonical_rep(data, g1), data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(inverse_word(left_canonical_rep(data, g1)), g1, data.p1.num_generators);
+    crate::presentation::lemma_equiv_symmetric(data.p1, target1, target2);
+    lemma_h_witness_rank_transfer(data, target2, target1, l, r2);
+
+    // Bidirectional ≥
+    assert(no_smaller_h_lex(data, target1, l, r1));
+    assert(no_smaller_h_lex(data, target2, l, r2));
+    lemma_no_smaller_h_lex_implies_ge(data, target2, l, r2, r1);
+    lemma_no_smaller_h_lex_implies_ge(data, target1, l, r1, r2);
+}
+
+/// Extract all four choose properties from left_h_part.
+proof fn lemma_left_h_part_full_props(
+    data: AmalgamatedData, g: Word, h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(inverse_word(left_canonical_rep(data, g)), g)),
+    ensures ({
+        let rep = left_canonical_rep(data, g);
+        let h = left_h_part(data, g);
+        let target = concat(inverse_word(rep), g);
+        &&& word_valid(h, k_size(data))
+        &&& h.len() == left_h_min_len(data, g)
+        &&& word_lex_rank_base(h, h_lex_base(data)) == left_h_min_lex(data, g)
+        &&& equiv_in_presentation(data.p1,
+                apply_embedding(a_words(data), h), target)
+    }),
+{
+    lemma_left_h_part_props(data, g, h_witness);
+    lemma_left_h_min_lex_satisfiable(data, g, h_witness);
+}
+
+/// H-part is invariant under G₁-equivalence:
+/// if g1 ≡ g2 in G₁, then left_h_part(g1) =~= left_h_part(g2).
+pub proof fn lemma_left_h_part_equiv_invariant(
+    data: AmalgamatedData, g1: Word, g2: Word,
+    h_witness1: Word, h_witness2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+        word_valid(h_witness1, k_size(data)),
+        word_valid(h_witness2, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness1),
+            concat(inverse_word(left_canonical_rep(data, g1)), g1)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness2),
+            concat(inverse_word(left_canonical_rep(data, g2)), g2)),
+    ensures
+        left_h_part(data, g1) =~= left_h_part(data, g2),
+{
+    // min len and min lex are both invariant
+    lemma_left_h_min_len_equiv_invariant(data, g1, g2, h_witness1, h_witness2);
+    lemma_left_h_min_lex_equiv_invariant(data, g1, g2, h_witness1, h_witness2);
+    let l = left_h_min_len(data, g1);
+    let r = left_h_min_lex(data, g1);
+
+    // Both h-parts satisfy: len == l, lex_rank == r
+    lemma_left_h_part_full_props(data, g1, h_witness1);
+    lemma_left_h_part_full_props(data, g2, h_witness2);
+    let h1 = left_h_part(data, g1);
+    let h2 = left_h_part(data, g2);
+
+    // By lex rank injectivity on K-words
+    let base = h_lex_base(data);
+    assert forall|k: int| 0 <= k < h1.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] h1[k]) < base
+    by {
+        assert(symbol_valid(h1[k], k_size(data)));
+        match h1[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    assert forall|k: int| 0 <= k < h2.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] h2[k]) < base
+    by {
+        assert(symbol_valid(h2[k], k_size(data)));
+        match h2[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    assert(base > 0) by { assert(h_lex_base(data) == 2 * k_size(data) + 1); }
+    lemma_word_lex_rank_base_injective(h1, h2, base);
 }
 
 } // verus!
