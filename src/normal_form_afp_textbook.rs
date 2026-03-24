@@ -672,8 +672,91 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
 }
 
 // ============================================================
-// Part H2: Identity state lemmas for canonical reps
+// Part H2: Converse faithfulness
 // ============================================================
+
+/// The choose predicate for left_canonical_rep is satisfiable at g.
+/// This ensures the choose result has the expected properties.
+proof fn lemma_left_rep_satisfiable(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures ({
+        let rep = left_canonical_rep(data, g);
+        &&& word_valid(rep, data.p1.num_generators)
+        &&& same_left_coset(data, g, rep)
+    }),
+{
+    let n1 = data.p1.num_generators;
+    // g is in its own coset
+    lemma_same_left_coset_reflexive(data, g);
+
+    // Show the choose predicate is satisfiable: g is a candidate (not necessarily shortlex-min,
+    // but the existence of ANY candidate ensures the choose returns a valid result).
+    // g satisfies: word_valid(g, n1) && same_left_coset(g, g).
+    // From shortlex well-ordering: the minimum in the coset exists.
+    // The choose returns this minimum, which also satisfies word_valid && same_left_coset.
+
+    // Assert that at least g satisfies the weaker predicate (without shortlex-min):
+    assert(word_valid(g, n1) && same_left_coset(data, g, g));
+    // The choose result satisfies the full predicate (including shortlex-min).
+    // In particular, it satisfies the weaker conditions.
+}
+
+/// Converse: if same_left_coset(g, ε) and left_h_part(g) = ε, then g ≡ ε.
+///
+/// This relies on the left_h_part choose being satisfiable when g is in the
+/// subgroup coset. When the predicate is satisfiable and the result is ε:
+///   equiv(p1, embed_a(ε), concat(inv(ε), g)) = equiv(p1, ε, g).
+///
+/// Proving satisfiability requires: in_generated_subgroup → exists K-word
+/// witness. This is the key infrastructure lemma connecting the two notions
+/// of subgroup membership.
+///
+/// For now, this requires the satisfiability as a precondition.
+/// TODO: prove satisfiability from in_left_subgroup.
+pub proof fn lemma_g1_decompose_converse(
+    data: AmalgamatedData, g: Word,
+    // The K-word witness: there exists h0 with embed_a(h0) ≡ g
+    h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        left_canonical_rep(data, g) =~= empty_word(),
+        left_h_part(data, g) =~= empty_word(),
+        // Witness: the choose predicate for left_h_part is satisfiable
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1, apply_embedding(a_words(data), h_witness), g),
+    ensures
+        equiv_in_presentation(data.p1, g, empty_word()),
+{
+    // left_h_part(g) is a choose with a satisfiable predicate (h_witness works).
+    // The choose returned ε, so ε satisfies the predicate:
+    //   equiv(p1, embed_a(ε), concat(inv(rep), g))
+    // With rep = ε: equiv(p1, ε, g).
+    // Hence g ≡ ε.
+
+    // The key: with a satisfiable choose, the result satisfies the predicate.
+    // embed_a(ε) = ε. concat(inv(ε), g) =~= g.
+    // So: equiv(p1, ε, g) holds.
+    reveal(presentation_valid);
+    assert(apply_embedding(a_words(data), empty_word()) =~= empty_word());
+    assert(inverse_word(empty_word()) =~= empty_word()) by {
+        assert(inverse_word(empty_word()).len() == 0);
+    }
+    assert(concat(inverse_word(left_canonical_rep(data, g)), g) =~= g) by {
+        assert(inverse_word(left_canonical_rep(data, g)) =~= empty_word());
+        let c = concat(empty_word(), g);
+        assert(c.len() == g.len());
+        assert forall|k: int| 0 <= k < g.len() implies c[k] == g[k] by {}
+    }
+    // The choose returned ε with a satisfiable predicate → ε satisfies it
+    // equiv(p1, embed_a(ε), target) where target =~= g
+    // Since h_witness works, the predicate IS satisfiable
+    // So the choose result (ε) satisfies: equiv(p1, ε, g)
+    crate::presentation::lemma_equiv_symmetric(data.p1, g, empty_word());
+}
 
 /// The empty word is shortlex-minimal: nothing is shortlex-smaller.
 /// (Already proved in shortlex.rs as lemma_empty_shortlex_minimal.)
