@@ -1496,11 +1496,12 @@ pub open spec fn relator_acts_trivially(
 pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Syllable>) -> bool {
     word_valid(h, k_size(data))
     && left_h_part(data, apply_embedding(a_words(data), h)) =~= h
-    // Left syllable reps are canonical right A-coset reps and word_valid in G₁
+    // Left syllable reps are canonical, word_valid, and non-identity (textbook reduced sequence)
     && (forall|j: int| #![trigger syls[j]]
         0 <= j < syls.len() && syls[j].is_left ==> (
         word_valid(syls[j].rep, data.p1.num_generators)
-        && a_rcoset_rep(data, syls[j].rep) =~= syls[j].rep))
+        && a_rcoset_rep(data, syls[j].rep) =~= syls[j].rep
+        && !(syls[j].rep =~= empty_word())))
 }
 
 /// The action of a single symbol preserves canonical state (h is word_valid for k).
@@ -5236,92 +5237,71 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
         + syls.drop_first();
     lemma_act_word_single(data, inv_s, combined_h, new_syls);
 
-    // Merge helper: [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁
-    // Need c1 word_valid
-    // c1 = syls.first().rep is word_valid from is_canonical_state
+    // c1 word_valid and c1 ≠ ε from is_canonical_state
     assert(word_valid(c1, n1));
+    assert(!(c1 =~= e));
     crate::word::lemma_concat_word_valid(product, c1, n1);
-    lemma_inv_s_rcoset_merge_equiv(data, s, h, c1);
 
-    // [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁
-    // Inverse step enters merge (merged_rep ≠ ε, first syl left)
-    // Full product of inverse merge = [inv(s)]·embed_a(combined_h)·merged_rep = embed_a(h)·c₁
-
-    // Decompose embed_a(h)·c₁: since c₁ is canonical right A-coset rep and h is canonical:
-    assert(a_rcoset_rep(data, c1) =~= c1); // from is_canonical_state
-    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
-    // a_rcoset_rep(embed_a(h)·c₁) =~= c₁
-    // a_rcoset_h(embed_a(h)·c₁) =~= h
-
-    // Need: merged_rep for inverse step ≠ ε (so merge is entered)
-    // The inverse step's product_inv = [inv(s)]·embed_a(combined_h)
-    // Its rcoset rep needs to be ≠ ε. Use lemma_inv_step_rep_nonzero on full_product.
-    // Wait, lemma_inv_step_rep_nonzero works for product = [s]·embed_a(h), not full_product.
-    // For subcase C2, the forward merge gives merged_rep ≠ ε, and the inverse merge
-    // should absorb because embed_a(h)·c₁ decomposes with rep = c₁ ≠ ε (since c₁ was non-trivial).
-    // Actually, the inverse step sees [Syl(left, merged_rep)] + syls.drop_first().
-    // After computing product_inv = [inv(s)]·embed_a(combined_h):
-    // - If rep_inv = ε: result = (a_rcoset_h(product_inv), new_syls) — wrong syllables
-    // - If rep_inv ≠ ε, first left → merge: full = product_inv·merged_rep ≡ embed_a(h)·c₁
-    //   a_rcoset_rep(full) = c₁ ≠ ε → result = (h, [Syl(left, c₁)] + syls.drop_first())
-    //   But syls = [Syl(left, c₁)] + syls.drop_first()! So result = (h, syls). ✓
-
-    // Use lemma_act_left_sym_merge_absorbed... wait, merged_rep of the DECOMPOSITION = c₁ ≠ ε.
-    // So the merge does NOT absorb — it replaces the first syllable.
-    // Need a different helper: merge with non-zero merged_rep.
-
-    // Actually, the inverse step enters the merge case. full_product of the merge = product_inv·merged_rep.
-    // And a_rcoset_rep(product_inv·merged_rep) ≡ a_rcoset_rep(embed_a(h)·c₁) = c₁ ≠ ε.
-    // So the merge result is (a_rcoset_h(embed_a(h)·c₁), [Syl(left, c₁)] + syls.drop_first())
-    //                       = (h, [Syl(left, c₁)] + syls.drop_first())
-    //                       = (h, syls)  [since syls.first() = Syl(left, c₁)]
-
-    // Forward step: merge_replaced gives (combined_h, [Syl(left, merged_rep)] + rest)
+    // Forward step: merge_replaced
     lemma_act_left_sym_merge_replaced(data, s, h, syls);
 
-    // Help Z3 with generator_index
+    // [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁
+    lemma_inv_s_rcoset_merge_equiv(data, s, h, c1);
+
+    // Decompose embed_a(h)·c₁: rep = c₁, h-part = h (textbook key property)
+    assert(a_rcoset_rep(data, c1) =~= c1);
+    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
+
+    // generator_index for dispatch
     assert(generator_index(inv_s) == generator_index(s)) by {
         match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
     }
 
-    // Inverse step: act_left_sym(inv_s, combined_h, new_syls)
-    // product_inv = [inv(s)]·embed_a(combined_h)
-    // Need rep_inv ≠ ε → use full_product version of rep_nonzero
-    // Actually: use the merge_replaced helper for the INVERSE step too
-    // The inverse step's full_product = product_inv·merged_rep
-    // This ≡ embed_a(h)·c₁ (from lemma_inv_s_rcoset_merge_equiv)
-    // a_rcoset_rep(embed_a(h)·c₁) = c₁ ≠ ε (since c₁ is a non-trivial coset rep)
-    // So the inverse merge replaces with c₁
-
-    // Need: c₁ ≠ ε (it's a left syllable rep, which should be non-identity)
-    // Also need: a_rcoset_rep(product_inv) ≠ ε for the merge to be entered
-    // Use lemma_inv_step_rep_nonzero on full_product (since merged_rep ≠ ε)
-    // Wait — lemma_inv_step_rep_nonzero takes product = [s]·embed_a(h), not full_product.
-    // For the C2 case, the forward step's action is on full_product.
-    // The inverse step's product_inv = [inv(s)]·embed_a(combined_h).
-    // product_inv is NOT in the subgroup (since [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁ ∉ A when c₁ ≠ ε).
-
-    // For now, use the merge_replaced helper for the inverse step
+    // Setup for inverse step
     assert(new_syls.first().is_left);
     assert(new_syls.first().rep == merged_rep);
     assert(new_syls.drop_first() =~= syls.drop_first());
 
-    // Inverse merge: product_inv·merged_rep has rcoset_rep = c₁ ≠ ε
-    // The full inverse product ≡ embed_a(h)·c₁
-    // decomposition: (h, c₁)
-    // So inverse merge_replaced gives: (h, [Syl(left, c₁)] + syls.drop_first())
+    let embed_ch = apply_embedding(a_words(data), combined_h);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), combined_h, n1);
+    assert(word_valid(inv_s_word, n1)) by {
+        assert forall|k: int| 0 <= k < inv_s_word.len()
+            implies symbol_valid(#[trigger] inv_s_word[k], n1) by {
+                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            }
+    }
+    let product_inv = concat(inv_s_word, embed_ch);
+    crate::word::lemma_concat_word_valid(inv_s_word, embed_ch, n1);
+    lemma_a_rcoset_rep_props(data, full_product);
+    crate::word::lemma_concat_word_valid(product_inv, merged_rep, n1);
 
-    // syls = [Syl(left, c₁)] + syls.drop_first()
-    assert(syls.first().rep == c1);
+    // full_inv ≡ embed_a(h)·c₁ → same rcoset → rep(full_inv) =~= c₁ ≠ ε
+    let full_inv = concat(product_inv, merged_rep);
+    crate::word::lemma_concat_word_valid(embed_h, c1, n1);
+    lemma_same_a_rcoset_from_equiv(data, full_inv, concat(embed_h, c1));
+    lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
+    // a_rcoset_rep(full_inv) =~= a_rcoset_rep(embed_a(h)·c₁) =~= c₁ ≠ ε
+
+    // Case split on rep_inv
+    let rep_inv = a_rcoset_rep(data, product_inv);
+    if rep_inv =~= e {
+        // Impossible: result has new_syls (different first rep from syls)
+        assert(new_syls.len() >= 1);
+        return;
+    }
+
+    // Merge case: use merge_replaced for inverse step
+    lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
+    // Result: (a_rcoset_h(full_inv), [Syl(left, a_rcoset_rep(full_inv))] + new_syls.drop_first())
+    //       =~= (h, [Syl(left, c₁)] + syls.drop_first()) = (h, syls)
+
+    // syls reconstruction
     assert(syls =~= Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first()) by {
         assert(syls.len() == 1 + syls.drop_first().len());
         assert forall|k: int| 0 <= k < syls.len() implies
             syls[k] == (Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first())[k]
         by { if k == 0 {} else {} }
     }
-
-    // Use merge_replaced for inverse step
-    lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
 }
 
 } // verus!
