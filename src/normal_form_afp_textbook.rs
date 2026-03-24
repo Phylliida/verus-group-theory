@@ -145,12 +145,18 @@ pub open spec fn has_left_coset_word_of_len(
         && same_left_coset(data, g, w) && w.len() == l
 }
 
+/// The lex base for a given alphabet: 2*n + 1 ensures injectivity.
+pub open spec fn lex_base(data: AmalgamatedData) -> nat {
+    2 * data.p1.num_generators + 1
+}
+
 /// Does the coset contain a valid word of length l and lex rank r?
 pub open spec fn has_left_coset_word_of_len_rank(
     data: AmalgamatedData, g: Word, l: nat, r: nat,
 ) -> bool {
     exists|w: Word| word_valid(w, data.p1.num_generators)
-        && same_left_coset(data, g, w) && w.len() == l && word_lex_rank(w) == r
+        && same_left_coset(data, g, w) && w.len() == l
+        && word_lex_rank_base(w, lex_base(data)) == r
 }
 
 /// No coset word exists below length l (named recursive, avoids lambda issues).
@@ -210,7 +216,7 @@ pub open spec fn left_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
         word_valid(rep, data.p1.num_generators)
         && same_left_coset(data, g, rep)
         && rep.len() == l
-        && word_lex_rank(rep) == r
+        && word_lex_rank_base(rep, lex_base(data)) == r
 }
 
 /// Does a K-word of length l exist that embeds to the target?
@@ -950,7 +956,8 @@ proof fn lemma_left_min_coset_len_satisfiable(data: AmalgamatedData, g: Word)
     // So left_min_coset_len's choose is satisfiable → result satisfies has_left_coset_word_of_len.
 }
 
-/// left_canonical_rep(g) is in g's coset and word_valid.
+/// left_canonical_rep(g) satisfies all four choose properties:
+/// in g's coset, word_valid, correct length, correct lex rank.
 proof fn lemma_left_rep_props(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -958,11 +965,13 @@ proof fn lemma_left_rep_props(data: AmalgamatedData, g: Word)
     ensures
         same_left_coset(data, g, left_canonical_rep(data, g)),
         word_valid(left_canonical_rep(data, g), data.p1.num_generators),
+        left_canonical_rep(data, g).len() == left_min_coset_len(data, g),
+        word_lex_rank_base(left_canonical_rep(data, g), lex_base(data)) == left_min_coset_lex(data, g),
 {
     lemma_left_min_coset_len_satisfiable(data, g);
     lemma_left_min_coset_lex_satisfiable(data, g);
     // Both chooses are satisfiable → left_canonical_rep's choose is satisfiable
-    // → the result satisfies the predicate including same_left_coset and word_valid
+    // → the result satisfies all four predicate conjuncts
 }
 
 /// Converse: if same_left_coset(g, ε) and left_h_part(g) = ε, then g ≡ ε.
@@ -2521,10 +2530,11 @@ proof fn lemma_left_min_coset_lex_satisfiable(data: AmalgamatedData, g: Word)
     // has_left_coset_word_of_len(g, l) → exists w with right length
     let w: Word = choose|w: Word| word_valid(w, data.p1.num_generators)
         && same_left_coset(data, g, w) && w.len() == l;
-    // w has lex rank word_lex_rank(w)
-    assert(has_left_coset_word_of_len_rank(data, g, l, word_lex_rank(w)));
+    // w has lex rank word_lex_rank_base(w, lex_base(data))
+    let wr = word_lex_rank_base(w, lex_base(data));
+    assert(has_left_coset_word_of_len_rank(data, g, l, wr));
     assert(no_smaller_coset_lex(data, g, l, 0nat));
-    lemma_scan_min_coset_lex(data, g, l, 0, word_lex_rank(w));
+    lemma_scan_min_coset_lex(data, g, l, 0, wr);
 }
 
 /// Lex transfer: coset word at (l, r) for g2 → also for g1.
@@ -2542,7 +2552,8 @@ proof fn lemma_coset_lex_transfer(
         has_left_coset_word_of_len_rank(data, g1, l, r),
 {
     let w: Word = choose|w: Word| word_valid(w, data.p1.num_generators)
-        && same_left_coset(data, g2, w) && w.len() == l && word_lex_rank(w) == r;
+        && same_left_coset(data, g2, w) && w.len() == l
+        && word_lex_rank_base(w, lex_base(data)) == r;
     lemma_same_left_coset_transitive(data, g1, g2, w);
 }
 
@@ -2600,23 +2611,41 @@ pub proof fn lemma_left_rep_coset_invariant(
 {
     lemma_left_min_len_coset_invariant(data, g1, g2);
     lemma_left_min_lex_coset_invariant(data, g1, g2);
-    // Proved: left_min_coset_len(g1) == left_min_coset_len(g2)
-    // Proved: left_min_coset_lex(g1) == left_min_coset_lex(g2)
-    //
-    // The remaining step: same (length, lex_rank) → same word.
-    // This requires either:
-    // (a) word_lex_rank injectivity on same-length words (needs fixing the base to 2*n+1)
-    // (b) choose extensionality (same predicate extension → same result)
-    //
-    // Both (a) and (b) are mathematically true. For (a): fix word_lex_rank to use
-    // a large enough base (2*n+1 where n = data.p1.num_generators) and prove the
-    // injectivity lemma. ~40 extra lines.
-    //
-    // For now: the two key invariances (length + lex) ARE proved. The word-level
-    // connection is the final step. With an injective lex rank, this closes.
-    //
-    // TEMPORARY: take this as the last remaining gap.
-    // The full proof needs lemma_word_lex_rank_injective.
+    let l = left_min_coset_len(data, g1);
+    let r = left_min_coset_lex(data, g1);
+
+    // Both reps satisfy: len == l, lex_rank_base == r (same l and r).
+    lemma_left_rep_props(data, g1);
+    lemma_left_rep_props(data, g2);
+    let rep1 = left_canonical_rep(data, g1);
+    let rep2 = left_canonical_rep(data, g2);
+
+    // rep1.len() == l && word_lex_rank_base(rep1, base) == r
+    // rep2.len() == l && word_lex_rank_base(rep2, base) == r
+    // By lex rank injectivity: rep1 =~= rep2.
+    let base = lex_base(data);
+    // Need: symbol_to_column < base for all symbols in rep1 and rep2.
+    // word_valid(rep_i, n) means generator_index < n, so symbol_to_column < 2*n < 2*n+1 = base.
+    assert forall|k: int| 0 <= k < rep1.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rep1[k]) < base
+    by {
+        assert(symbol_valid(rep1[k], data.p1.num_generators));
+        match rep1[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    assert forall|k: int| 0 <= k < rep2.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rep2[k]) < base
+    by {
+        assert(symbol_valid(rep2[k], data.p1.num_generators));
+        match rep2[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    // The chooses are satisfiable (from left_rep_props).
+    // So rep1 and rep2 satisfy their predicates, including lex rank == r.
+    // Explicitly assert the lex rank equality:
+    assert(word_lex_rank_base(rep1, base) == r);
+    assert(word_lex_rank_base(rep2, base) == r);
+    assert(word_lex_rank_base(rep1, base) == word_lex_rank_base(rep2, base));
+    assert(base > 0) by { assert(lex_base(data) == 2 * data.p1.num_generators + 1); }
+    lemma_word_lex_rank_base_injective(rep1, rep2, base);
 }
 
 // ============================================================
