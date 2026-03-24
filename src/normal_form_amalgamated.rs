@@ -1349,27 +1349,23 @@ proof fn lemma_h_relator(
         // The composition of all symbols = phi(trace_word(ct2, phi_inv(h), unshifted_r)).
         // By relator_closed(ct2, p2): trace_word(ct2, phi_inv(h), unshifted_r) == Some(phi_inv(h)).
         // So the result = phi(phi_inv(h)) = h. ✓
-        //
-        // TODO: formalize by defining an "h_act_g2_is_trace" lemma analogous to h_act_is_trace.
-        // For now: this is a straightforward but tedious G₂ analog.
-        assert(false); // TODO: G₂ relator case (symmetric to G₁)
+        // G₂ relator: call lemma_h_act_g2_relator
+        let g2_idx = (relator_index - data.p1.relators.len()) as nat;
+        lemma_h_act_g2_relator(ct1, ct2, phi, phi_inv, data, g2_idx, inverted, h);
+        // The ensures of lemma_h_act_g2_relator gives:
+        // h_act_word(shift(p2.relators[g2_idx]), h) == h (for non-inverted)
+        // h_act_word(inverse(shift(p2.relators[g2_idx])), h) == h (for inverted)
+        // We need: h_act_word(r, h) == h where r = get_relator(afp, relator_index, inverted).
+        // r is the AFP relator at the G₂ relator position.
+        // Need to connect r to shift(p2.relators[g2_idx]) or its inverse.
+        // By the AFP relator structure: afp.relators[relator_index] == shift(p2.relators[g2_idx]).
+        // get_relator either returns it or its inverse.
     } else {
         // Identification relator: u_i · inv(shift(v_i)).
-        // u_i is a G₁-word. inv(shift(v_i)) is a G₂-word.
-        // h_act_word(r, h) processes u_i then inv(shift(v_i)).
-        //
-        // u_i part: by h_act_is_trace, gives trace_word(ct1, h, u_i_or_inv).
-        // For get_relator with inverted=false: relator = u_i · inv(shift(v_i)).
-        //   u_i traces in ct1 from h → h' = trace(ct1, h, u_i).
-        //   Then inv(shift(v_i)) traces in ct2 from phi_inv(h') → end.
-        //   After phi: result = phi(end).
-        //   By the phi compatibility: phi(trace(ct2, phi_inv(h'), inv(v_i)))
-        //     = trace(ct1, h', inv(u_i))  [phi commutes with traces]
-        //     = h  [by trace_inverse_word since trace(ct1, h, u_i) = h']
-        //
-        // This uses the phi compatibility property from valid_phi.
-        // TODO: formalize this chain of equalities.
-        assert(false); // TODO: identification relator case
+        // This is the KEY case using the phi homomorphism.
+        // TODO: implement using h_act_concat to split u_i from inv(shift(v_i)),
+        // then h_act_is_trace for u_i part and h_act_g2_phi_inv_trace for v_i part.
+        assert(false); // TODO: identification relator
     }
 }
 
@@ -1559,61 +1555,100 @@ proof fn lemma_h_act_bound(
     }
 }
 
-/// For a pure G₂-word (shifted as `sw`, unshifted as `uw`):
-/// phi_inv(h_act_word(sw, h)) == trace_word(ct2, phi_inv(h), uw) (when Some).
+/// For a pure G₂-word (shifted `sw`, corresponding unshifted `uw`):
+/// phi_inv(h_act_word(sw, h)) matches the ct2-trace of phi_inv(h) through uw.
 ///
-/// Each G₂ symbol's action: h → phi(ct_lookup(ct2, phi_inv(h), col)).
-/// So phi_inv(h') = ct_lookup(ct2, phi_inv(h), col) — exactly one ct2 trace step.
+/// Specifically: phi_inv(result) == trace_word(ct2, phi_inv(h), uw).unwrap().
+/// And result < ct1.num_cosets.
 proof fn lemma_h_act_g2_phi_inv_trace(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
-    n1: nat,
-    w: Word,
+    data: AmalgamatedData,
+    sw: Word,  // shifted G₂-word
+    uw: Word,  // unshifted (corresponding symbols in ct2's generators)
     h: nat,
 )
     requires
-        forall|k: int| 0 <= k < w.len() ==> generator_index(#[trigger] w[k]) >= n1,
-        forall|k: int| 0 <= k < w.len() ==> generator_index(#[trigger] w[k]) < 2 * n1,
-        n1 == ct1.num_gens,
-        n1 == ct2.num_gens,
-        crate::todd_coxeter::coset_table_wf(ct2),
-        crate::finite::coset_table_complete(ct2),
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
         h < ct1.num_cosets,
-        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
-        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
-        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b,
-        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a,
+        sw.len() == uw.len(),
+        // sw is the shift of uw
+        forall|k: int| 0 <= k < sw.len() ==> sw[k] == shift_symbol(#[trigger] uw[k], data.p1.num_generators),
+        // uw is word_valid for p2
+        word_valid(uw, data.p2.num_generators),
     ensures
-        // The key: phi_inv of the action result tracks through ct2
-        h_act_word(ct1, ct2, phi, phi_inv, n1, w, h) < ct1.num_cosets,
-        phi_inv(h_act_word(ct1, ct2, phi, phi_inv, n1, w, h)) < ct2.num_cosets,
-    decreases w.len(),
+        h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, sw, h) < ct1.num_cosets,
+        crate::todd_coxeter::trace_word(ct2, phi_inv(h), uw)
+            == Some(phi_inv(h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, sw, h))),
+    decreases sw.len(),
 {
     reveal(crate::todd_coxeter::coset_table_wf);
     reveal(crate::finite::coset_table_complete);
+    let n1 = data.p1.num_generators;
 
-    if w.len() == 0 {
+    if sw.len() == 0 {
+        assert(uw.len() == 0);
+        assert(sw =~= Seq::<Symbol>::empty());
+        assert(uw =~= Seq::<Symbol>::empty());
+        assert(h_act_word(ct1, ct2, phi, phi_inv, n1, sw, h) == h);
+        assert(crate::todd_coxeter::trace_word(ct2, phi_inv(h), uw) == Some(phi_inv(h)));
     } else {
-        let s = w.first();
-        let rest = w.drop_first();
-        assert forall|k: int| 0 <= k < rest.len()
-            implies generator_index(#[trigger] rest[k]) >= n1 && generator_index(rest[k]) < 2 * n1
-        by { assert(rest[k] == w[k + 1]); }
+        let s = sw.first();
+        let s_uw = uw.first();
+        let rest_sw = sw.drop_first();
+        let rest_uw = uw.drop_first();
 
-        let s_local = unshift_sym(s, n1);
-        let col = sym_col(s_local);
+        assert(s == shift_symbol(s_uw, n1));
+        assert(symbol_valid(s_uw, data.p2.num_generators));
+        assert(word_valid(rest_uw, data.p2.num_generators)) by {
+            assert forall|k: int| 0 <= k < rest_uw.len()
+                implies symbol_valid(rest_uw[k], data.p2.num_generators)
+            by { assert(rest_uw[k] == uw[k + 1]); }
+        }
+        assert forall|k: int| 0 <= k < rest_sw.len()
+            implies rest_sw[k] == shift_symbol(#[trigger] rest_uw[k], n1)
+        by { assert(rest_sw[k] == sw[k + 1]); assert(rest_uw[k] == uw[k + 1]); }
+
+        // s is a G₂ symbol: generator_index(s) >= n1
+        assert(generator_index(s) >= n1) by {
+            match s_uw {
+                Symbol::Gen(i) => { assert(s == Symbol::Gen(i + n1)); }
+                Symbol::Inv(i) => { assert(s == Symbol::Inv(i + n1)); }
+            }
+        }
+
+        // h_act_sym(s, h) = phi(ct_lookup(ct2, phi_inv(h), sym_col(unshift(s))))
+        // unshift(s) = s_uw
+        assert(unshift_sym(s, n1) == s_uw) by {
+            match s_uw {
+                Symbol::Gen(i) => { assert(s == Symbol::Gen(i + n1)); }
+                Symbol::Inv(i) => { assert(s == Symbol::Inv(i + n1)); }
+            }
+        }
+
+        let col = sym_col(s_uw);
         assert(col < 2 * ct2.num_gens) by {
-            match s_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            match s_uw { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
         }
         let h_g2 = phi_inv(h);
         let next_g2 = ct_lookup(ct2, h_g2, col);
         assert(next_g2 < ct2.num_cosets);
         let next_h = phi(next_g2);
         assert(next_h < ct1.num_cosets);
+        assert(phi_inv(next_h) == next_g2);
 
-        lemma_h_act_g2_phi_inv(ct1, ct2, phi, phi_inv, n1, rest, next_h);
+        // IH on rest
+        lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data, rest_sw, rest_uw, next_h);
+
+        // trace_word(ct2, h_g2, uw) unfolds:
+        // col = symbol_to_column(uw.first()) = sym_col(s_uw) = col
+        // ct2.table[h_g2][col] is Some(next_g2) [by complete+wf]
+        assert(ct2.table[h_g2 as int][col as int] is Some);
+        assert(ct2.table[h_g2 as int][col as int] == Some(next_g2));
+        // trace_word(ct2, h_g2, uw) = trace_word(ct2, next_g2, rest_uw)
+        assert(crate::todd_coxeter::symbol_to_column(uw.first()) == col);
     }
 }
 
@@ -1657,6 +1692,15 @@ proof fn lemma_h_act_g2_relator(
     let r = if inverted { inverse_word(shifted) } else { shifted };
 
     // For the non-inverted case: use h_act_g2_phi_inv_trace on the shifted relator
+    // Prove preconditions for lemma_h_act_g2_phi_inv_trace
+    // 1. shift_word(raw, n1)[k] == shift_symbol(raw[k], n1) — by definition of shift_word
+    assert forall|k: int| 0 <= k < shifted.len()
+        implies shifted[k] == shift_symbol(#[trigger] raw[k], n1)
+    by {}
+    // 2. word_valid(raw, data.p2.num_generators) — from presentation_valid(p2)
+    reveal(presentation_valid);
+    assert(word_valid(raw, data.p2.num_generators));
+
     if !inverted {
         lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data, shifted, raw, h);
         // Now: phi_inv(h_act_word(shifted, h)) == match trace_word(ct2, phi_inv(h), raw) { Some(v) => v, None => phi_inv(h) }
@@ -1689,8 +1733,14 @@ proof fn lemma_h_act_g2_relator(
         // inverse_word(shift_word(raw, n1)) =~= shift_word(inverse_word(raw), n1)
         // So r =~= shift_word(inverse_word(raw), n1)
 
+        let inv_raw = inverse_word(raw);
+        crate::word::lemma_inverse_word_valid(raw, data.p2.num_generators);
+        let shifted_inv = shift_word(inv_raw, n1);
+        assert forall|k: int| 0 <= k < shifted_inv.len()
+            implies shifted_inv[k] == shift_symbol(#[trigger] inv_raw[k], n1)
+        by {}
         lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data,
-            shift_word(inverse_word(raw), n1), inverse_word(raw), h);
+            shifted_inv, inv_raw, h);
         // phi_inv(h_act_word(shift_word(inverse_word(raw), n1), h))
         //   == trace(ct2, phi_inv(h), inverse_word(raw)) == phi_inv(h)
     }
