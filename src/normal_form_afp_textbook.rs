@@ -1968,20 +1968,36 @@ proof fn lemma_reverse_invert_is_inverse(
         //   = concat_all(rif_rest ++ [inv_first])  [by def of reverse_invert_factors]
         //   =~= concat(concat_all(rif_rest), concat_all([inv_first]))  [by concat_all_append]
         //   =~= concat(concat_all(rif_rest), inv_first)  [concat_all of singleton]
-        // Help Z3 connect concat_all of singleton to the element:
+        // Key =~= chain for the postcondition:
+        // LHS of postcondition: concat_all(reverse_invert_factors(factors))
+        // reverse_invert_factors(factors) = rif_rest ++ [inv_first] by definition
+        // concat_all_append gave:
+        //   concat_all(rif_rest ++ singleton) =~= concat(concat_all(rif_rest), concat_all(singleton))
+        // concat_all(singleton) where singleton = [inv_first]:
         let singleton = Seq::new(1, |_i: int| inv_first);
+        assert(singleton.len() == 1);
         assert(singleton.first() == inv_first);
-        assert(singleton.drop_first().len() == 0);
-        // concat_all([inv_first]) = concat(inv_first, concat_all([])) = concat(inv_first, ε) =~= inv_first
+        let singleton_rest = singleton.drop_first();
+        assert(singleton_rest.len() == 0);
+        assert(concat_all(singleton_rest) =~= empty_word());
+        // concat_all(singleton) = concat(singleton.first(), concat_all(singleton.drop_first()))
+        //                       = concat(inv_first, ε)
+        assert(concat(inv_first, empty_word()) =~= inv_first) by {
+            let c = concat(inv_first, empty_word());
+            assert(c.len() == inv_first.len());
+            assert forall|k: int| 0 <= k < c.len() implies c[k] == inv_first[k] by {}
+        }
+        // So: LHS =~= concat(concat_all(rif_rest), inv_first)
 
-        // So: concat_all(rif_rest ++ [inv_first]) =~= concat(concat_all(rif_rest), inv_first)
-        //     approximately (via concat_all_append + singleton evaluation)
+        // RHS of postcondition: inverse_word(concat_all(factors))
+        // = inverse_word(concat(first, concat_all(rest))) [concat_all unfolds]
+        // =~= concat(inverse_word(concat_all(rest)), inv_first) [from inverse_concat]
 
-        // And: inverse_word(concat(first, concat_all(rest))) =~= concat(inv(concat_all(rest)), inv_first)
-        //     from inverse_concat
-
-        // The equiv_concat_left result matches between these two expressions.
-        // Z3 should now connect through =~= substitution.
+        // equiv_concat_left gave:
+        //   equiv(concat(concat_all(rif_rest), inv_first), concat(inv(concat_all(rest)), inv_first))
+        // LHS =~= postcondition LHS (shown above)
+        // RHS =~= postcondition RHS (from inverse_concat)
+        // So: equiv(postcondition LHS, postcondition RHS). QED.
         return;
     }
 }
