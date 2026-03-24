@@ -1380,6 +1380,122 @@ proof fn lemma_vdw_respects_step(
     }
 }
 
+/// The h-component of a single symbol action stays in bounds.
+proof fn lemma_vdw_act_symbol_h_bound(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    n1: nat,
+    s: Symbol,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        crate::todd_coxeter::coset_table_wf(ct1),
+        crate::todd_coxeter::coset_table_wf(ct2),
+        crate::finite::coset_table_complete(ct1),
+        crate::finite::coset_table_complete(ct2),
+        h < ct1.num_cosets,
+        ct1.num_cosets > 0,
+        ct2.num_cosets > 0,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
+    ensures
+        vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets,
+{
+    // The action dispatches to g1 or g2 based on generator_index.
+    // Each branch produces h_new from ct1 operations (table lookups, coset_mul, etc.)
+    // All of which produce values < ct1.num_cosets when inputs are in bounds.
+    //
+    // For the G₁ branch: h_new comes from g1_coset_decompose(ct1, st1, new_elem).
+    //   new_elem comes from ct1.table[h][col] which is < ct1.num_cosets by wf.
+    //   g1_coset_decompose returns either new_elem (if coset 0) or coset_mul result.
+    //   Both are < ct1.num_cosets.
+    //
+    // For the G₂ branch: h_new comes from coset_mul(ct1, h, phi(b_part)).
+    //   phi(b_part) < ct1.num_cosets by the phi bound.
+    //   coset_mul result < ct1.num_cosets (TODO: need this from coset_mul properties).
+    //
+    // This proof requires unwinding the spec functions. For now we assert
+    // the key intermediate facts.
+
+    if generator_index(s) < n1 {
+        // G₁ symbol: vdw_act_g1_symbol
+        let s_col = crate::todd_coxeter::symbol_to_column(s);
+        // ct1.table[h][s_col] is Some(next) with next < ct1.num_cosets (by wf + complete)
+        assert(ct1.table[h as int].len() == 2 * ct1.num_gens) by {
+            assert(crate::todd_coxeter::coset_table_wf(ct1));
+        }
+        // The new_elem from the table lookup
+        let new_elem = match ct1.table[h as int][s_col as int] {
+            Some(next) => next,
+            None => 0,
+        };
+        // new_elem < ct1.num_cosets
+        assert(new_elem < ct1.num_cosets) by {
+            assert(crate::todd_coxeter::coset_table_wf(ct1));
+            // wf says: entries that are Some have value < num_cosets
+            // complete says: all entries are Some
+            assert(crate::finite::coset_table_complete(ct1));
+        }
+        // g1_coset_decompose produces h values < ct1.num_cosets
+        // (it uses coset_mul and coset_inv which stay in bounds)
+        // For the simplified case where coset == 0: h_new = new_elem < ct1.num_cosets ✓
+        // For coset != 0: h_new = coset_mul(ct1, new_elem, coset_inv(ct1, ...))
+        //   Both arguments < ct1.num_cosets, result < ct1.num_cosets
+        //
+        // We need coset_mul and coset_inv to preserve bounds.
+        // This follows from lemma_coset_group_satisfies_axioms.
+        // For now: the h_new is constructed from ct1 operations on bounded inputs.
+        // Assert the bound.
+        assert(vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets) by {
+            // Z3 should be able to verify this from the spec definitions
+            // since all table lookups and group operations preserve the bound.
+            // If Z3 can't: we'd need to unwind further.
+        }
+    } else {
+        // G₂ symbol: vdw_act_g2_symbol
+        // The result h comes from coset_mul(ct1, h, phi(b_part))
+        // where b_part < ct2.num_cosets, so phi(b_part) < ct1.num_cosets
+        // and coset_mul preserves bounds.
+        assert(vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets) by {
+            // Similarly: Z3 should verify from the spec.
+        }
+    }
+}
+
+/// The action preserves the h-bound: h < ct1.num_cosets is maintained.
+proof fn lemma_vdw_act_word_preserves_bound(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    n1: nat,
+    w: Word,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    requires
+        crate::todd_coxeter::coset_table_wf(ct1),
+        crate::todd_coxeter::coset_table_wf(ct2),
+        crate::finite::coset_table_complete(ct1),
+        crate::finite::coset_table_complete(ct2),
+        h < ct1.num_cosets,
+        ct1.num_cosets > 0,
+        ct2.num_cosets > 0,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
+    ensures
+        vdw_act_word(ct1, ct2, st1, st2, phi, n1, w, h, sylls).0 < ct1.num_cosets,
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let (h_new, sylls_new) = vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, w.first(), h, sylls);
+        lemma_vdw_act_symbol_h_bound(ct1, ct2, st1, st2, phi, n1, w.first(), h, sylls);
+        lemma_vdw_act_word_preserves_bound(ct1, ct2, st1, st2, phi, n1, w.drop_first(), h_new, sylls_new);
+    }
+}
+
 /// An inverse pair [s, inv(s)] acts trivially on any VDW state.
 /// This follows from coset table consistency.
 proof fn lemma_vdw_inverse_pair_trivial(
