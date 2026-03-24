@@ -1271,6 +1271,50 @@ proof fn lemma_action_preserves_canonical(
 }
 
 // ============================================================
+// Part I2: Choose property extraction
+// ============================================================
+
+/// Extract the key property of left_h_part: embed_a(h) ≡ concat(inv(rep), g) in G₁.
+/// Requires a witness K-word to prove the choose is satisfiable.
+proof fn lemma_left_h_part_props(
+    data: AmalgamatedData,
+    g: Word,
+    h_witness: Word,  // any K-word with embed ≡ target
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(inverse_word(left_canonical_rep(data, g)), g)),
+    ensures ({
+        let rep = left_canonical_rep(data, g);
+        let h = left_h_part(data, g);
+        let target = concat(inverse_word(rep), g);
+        &&& word_valid(h, k_size(data))
+        &&& equiv_in_presentation(data.p1,
+                apply_embedding(a_words(data), h), target)
+    }),
+{
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+
+    // h_witness satisfies the left_h_min_len choose predicate:
+    // has_left_h_witness_of_len(data, target, h_witness.len())
+    assert(has_left_h_witness_of_len(data, target, h_witness.len() as nat));
+
+    // By nat well-ordering: left_h_min_len's choose is satisfiable
+    let pred_h = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+
+    // left_h_min_len satisfies its predicate → has_left_h_witness_of_len(target, min_len)
+    // This existential provides a witness for left_h_part's choose.
+    // So left_h_part's choose is satisfiable → result has the properties.
+}
+
+// ============================================================
 // Part J: Per-relator triviality — inverse pairs on identity
 // ============================================================
 
@@ -1278,7 +1322,8 @@ proof fn lemma_action_preserves_canonical(
 /// Case 1: s is in the left subgroup (left_canonical_rep([s]) = ε).
 ///   After s: state = (h', []). After inv(s): product = inv(s) * embed_a(h') ≡ ε.
 ///   So the state returns to (ε, []).
-proof fn lemma_inverse_pair_identity_case1(
+/// Helper: act_sym of a G₁ symbol with rep = ε gives (h', []).
+proof fn lemma_act_sym_subgroup_identity(
     data: AmalgamatedData,
     s: Symbol,
 )
@@ -1287,70 +1332,118 @@ proof fn lemma_inverse_pair_identity_case1(
         generator_index(s) < data.p1.num_generators,
         left_canonical_rep(data,
             concat(Seq::new(1, |_i: int| s), empty_word())) =~= empty_word(),
+    ensures ({
+        let product = concat(Seq::new(1, |_i: int| s),
+            apply_embedding(a_words(data), empty_word()));
+        let h1 = left_h_part(data, product);
+        act_sym(data, s, empty_word(), Seq::<Syllable>::empty())
+            == (h1, Seq::<Syllable>::empty())
+    }),
+{
+    // act_sym dispatches to act_left_sym since gen_index(s) < n1.
+    // act_left_sym: product = concat([s], embed_a(ε)), rep = ε → (h1, [])
+}
+
+/// Inverse pair [s, inv(s)] acts trivially on identity state,
+/// when s is in the left subgroup (left_canonical_rep = ε).
+/// Takes a K-word witness for the subgroup decomposition.
+proof fn lemma_inverse_pair_identity_case1(
+    data: AmalgamatedData,
+    s: Symbol,
+    h_wit: Word,  // K-word witness: embed_a(h_wit) ≡ [s] in G₁
+)
+    requires
+        amalgamated_data_valid(data),
+        generator_index(s) < data.p1.num_generators,
+        left_canonical_rep(data,
+            concat(Seq::new(1, |_i: int| s), empty_word())) =~= empty_word(),
+        word_valid(h_wit, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_wit),
+            concat(Seq::new(1, |_i: int| s), empty_word())),
     ensures
         act_word(data, inverse_pair_word(s), empty_word(), Seq::<Syllable>::empty())
             == (empty_word(), Seq::<Syllable>::empty()),
 {
     let e = empty_word();
-    let k = k_size(data);
-    let n1 = data.p1.num_generators;
-    let w = inverse_pair_word(s);
+    let p1 = data.p1;
+    let n1 = p1.num_generators;
+    reveal(presentation_valid);
 
-    // Process first symbol s:
-    lemma_act_word_single(data, s, e, Seq::<Syllable>::empty());
-    // What does act_sym(s, ε, []) give?
-    // product = concat([s], embed_a(ε)) = concat([s], ε)
-    let product1 = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), e));
+    let s_word = Seq::new(1, |_i: int| s);
+    let inv_s = inverse_symbol(s);
+    let inv_s_word = Seq::new(1, |_i: int| inv_s);
+    let product1 = concat(s_word, apply_embedding(a_words(data), e));
     assert(apply_embedding(a_words(data), e) =~= e);
     let h1 = left_h_part(data, product1);
-    let rep1 = left_canonical_rep(data, product1);
-    // rep1 =~= ε (from requires)
 
-    // After s: state = (h1, []) since rep1 = ε
-    // Now process inv(s) on (h1, []):
-    let inv_s = inverse_symbol(s);
-    let product2 = concat(Seq::new(1, |_i: int| inv_s), apply_embedding(a_words(data), h1));
+    // Step 1: act_sym(s, ε, []) = (h1, [])
+    lemma_act_sym_subgroup_identity(data, s);
 
-    // product2 ≡ inv(s) * embed_a(h1) in G₁
-    // From transversal: product1 ≡ embed_a(h1) (since rep1 = ε)
-    // product1 = concat([s], ε) = [s] (approximately)
-    // So embed_a(h1) ≡ [s] in G₁
-    // product2 = inv(s) * embed_a(h1) ≡ inv(s) * s ≡ ε in G₁
+    // Step 2: decompose via composition
+    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+        assert(inverse_pair_word(s).len() == 2);
+        assert(concat(s_word, inv_s_word).len() == 2);
+        assert forall|k: int| 0 <= k < 2
+            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+    }
+    lemma_act_word_concat(data, s_word, inv_s_word, e, Seq::<Syllable>::empty());
+    lemma_act_word_single(data, s, e, Seq::<Syllable>::empty());
+    // act_word([s], ε, []) = (h1, [])
 
-    // Need: equiv(G₁, product2, ε) so we can apply the equiv_eps lemmas
-    // product2 ≡ concat([inv(s)], [s]) by substituting embed_a(h1) ≡ [s]
-    // And concat([inv(s)], [s]) ≡ ε by free reduction
+    // Step 3: Need act_word([inv(s)], h1, []) = (ε, [])
+    // = act_sym(inv(s), h1, []) by single
+    lemma_act_word_single(data, inv_s, h1, Seq::<Syllable>::empty());
 
-    // For now: use the chain
-    //   product2 = inv(s) * embed_a(h1)
-    //   embed_a(h1) ≡ product1 = [s] ++ ε ≡ [s]
-    //   So product2 ≡ [inv(s)] ++ [s] ≡ ε
+    // Step 4: show product2 ≡ ε (the second symbol's product)
+    // product2 = concat([inv(s)], embed_a(h1))
+    // embed_a(h1) ≡ product1 (from h_part choose extraction)
+    assert(concat(inverse_word(left_canonical_rep(data, product1)), product1) =~= product1) by {
+        assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+        let c = concat(e, product1);
+        assert(c.len() == product1.len());
+        assert forall|k: int| 0 <= k < product1.len() implies c[k] == product1[k] by {}
+    }
+    lemma_left_h_part_props(data, product1, h_wit);
+    // embed_a(h1) ≡ product1
 
-    // The result after inv(s) on (h1, []):
-    // rep2 = left_canonical_rep(product2) = ε (since product2 ≡ ε)
-    // h2 = left_h_part(product2) = ε
-    // State: (ε, [])
+    let product2 = concat(inv_s_word, apply_embedding(a_words(data), h1));
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        p1, inv_s_word, apply_embedding(a_words(data), h1), product1);
+    // product2 ≡ concat([inv(s)], product1)
 
-    // To formally connect: we need equiv(G₁, product2, ε)
-    // This follows from the transversal + free reduction.
-    // For now: use lemma_left_rep_equiv_eps and lemma_left_h_equiv_eps
-    // which require equiv(G₁, product2, ε).
+    assert(product1 =~= s_word) by {
+        assert(product1.len() == s_word.len());
+        assert forall|k: int| 0 <= k < s_word.len() implies product1[k] == s_word[k] by {}
+    }
+    // concat([inv(s)], product1) =~= concat([inv(s)], [s])
 
-    // The full act_word processes both symbols via act_sym + recursion.
-    // act_word([s, inv(s)], ε, [])
-    //   = act_word([inv(s)], act_sym(s, ε, []))
-    //   = act_word([inv(s)], (h1, []))
-    //   = act_sym(inv(s), h1, [])  then act_word(ε, result)
-    //   = act_sym(inv(s), h1, [])
+    // concat(inverse_word([s]), [s]) ≡ ε
+    assert(inverse_word(s_word) =~= inv_s_word) by {
+        assert(s_word.first() == s);
+        assert(s_word.drop_first().len() == 0);
+        assert(inverse_word(s_word.drop_first()) =~= e);
+        assert(concat(e, Seq::new(1, |_i: int| inverse_symbol(s))).len() == 1);
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p1, s_word);
 
-    // I need to show act_sym(inv(s), h1, []) = (ε, []).
-    // This requires showing product2 ≡ ε, then the decomposition gives identity.
-    // The chain requires establishing equiv(product2, ε) which needs
-    // the transversal properties (left_h_part satisfiable → embed_a(h1) ≡ product1).
-    // This is deep infrastructure we're still building.
+    // Chain: product2 ≡ concat([inv(s)], product1) =~= concat(inv_s_word, s_word) ≡ ε
+    crate::presentation::lemma_equiv_transitive(p1, product2,
+        concat(inv_s_word, product1), e);
 
-    // For this specific case, the ensures should follow from the action structure.
-    // Let Z3 try to close it with what we have.
+    // word_valid(product2, n1)
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h1, n1);
+    crate::word::lemma_concat_word_valid(inv_s_word,
+        apply_embedding(a_words(data), h1), n1);
+
+    // product2 ≡ ε → left_canonical_rep(product2) = ε, left_h_part(product2) = ε
+    lemma_left_rep_equiv_eps(data, product2);
+    lemma_left_h_equiv_eps(data, product2);
+    // So act_sym(inv(s), h1, []) = (ε, [])
+    // And act_word([s, inv(s)], ε, []) = act_word([inv(s)], h1, []) = (ε, [])
 }
 
 /// AFP injectivity from the textbook reduced-sequence action.
