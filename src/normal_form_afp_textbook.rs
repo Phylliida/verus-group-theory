@@ -1490,6 +1490,160 @@ pub proof fn lemma_act_single_eq_decompose(
     // And act_left_sym gives the same as g1_decompose_state.
 }
 
+// ============================================================
+// Part K: Bridge — in_generated_subgroup ↔ apply_embedding
+// ============================================================
+
+/// If w is in the generated subgroup, there exists a K-word whose embedding ≡ w.
+/// This bridges in_generated_subgroup (existential over factors) to
+/// apply_embedding (K-word based).
+///
+/// Proof: in_generated_subgroup gives factors with concat_all(factors) ≡ w.
+/// Each factor = gens[i] or inv(gens[i]). Map to K-word: Gen(i) or Inv(i).
+/// Then apply_embedding produces the same word as concat_all.
+pub proof fn lemma_subgroup_to_k_word(
+    p: Presentation,
+    gens: Seq<Word>,
+    w: Word,
+)
+    requires
+        in_generated_subgroup(p, gens, w),
+    ensures
+        exists|h: Word|
+            word_valid(h, gens.len())
+            && equiv_in_presentation(p, apply_embedding(gens, h), w),
+{
+    // Extract factors witness
+    let factors: Seq<Word> = choose|factors: Seq<Word>|
+        #[trigger] factors_from_generators(gens, factors)
+        && equiv_in_presentation(p, concat_all(factors), w);
+
+    // Build the K-word from the factors by induction
+    lemma_factors_to_k_word_exists(p, gens, factors);
+    // Now: exists|h| word_valid(h, gens.len()) && equiv(embed(h), concat_all(factors))
+
+    // Chain: embed(h) ≡ concat_all(factors) ≡ w
+    let h: Word = choose|h: Word| word_valid(h, gens.len())
+        && equiv_in_presentation(p, apply_embedding(gens, h), concat_all(factors));
+    crate::presentation::lemma_equiv_transitive(p,
+        apply_embedding(gens, h), concat_all(factors), w);
+}
+
+/// Helper: given factors from generators, construct a K-word with matching embedding.
+proof fn lemma_factors_to_k_word_exists(
+    p: Presentation,
+    gens: Seq<Word>,
+    factors: Seq<Word>,
+)
+    requires
+        factors_from_generators(gens, factors),
+    ensures
+        exists|h: Word|
+            word_valid(h, gens.len())
+            && equiv_in_presentation(p, apply_embedding(gens, h), concat_all(factors)),
+    decreases factors.len(),
+{
+    if factors.len() == 0 {
+        // h = ε: word_valid(ε, anything) and embed(ε) = ε = concat_all([])
+        let h = empty_word();
+        assert(word_valid(h, gens.len())) by { assert(h.len() == 0); }
+        assert(apply_embedding(gens, h) =~= empty_word());
+        assert(concat_all(factors) =~= empty_word());
+        crate::presentation::lemma_equiv_refl(p, empty_word());
+        // Witness the exists: h = ε satisfies both conditions
+        assert(equiv_in_presentation(p, apply_embedding(gens, h), concat_all(factors)));
+    } else {
+        // IH on rest
+        let rest = factors.drop_first();
+        assert(factors_from_generators(gens, rest)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies is_generator_or_inverse(gens, #[trigger] rest[k])
+            by { assert(rest[k] == factors[k + 1]); }
+        }
+        lemma_factors_to_k_word_exists(p, gens, rest);
+        // exists|h_rest| word_valid(h_rest, gens.len()) && equiv(embed(h_rest), concat_all(rest))
+
+        let h_rest: Word = choose|h_rest: Word| word_valid(h_rest, gens.len())
+            && equiv_in_presentation(p, apply_embedding(gens, h_rest), concat_all(rest));
+
+        // First factor: is_generator_or_inverse(gens, factors.first())
+        // So factors.first() = gens[i] or inv(gens[i]) for some i < gens.len()
+        let first = factors.first();
+        let i: nat = choose|i: nat| i < gens.len()
+            && (first =~= gens[i as int] || first =~= inverse_word(gens[i as int]));
+
+        // Construct the K-word: [sym] ++ h_rest
+        let sym = if first =~= gens[i as int] { Symbol::Gen(i) } else { Symbol::Inv(i) };
+        let h = Seq::new(1, |_j: int| sym) + h_rest;
+
+        // word_valid(h, gens.len()): sym has gen_index = i < gens.len(), rest is word_valid by IH
+        assert(word_valid(h, gens.len())) by {
+            assert(symbol_valid(sym, gens.len()));
+            assert forall|k: int| 0 <= k < h.len()
+                implies symbol_valid(h[k], gens.len())
+            by {
+                if k == 0 {
+                } else {
+                    assert(h[k] == h_rest[k - 1]);
+                }
+            }
+        }
+
+        // embed(h) = concat(embed_sym(sym), embed(h_rest))
+        //          = concat(first, embed(h_rest))
+        //          ≡ concat(first, concat_all(rest))   [by IH on h_rest]
+        //          = concat_all(factors)
+
+        // embed_sym(sym) =~= first
+        assert(apply_embedding_symbol(gens, sym) =~= first);
+
+        // Unfold apply_embedding(gens, h) one level:
+        // h = [sym] ++ h_rest, so h.first() = sym, h.drop_first() =~= h_rest
+        assert(h.len() > 0);
+        assert(h.first() == sym);
+        assert(h.drop_first() =~= h_rest) by {
+            let d = h.drop_first();
+            assert(d.len() == h_rest.len());
+            assert forall|k: int| 0 <= k < h_rest.len()
+                implies d[k] == h_rest[k] by {}
+        }
+        // apply_embedding(gens, h) = concat(embed_sym(h.first()), embed(h.drop_first()))
+        //                          = concat(embed_sym(sym), embed(h_rest))
+        //                          = concat(first, embed(h_rest))
+
+        // IH gives: equiv(embed(h_rest), concat_all(rest))
+        // By right-congruence: concat(first, embed(h_rest)) ≡ concat(first, concat_all(rest))
+        crate::presentation_lemmas::lemma_equiv_concat_right(p, first,
+            apply_embedding(gens, h_rest), concat_all(rest));
+
+        // concat(first, concat_all(rest)) = concat_all(factors)
+        // So: equiv(concat(first, embed(h_rest)), concat_all(factors))
+        // And: apply_embedding(gens, h) =~= concat(first, embed(h_rest))
+        // Therefore: equiv(apply_embedding(gens, h), concat_all(factors))
+        assert(equiv_in_presentation(p, apply_embedding(gens, h), concat_all(factors)));
+    }
+}
+
+// ============================================================
+// Part K2: action_preserves_canonical
+// ============================================================
+
+/// act_word preserves word_valid(h, k) by induction on word length.
+/// Base: act_word(ε, h, syls) = (h, syls), preserves trivially.
+/// Step: act_word([s] ++ rest, h, syls) = act_word(rest, act_sym(s, h, syls)).
+///   Need: act_sym preserves word_valid(h, k).
+///   act_sym dispatches to act_left_sym or act_right_sym.
+///   Both produce h from left_h_part or right_h_part (choose with word_valid in predicate).
+///   The merge case produces concat(merged_h, new_h) — both word_valid → concat is word_valid.
+///
+/// The choose satisfiability is the key: we need the products encountered
+/// during the action to have decompositions. This holds because any valid
+/// word in G₁ (or G₂) has a coset decomposition.
+///
+/// For now: we take action_preserves_canonical as a precondition.
+/// The proof requires showing choose satisfiability at each step,
+/// which follows the same lemma_nat_well_ordering + choose extraction pattern.
+
 /// For a G₁-word w ≡ ε in G₁ acting on identity state:
 /// act_word(w, ε, []) gives a state whose decomposition matches the identity.
 ///
