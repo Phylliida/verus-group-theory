@@ -1459,13 +1459,13 @@ proof fn lemma_h_act_bound(
     h: nat,
 )
     requires
-        crate::todd_coxeter::coset_table_wf(ct1),
-        crate::todd_coxeter::coset_table_wf(ct2),
-        crate::finite::coset_table_complete(ct1),
-        crate::finite::coset_table_complete(ct2),
+        h_prereqs(ct1, ct2, phi, phi_inv,
+            AmalgamatedData {
+                p1: Presentation { num_generators: n1, relators: Seq::empty() },
+                p2: Presentation { num_generators: n1, relators: Seq::empty() },
+                identifications: Seq::empty(),
+            }),
         h < ct1.num_cosets,
-        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
-        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
     ensures
         h_act_word(ct1, ct2, phi, phi_inv, n1, w, h) < ct1.num_cosets,
     decreases w.len(),
@@ -1477,24 +1477,12 @@ proof fn lemma_h_act_bound(
     } else {
         let s = w.first();
         let rest = w.drop_first();
-        // h_act_sym(s, h): either ct_lookup(ct1, h, col) or phi(ct_lookup(ct2, phi_inv(h), col))
-        // Both < ct1.num_cosets (by wf + phi bound)
         let next_h = h_act_sym(ct1, ct2, phi, phi_inv, n1, s, h);
-        // next_h < ct1.num_cosets: by case analysis on G₁ vs G₂
-        if generator_index(s) < n1 {
-            // G₁: next_h = ct_lookup(ct1, h, col) < ct1.num_cosets by wf
-            let col = sym_col(s);
-            assert(col < 2 * ct1.num_gens) by {
-                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
-            }
-        } else {
-            // G₂: next_h = phi(ct_lookup(ct2, phi_inv(h), col))
-            // ct_lookup(ct2, phi_inv(h), col) < ct2.num_cosets by wf
-            // phi(that) < ct1.num_cosets by phi bound
-            let s_local = unshift_sym(s, n1);
-            let col = sym_col(s_local);
-        }
-        assert(next_h < ct1.num_cosets);
+        // next_h < ct1.num_cosets: for G₁ symbols, ct_lookup with wf gives bound.
+        // For G₂ symbols, phi(ct_lookup) gives bound via phi.
+        // Z3 should handle this with wf+complete revealed.
+        // If not, we'd need to case-split and help with column bounds.
+        // Let's try just with the reveals first.
         lemma_h_act_bound(ct1, ct2, phi, phi_inv, n1, rest, next_h);
     }
 }
