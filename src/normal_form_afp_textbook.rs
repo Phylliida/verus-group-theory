@@ -5171,6 +5171,74 @@ proof fn lemma_act_left_sym_merge_replaced(
     // merged_rep ≠ ε → replace first syllable
 }
 
+/// Helper: the inverse step for C2 — directly establishes act_left_sym via merge_replaced.
+/// Requires rep_inv ≠ ε as a precondition (caller provides via case split).
+proof fn lemma_c2_inverse_merge_step(
+    data: AmalgamatedData, s: Symbol, h: Word, c1: Word, combined_h: Word,
+    merged_rep: Word, rest_syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(h, k_size(data)),
+        word_valid(c1, data.p1.num_generators),
+        word_valid(combined_h, k_size(data)),
+        word_valid(merged_rep, data.p1.num_generators),
+        generator_index(s) < data.p1.num_generators,
+        !(c1 =~= empty_word()),
+        !(merged_rep =~= empty_word()),
+        left_h_part(data, apply_embedding(a_words(data), h)) =~= h,
+        a_rcoset_rep(data, c1) =~= c1,
+        equiv_in_presentation(data.p1,
+            concat(concat(Seq::new(1, |_i: int| inverse_symbol(s)),
+                apply_embedding(a_words(data), combined_h)), merged_rep),
+            concat(apply_embedding(a_words(data), h), c1)),
+        // The inverse product is NOT in the subgroup
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| inverse_symbol(s)),
+                apply_embedding(a_words(data), combined_h)))
+            =~= empty_word()),
+    ensures ({
+        let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep }) + rest_syls;
+        act_left_sym(data, inverse_symbol(s), combined_h, new_syls)
+            == (h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + rest_syls)
+    }),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let inv_s = inverse_symbol(s);
+    let inv_s_word = Seq::new(1, |_i: int| inv_s);
+    let embed_h = apply_embedding(a_words(data), h);
+    let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep }) + rest_syls;
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+
+    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
+    assert(generator_index(inv_s) == generator_index(s)) by {
+        match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+
+    let embed_ch = apply_embedding(a_words(data), combined_h);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), combined_h, n1);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    crate::word::lemma_concat_word_valid(embed_h, c1, n1);
+    crate::word::lemma_concat_word_valid(inv_s_word, embed_ch, n1);
+    crate::word::lemma_concat_word_valid(concat(inv_s_word, embed_ch), merged_rep, n1);
+
+    // full_inv ≡ embed_a(h)·c₁ → rcoset rep = c₁ ≠ ε
+    let full_inv = concat(concat(inv_s_word, embed_ch), merged_rep);
+    lemma_same_a_rcoset_from_equiv(data, full_inv, concat(embed_h, c1));
+    lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
+
+    // merge_replaced: rep_inv ≠ ε, first syl left, merged_rep ≠ ε
+    assert(new_syls.first().is_left);
+    assert(new_syls.first().rep == merged_rep);
+    lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
+}
+
 /// Subcase C: G₁ inverse pair when rep' ≠ ε and first syllable IS left (merge).
 /// Forward: merge [s]·embed_a(h)·c₁ → (combined_h, merged_syls).
 /// Inverse: [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁ → decompose → (h, c₁, rest).
