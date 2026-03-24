@@ -859,7 +859,6 @@ pub open spec fn h_prereqs(
     &&& valid_phi(phi, phi_inv, ct1, ct2, data)
     &&& ct1.num_gens == data.p1.num_generators
     &&& ct2.num_gens == data.p2.num_generators
-    &&& data.p1.num_generators == data.p2.num_generators  // same factor size (tower case)
 }
 
 // ============================================================
@@ -971,9 +970,8 @@ proof fn lemma_h_inv_pair_g2(
     requires
         is_inverse_pair(s1, s2),
         generator_index(s1) >= n1,
-        generator_index(s1) < 2 * n1,  // valid AFP symbol (< n1 + n2 where n2 = n1)
+        generator_index(s1) < n1 + ct2.num_gens,
         n1 == ct1.num_gens,
-        n1 == ct2.num_gens,
         crate::todd_coxeter::coset_table_wf(ct2),
         crate::todd_coxeter::coset_table_consistent(ct2),
         crate::finite::coset_table_complete(ct2),
@@ -1079,7 +1077,7 @@ proof fn lemma_h_inv_pair(
 )
     requires
         is_inverse_pair(s1, s2),
-        generator_index(s1) < 2 * n1,
+        generator_index(s1) < n1 + ct2.num_gens,
         crate::todd_coxeter::coset_table_wf(ct1),
         crate::todd_coxeter::coset_table_consistent(ct1),
         crate::finite::coset_table_complete(ct1),
@@ -1088,7 +1086,6 @@ proof fn lemma_h_inv_pair(
         crate::finite::coset_table_complete(ct2),
         h < ct1.num_cosets,
         n1 == ct1.num_gens,
-        n1 == ct2.num_gens,
         forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
         forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
         forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b,
@@ -1129,10 +1126,10 @@ proof fn lemma_h_act_step(
             == h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w_prime, h),
 {
     let n1 = data.p1.num_generators;
-    let n_total = n1 + data.p2.num_generators;
-    assert(n_total == 2 * n1); // from h_prereqs: p1.num_generators == p2.num_generators
+    let n2 = data.p2.num_generators;
+    let n_total = n1 + n2;
     assert(n1 == ct1.num_gens);
-    assert(n1 == ct2.num_gens);
+    assert(n2 == ct2.num_gens);
     let afp = amalgamated_free_product(data);
     lemma_add_relators_num_generators(
         free_product(data.p1, data.p2), amalgamation_relators(data));
@@ -1401,6 +1398,7 @@ proof fn lemma_h_relator(
             assert(crate::todd_coxeter::trace_word(ct1, h, inverse_word(raw)) == Some(h));
             assert(r == inverse_word(raw));
         }
+        return;
     } else if relator_index < data.p1.relators.len() + data.p2.relators.len() {
         // G₂ relator: all symbols have gen_index >= n1.
         // The h-only action: each G₂ symbol does phi(ct_lookup(ct2, phi_inv(h), col)).
@@ -1425,6 +1423,7 @@ proof fn lemma_h_relator(
         // Need to connect r to shift(p2.relators[g2_idx]) or its inverse.
         // By the AFP relator structure: afp.relators[relator_index] == shift(p2.relators[g2_idx]).
         // get_relator either returns it or its inverse.
+        return;
     } else {
         // Identification relator: u_i · inv(shift(v_i)).
         // Identification relator: u_i · inv(shift(v_i)).
@@ -1918,6 +1917,18 @@ proof fn lemma_h_relator(
             //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(result))
             //   where result = h_act_word(inv_shifted_v, h_mid)
             // Combined: phi_inv(result) == phi_inv(h), so result == h.
+            let result = h_act_word(ct1, ct2, phi, phi_inv, n1, inv_shifted_v, h_mid);
+            // h_act_g2_phi_inv_trace gave: trace(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(result))
+            // inverse_trace gave: trace(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(h))
+            // So phi_inv(result) == phi_inv(h)
+            assert(phi_inv(result) == phi_inv(h));
+            // phi injectivity: phi(phi_inv(x)) == x for x < ct1.num_cosets
+            assert(result < ct1.num_cosets);
+            assert(phi(phi_inv(result)) == result);
+            assert(phi(phi_inv(h)) == h);
+            assert(result == h);
+            // By concat: h_act_word(r, h) = h_act_word(inv_shifted_v, h_mid) = result = h
+            return;
         } else {
             // Inverted identification relator: inverse_word(u_i · inv(shift(v_i)))
             //   = shift(v_i) · inv(u_i)
@@ -2457,7 +2468,8 @@ proof fn lemma_phi_inv_commutes_trace(
     requires
         h_prereqs(ct1, ct2, phi, phi_inv, data),
         h < ct1.num_cosets,
-        word_valid(w, data.p1.num_generators),
+        word_valid(w, data.p2.num_generators),  // columns must be within ct2's range
+        data.p2.num_generators <= data.p1.num_generators,  // ensures ct1 columns also valid
     ensures ({
         let trace_result = crate::todd_coxeter::trace_word(ct1, h, w);
         trace_result is Some ==>
@@ -2467,16 +2479,16 @@ proof fn lemma_phi_inv_commutes_trace(
 {
     reveal(crate::todd_coxeter::coset_table_wf);
     reveal(crate::finite::coset_table_complete);
-    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
 
     if w.len() == 0 {
     } else {
         let s = w.first();
         let rest = w.drop_first();
-        assert(symbol_valid(s, n1));
-        assert(word_valid(rest, n1)) by {
+        assert(symbol_valid(s, n2));
+        assert(word_valid(rest, n2)) by {
             assert forall|k: int| 0 <= k < rest.len()
-                implies symbol_valid(rest[k], n1)
+                implies symbol_valid(rest[k], n2)
             by { assert(rest[k] == w[k + 1]); }
         }
         let col = crate::todd_coxeter::symbol_to_column(s);
