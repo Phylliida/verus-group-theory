@@ -1372,8 +1372,14 @@ proof fn lemma_h_relator(
 
         // AFP relator at this index = raw_rel = concat(u_i, inv_shifted_v)
         assert(raw_rel == concat(u_i, inv_shifted_v));
-        lemma_afp_relator_ident(data, ident_idx);
-        // afp.relators[relator_index] == raw_rel
+        // afp.relators[relator_index] == raw_rel (from AFP relator structure)
+        let fp = free_product(data.p1, data.p2);
+        let ident_rels = amalgamation_relators(data);
+        assert(afp.relators[relator_index as int]
+            == (fp.relators + ident_rels)[relator_index as int]);
+        assert((fp.relators + ident_rels)[relator_index as int]
+            == ident_rels[ident_idx as int]);
+        assert(ident_rels[ident_idx as int] == raw_rel);
 
         // For non-inverted: r = raw_rel = concat(u_i, inv_shifted_v)
         // For inverted: r = inverse_word(raw_rel)
@@ -1496,7 +1502,347 @@ proof fn lemma_h_relator(
             // For now: this is the deepest mathematical step.
             // It requires proving phi_inv commutes with multi-symbol traces,
             // which needs another inductive lemma.
-            assert(false); // LAST GAP: phi_inv commutes with trace
+            // phi_inv(h_mid) relates to ct2 trace via phi_inv_commutes_trace:
+            // trace(ct1, h, u_i) == Some(h_mid) [from h_act_is_trace]
+            // trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid)) [by phi_inv_commutes]
+            assert(word_valid(u_i, n1));
+            lemma_phi_inv_commutes_trace(ct1, ct2, phi, phi_inv, data, u_i, h);
+            // Now: trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid))
+
+            // h_act_g2_phi_inv_trace gives:
+            // trace(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(result))
+            // where result = h_act_word(inv_shifted_v, h_mid)
+            //
+            // Combined: trace(ct2, phi_inv(h), concat(u_i, inv_v))
+            //   = trace(ct2, phi_inv(h_mid), inv_v)
+            //   = Some(phi_inv(result))
+            //
+            // By the identification generator property from valid_phi:
+            //   phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i)
+            // This means: trace(ct2, 0, v_i) relates u_i and v_i.
+            //
+            // The KEY fact: trace(ct2, phi_inv(h), concat(u_i, inv(v_i))) == Some(phi_inv(h)).
+            // Because concat(u_i, inv(v_i)) acts trivially on the G₂ side:
+            //   u_i acts as the phi-translated action (same as trace(ct2, _, u_i))
+            //   then inv(v_i) undoes the v_i trace.
+            //   Since u_i and v_i are identified (phi links them), the combined
+            //   action is: go forward by u_i-equivalent, go back by v_i = identity.
+            //
+            // For the formal proof: use trace concat and the identification property.
+            // This requires showing trace(ct2, 0, v_i) relates to trace(ct1, 0, u_i)
+            // via phi, and then trace(ct2, phi_inv(h_mid), inv(v_i)) undoes the effect.
+            //
+            // Actually, from phi_inv_commutes_trace on u_i:
+            //   trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid))
+            // And from lemma_h_act_g2_phi_inv_trace on inv(shift(v_i)):
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(result))
+            //
+            // For result == h:
+            //   phi_inv(result) == phi_inv(h)
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h))
+            //
+            // Combining with the first trace:
+            //   trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid))
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h))
+            //
+            // This means: trace(ct2, phi_inv(h), concat(u_i, inv(v_i))) == Some(phi_inv(h))
+            // i.e., concat(u_i, inv(v_i)) is a "relator" for ct2 from phi_inv(h).
+            //
+            // But IS concat(u_i, inv(v_i)) such a relator?
+            // Not necessarily for a general AFP. For our special case:
+            // The identification says u_i and v_i represent the same subgroup element.
+            // In ct2: phi_inv maps the ct1-element of u_i to the ct2-element of v_i.
+            // So trace(ct2, phi_inv(h), u_i) goes from phi_inv(h) to phi_inv(h_mid).
+            // And trace(ct2, phi_inv(h_mid), inv(v_i)) goes back to phi_inv(h).
+            // This works iff phi_inv(h_mid) == trace(ct2, phi_inv(h), v_i).
+            //
+            // From the identification in valid_phi:
+            //   phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i)
+            // And phi_inv_commutes_trace gives:
+            //   trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid))
+            //
+            // We need: phi_inv(h_mid) == trace(ct2, phi_inv(h), v_i).unwrap()
+            //
+            // Hmm, trace(ct2, phi_inv(h), u_i) vs trace(ct2, phi_inv(h), v_i) —
+            // these trace DIFFERENT words through ct2. They're not the same!
+            //
+            // The identification says: trace(ct2, 0, v_i) == phi_inv(trace(ct1, 0, u_i)).
+            // At element h: trace(ct2, phi_inv(h), v_i) == ??? NOT phi_inv(h_mid) in general.
+            //
+            // I think I need a stronger phi compatibility. The current per-column property
+            // gives: phi_inv(ct_lookup(ct1, h, col)) == ct_lookup(ct2, phi_inv(h), col).
+            // This means: for EACH COLUMN, the ct1 and ct2 actions are phi-compatible.
+            // Since u_i uses the SAME columns as v_i? No — u_i and v_i are different words!
+            //
+            // The issue: u_i and v_i use the same COLUMN SPACE (columns 0..2n-1) but
+            // different sequences of columns. The per-column compatibility gives
+            // phi_inv(trace(ct1, h, w)) == trace(ct2, phi_inv(h), w) for ANY word w
+            // using columns < 2*n1. Both u_i and v_i satisfy this.
+            //
+            // So: phi_inv(h_mid) = phi_inv(trace(ct1, h, u_i).unwrap())
+            //   = trace(ct2, phi_inv(h), u_i).unwrap()  [by phi_inv_commutes_trace]
+            //
+            // And: trace(ct2, phi_inv(h), v_i) == Some(phi_inv(trace(ct1, h, v_i).unwrap()))
+            //   [by phi_inv_commutes_trace on v_i]
+            //
+            // These are DIFFERENT: phi_inv(trace(ct1, h, u_i)) vs phi_inv(trace(ct1, h, v_i)).
+            // They're the same only if trace(ct1, h, u_i) == trace(ct1, h, v_i), which means
+            // u_i and v_i trace to the same ct1-element from h. This is true only if
+            // u_i ≡ v_i in G₁, which is NOT the case in general!
+            //
+            // SO THE PER-COLUMN PHI COMPATIBILITY IS WRONG/INSUFFICIENT.
+            // We need a DIFFERENT phi compatibility: one that connects u_i and v_i specifically.
+            //
+            // The correct compatibility: for the IDENTIFICATION GENERATORS,
+            //   phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i)
+            // And for general h:
+            //   phi(trace(ct2, phi_inv(h), v_i)) == trace(ct1, h, u_i) = h_mid
+            //   So: trace(ct2, phi_inv(h), v_i) == phi_inv(h_mid)
+            //
+            // Wait, does the per-column compatibility actually give this?
+            // phi_inv(ct_lookup(ct1, h, col)) == ct_lookup(ct2, phi_inv(h), col) for each column.
+            // Composing multiple columns: phi_inv(trace(ct1, h, w)) == trace(ct2, phi_inv(h), w).
+            // This is true for ANY word w using columns < 2*n1 (i.e., word_valid(w, n1)).
+            //
+            // So: phi_inv(trace(ct1, h, u_i)) == trace(ct2, phi_inv(h), u_i)  [phi_inv_commutes for u_i]
+            //     phi_inv(h_mid) == trace(ct2, phi_inv(h), u_i).unwrap()
+            //
+            // And: phi_inv(trace(ct1, h, v_i)) == trace(ct2, phi_inv(h), v_i) [phi_inv_commutes for v_i]
+            //
+            // But v_i is word_valid(v_i, data.p2.num_generators) = word_valid(v_i, n1).
+            // And ct2.num_gens == n1. So word_valid(v_i, n1) means v_i uses columns < 2*n1.
+            // So phi_inv_commutes_trace applies to v_i too!
+            //
+            // phi_inv(trace(ct1, h, v_i)) == trace(ct2, phi_inv(h), v_i).unwrap()
+            //
+            // But I need: trace(ct2, phi_inv(h), u_i) == trace(ct2, phi_inv(h), v_i).
+            // This is trace(ct2, phi_inv(h), u_i) vs trace(ct2, phi_inv(h), v_i).
+            // These ARE the same iff u_i and v_i produce the same ct2 trace from phi_inv(h).
+            // By phi_inv_commutes: the first equals phi_inv(trace(ct1, h, u_i))
+            //                     the second equals phi_inv(trace(ct1, h, v_i)).
+            // These are equal iff trace(ct1, h, u_i) == trace(ct1, h, v_i).
+            //
+            // But trace(ct1, h, u_i) ≠ trace(ct1, h, v_i) in general!
+            // u_i and v_i are different words that are NOT equivalent in G₁.
+            //
+            // So the proof doesn't work this way. The per-column phi compatibility
+            // is NOT strong enough. I need a phi compatibility that specifically
+            // connects the IDENTIFICATION WORDS u_i and v_i.
+            //
+            // The identification says: the ct2-element of v_i and the ct1-element of u_i
+            // are linked by phi. NOT that u_i and v_i trace the same in ct2.
+            //
+            // The correct argument:
+            //   After u_i (G₁): h_mid = trace(ct1, h, u_i)
+            //   phi_inv(h_mid) = trace(ct2, phi_inv(h), u_i) [by phi_inv_commutes]
+            //   After inv(v_i) (G₂): traces from phi_inv(h_mid) through ct2
+            //     = trace(ct2, trace(ct2, phi_inv(h), u_i), inv(v_i))
+            //   Need this to equal phi_inv(h).
+            //   This means: trace(ct2, phi_inv(h), concat(u_i, inv(v_i))) == Some(phi_inv(h))
+            //   i.e., concat(u_i, inv(v_i)) is a ct2-relator from phi_inv(h).
+            //
+            //   BUT concat(u_i, inv(v_i)) is NOT a relator of p2!
+            //   It's a word that's related to the identification but not a relator.
+            //
+            // I think the fundamental issue is that the per-column phi compatibility
+            // alone doesn't capture the identification relationship properly.
+            //
+            // WHAT WE ACTUALLY NEED: a phi compatibility that says
+            //   trace(ct2, h2, concat(u_i, inv(v_i))) == Some(h2)
+            //   for all h2 < ct2.num_cosets.
+            // This means concat(u_i, inv(v_i)) is a ct2-relator.
+            // But it's NOT a relator of p2 — it mixes u_i (from p1) with v_i (from p2).
+            // In ct2 (which is p2's Cayley table), tracing u_i doesn't make sense
+            // because u_i uses p1's generators, not p2's.
+            //
+            // WAIT — by the per-column phi compatibility:
+            //   trace(ct2, h2, u_i) makes perfect sense because ct2 has the same
+            //   number of columns as ct1 (both have 2*n1 columns).
+            //   And trace(ct2, h2, u_i) == phi_inv(trace(ct1, phi(h2), u_i)).
+            //
+            // So trace(ct2, phi_inv(h), concat(u_i, inv(v_i)))
+            //   = trace(ct2, trace(ct2, phi_inv(h), u_i), inv(v_i))
+            //   = trace(ct2, phi_inv(h_mid), inv(v_i))
+            //
+            // For this to equal Some(phi_inv(h)):
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h))
+            //   trace(ct2, phi_inv(h_mid), v_i) traces forward, then inv(v_i) traces back.
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(x) where trace(x, v_i) == phi_inv(h_mid)
+            //   By inverse trace: x == phi_inv(h) iff trace(phi_inv(h), v_i) == phi_inv(h_mid)
+            //
+            //   trace(ct2, phi_inv(h), v_i) == phi_inv(trace(ct1, h, v_i))
+            //     [by phi_inv_commutes on v_i]
+            //
+            //   Need: phi_inv(trace(ct1, h, v_i)) == phi_inv(h_mid) = phi_inv(trace(ct1, h, u_i))
+            //   This requires: trace(ct1, h, v_i) == trace(ct1, h, u_i)
+            //   i.e., u_i and v_i trace to the same element in ct1 from h.
+            //   But this means u_i ≡ v_i in G₁ (same ct1 element).
+            //
+            //   For the HNN tower: u_i = a_i and v_i = b_i where φ: a_i ↦ b_i.
+            //   In general a_i ≢ b_i in G (they're different subgroup elements).
+            //   So trace(ct1, h, a_i) ≠ trace(ct1, h, b_i).
+            //
+            // CONCLUSION: The per-column phi compatibility is WRONG for our use case.
+            // The correct phi should NOT be a per-column map but rather a map that
+            // specifically connects u_i and v_i traces:
+            //   trace(ct2, phi_inv(h), v_i) == trace(ct2, phi_inv(h), u_i)
+            //   for all h (even though u_i ≠ v_i as words).
+            //
+            // This is NOT a consequence of per-column compatibility.
+            // It's a SEPARATE condition that needs to be in valid_phi.
+            //
+            // THE FIX: Replace the per-column phi compatibility with a WORD-LEVEL
+            // compatibility:
+            //   for each identification pair (u_i, v_i):
+            //     trace(ct2, h2, v_i) == trace(ct2, h2, u_i) for all h2 < ct2.num_cosets
+            //
+            // This says: u_i and v_i trace identically through ct2.
+            // Combined with relator_closed(ct2, p2) on v_i: trace(ct2, h2, v_i) returns to h2.
+            // So trace(ct2, h2, u_i) also returns to h2.
+            // Then: trace(ct2, phi_inv(h), concat(u_i, inv(v_i)))
+            //   = trace(ct2, trace(ct2, phi_inv(h), u_i), inv(v_i))
+            //   = trace(ct2, phi_inv(h_mid), inv(v_i))
+            // And trace(ct2, phi_inv(h_mid), v_i) = phi_inv(h_mid) [from u_i traces like v_i]
+            // wait no, trace(ct2, h2, v_i) = trace(ct2, h2, u_i) means they give the SAME result.
+            // But I need trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h)).
+            // trace(ct2, phi_inv(h), v_i) == Some(phi_inv(h_mid)) [from phi_inv_commutes on v_i... no]
+            //
+            // Hmm actually phi_inv_commutes says:
+            //   trace(ct2, phi_inv(h), v_i) == Some(phi_inv(trace(ct1, h, v_i).unwrap()))
+            //
+            // If trace(ct2, h2, v_i) == trace(ct2, h2, u_i) for all h2:
+            //   trace(ct2, phi_inv(h), v_i) == trace(ct2, phi_inv(h), u_i) = Some(phi_inv(h_mid))
+            // And by inverse trace on v_i:
+            //   trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h))
+            //   [since trace(ct2, phi_inv(h), v_i) = Some(phi_inv(h_mid))]
+            //
+            // YES! This works! The condition "u_i and v_i trace identically in ct2" is
+            // the right formulation.
+            //
+            // ALTERNATIVELY: instead of adding this as a separate condition,
+            // note that the condition follows from: in ct2, u_i and v_i represent
+            // the SAME group element (because the identification says u_i ↔ v_i,
+            // and ct2 is for G₂ where the identification holds).
+            //
+            // Wait, ct2 is for G₂ = p2. In G₂, u_i and v_i are just words.
+            // v_i is a word in G₂'s generators. u_i is a word in G₁'s generators.
+            // But ct2 has 2*n1 columns (n1 generators), same as ct1.
+            // So u_i CAN be traced through ct2.
+            //
+            // The condition "trace(ct2, h2, u_i) == trace(ct2, h2, v_i) for all h2"
+            // means: in G₂'s Cayley table, u_i and v_i represent the same element.
+            //
+            // Is this true? Only if u_i ≡ v_i in G₂. But u_i is a word over G₁'s
+            // generators (which are the SAME as G₂'s generators since n1 == n2).
+            // So u_i is a valid G₂-word, and trace(ct2, h2, u_i) gives the G₂-element.
+            //
+            // For the identification: φ maps u_i ∈ G₁ to v_i ∈ G₂. The meaning:
+            // the subgroup A generated by u_i in G₁ is isomorphic to the subgroup B
+            // generated by v_i in G₂, via φ(u_i) = v_i.
+            //
+            // But this does NOT mean u_i = v_i as G₂-elements! It means u_i (as a G₁-element)
+            // maps to v_i (as a G₂-element) under the isomorphism.
+            //
+            // For the tower case: G₁ = G₂ = G (same presentation). The identification
+            // (a_i, b_i) maps a_i ∈ A to b_i ∈ B. In G's Cayley table: trace(ct, 0, a_i) ≠
+            // trace(ct, 0, b_i) in general (they're different group elements unless a_i = b_i).
+            //
+            // So trace(ct2, h2, u_i) ≠ trace(ct2, h2, v_i) in general.
+            // The condition "u_i and v_i trace identically in ct2" is TOO STRONG.
+            //
+            // I think the CORRECT approach uses the phi map DIFFERENTLY.
+            // The phi is B→A. The identification pairs (u_i, v_i) define phi: v_i_elem → u_i_elem.
+            // phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i) [from valid_phi].
+            //
+            // For the identification relator:
+            // After u_i: h → h_mid = trace(ct1, h, u_i) [in ct1]
+            // After inv(shift(v_i)): traces in ct2 from phi_inv(h_mid).
+            //
+            // We need: the combined to return to h.
+            // phi_inv(h_mid) = phi_inv(trace(ct1, h, u_i).unwrap())
+            //                = trace(ct2, phi_inv(h), u_i).unwrap()  [by phi_inv_commutes]
+            //
+            // Then: trace(ct2, phi_inv(h_mid), inv(v_i))
+            //      = trace(ct2, trace(ct2, phi_inv(h), u_i).unwrap(), inv(v_i))
+            //
+            // For this to give phi_inv(h):
+            //   trace(ct2, phi_inv(h), concat(u_i, inv(v_i))) == Some(phi_inv(h))
+            //
+            // This needs concat(u_i, inv(v_i)) to be a "relator" of ct2.
+            //
+            // But it's NOT a relator of G₂. Unless... we ADD it as a relator!
+            // The AFP adds identification relators. But ct2 is for G₂ (p2), not the AFP.
+            //
+            // I think the correct approach is: include concat(u_i, inv(v_i)) as an
+            // ADDITIONAL requirement on ct2. Specifically: ct2 must be relator-closed
+            // not just for p2's relators, but also for the words u_i · inv(v_i).
+            //
+            // This is a STRONGER requirement on ct2 than just valid_cayley(ct2, p2).
+            // We need: relator_closed for p2 AND for the identification words.
+            //
+            // This makes sense: in the tower, the identification u_i ↔ v_i means
+            // u_i = v_i in the ambient group. So ct2 (Cayley table of G = p2)
+            // should satisfy trace(ct2, h2, u_i · inv(v_i)) == Some(h2)
+            // iff u_i ≡ v_i in G₂.
+            //
+            // But u_i ≢ v_i in G₂ in general (they're identified in the AFP, not in G₂).
+            //
+            // FUNDAMENTAL ISSUE: The identification relator u_i · inv(shift(v_i)) is a
+            // relator of the AFP, not of G₁ or G₂. So ct1 and ct2 (Cayley tables of G₁, G₂)
+            // can't reflect this identification.
+            //
+            // The h-only action CAN'T prove the identification relator trivial using
+            // just ct1 and ct2 individually. The identification relator involves BOTH
+            // G₁ and G₂ generators, and its triviality requires the interaction between
+            // the two tables.
+            //
+            // I need to STRENGTHEN the phi requirement:
+            //   FOR EACH IDENTIFICATION PAIR (u_i, v_i) AND ALL h2 < ct2.num_cosets:
+            //     trace(ct2, h2, concat(u_i, inv(v_i))) == Some(h2)
+            //
+            // This says: u_i · inv(v_i) is trivial in G₂ (i.e., u_i ≡ v_i in G₂).
+            //
+            // For the tower case where G₁ = G₂ = G: this means a_i ≡ b_i in G,
+            // which is NOT true in general!
+            //
+            // I'M STUCK AGAIN. The h-only action can't prove identification relator
+            // triviality without a condition that doesn't hold in general.
+            //
+            // The issue: the h-only action loses the syllable information that the
+            // full VDW action tracks. The full action has the syllable structure
+            // which allows the G₂ part to "undo" the G₁ part via the shared H-component.
+            // Without syllables, the h-only action can't distinguish the G₁ and G₂ parts.
+            //
+            // CONCLUSION: The h-only VDW action is INSUFFICIENT for proving AFP injectivity
+            // in the general case. We need either:
+            // (a) The full syllable action (which we showed has rlimit issues)
+            // (b) A stronger phi condition (which doesn't hold for general HNN extensions)
+            // (c) A completely different approach
+            //
+            // For the TOWER case specifically (where p1 == p2):
+            // The phi IS the identity map (or rather, phi maps element b in ct2 to
+            // the SAME element b in ct1, since ct1 == ct2).
+            // In this case: phi_inv = identity, phi = identity.
+            // The h-only action of a G₂ symbol = ct_lookup(ct1, h, col) (same as G₁).
+            // So h_act_word(shift(v_i), h) = trace(ct1, h, v_i).
+            // And h_act_word(u_i, h) = trace(ct1, h, u_i).
+            // The identification relator u_i · inv(shift(v_i)) acts as:
+            //   trace(ct1, h, u_i) then "reverse trace" of v_i = trace(ct1, h_mid, inv(v_i)).
+            // Combined: trace(ct1, h, concat(u_i, inv(v_i))).
+            // For this to equal h: need concat(u_i, inv(v_i)) to be a ct1-relator.
+            // This means u_i ≡ v_i in G₁ = G.
+            // But for HNN with a_i ≠ b_i: this is FALSE.
+            //
+            // The h-only action CANNOT prove AFP injectivity for the general case.
+            // The h-component alone doesn't capture the identification.
+            //
+            // I need to go back to the full VDW action with syllables.
+            // Or find a different formulation.
+
+            assert(false); // STUCK: h-only action insufficient for identification relator
+        } else {
+            assert(false); // STUCK: same issue for inverted
+        }
     }
 }
 
@@ -1874,6 +2220,71 @@ proof fn lemma_h_act_g2_relator(
             shifted_inv, inv_raw, h);
         // phi_inv(h_act_word(shift_word(inverse_word(raw), n1), h))
         //   == trace(ct2, phi_inv(h), inverse_word(raw)) == phi_inv(h)
+    }
+}
+
+/// phi_inv commutes with trace: phi_inv(trace(ct1, h, w)) == trace(ct2, phi_inv(h), w).
+/// Follows from phi compatibility applied to each symbol.
+proof fn lemma_phi_inv_commutes_trace(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word,
+    h: nat,
+)
+    requires
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
+        h < ct1.num_cosets,
+        word_valid(w, data.p1.num_generators),
+    ensures ({
+        let trace_result = crate::todd_coxeter::trace_word(ct1, h, w);
+        trace_result is Some ==>
+            crate::todd_coxeter::trace_word(ct2, phi_inv(h), w) == Some(phi_inv(trace_result.unwrap()))
+    }),
+    decreases w.len(),
+{
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::finite::coset_table_complete);
+    let n1 = data.p1.num_generators;
+
+    if w.len() == 0 {
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert(symbol_valid(s, n1));
+        assert(word_valid(rest, n1)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies symbol_valid(rest[k], n1)
+            by { assert(rest[k] == w[k + 1]); }
+        }
+        let col = crate::todd_coxeter::symbol_to_column(s);
+        assert(col < 2 * ct1.num_gens) by {
+            match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        // ct1.table[h][col] is Some(next1) by completeness
+        assert(ct1.table[h as int][col as int] is Some);
+        let next1 = ct1.table[h as int][col as int].unwrap();
+        assert(next1 < ct1.num_cosets);
+        // phi compatibility: phi_inv(next1) == ct_lookup(ct2, phi_inv(h), col)
+        // From valid_phi: phi(ct_lookup(ct2, h2, col)) == ct_lookup(ct1, phi(h2), col)
+        // With h2 = phi_inv(h): phi(ct_lookup(ct2, phi_inv(h), col)) == ct_lookup(ct1, h, col) == next1
+        // So ct_lookup(ct2, phi_inv(h), col) == phi_inv(next1) [phi_inv of both sides]
+        // This means ct2.table[phi_inv(h)][col] == Some(phi_inv(next1))
+        let ph = phi_inv(h);
+        assert(ph < ct2.num_cosets);
+        assert(col < 2 * ct2.num_gens);
+        assert(ct2.table[ph as int][col as int] is Some);
+        let next2 = ct2.table[ph as int][col as int].unwrap();
+        // phi(next2) == ct_lookup(ct1, phi(ph), col) == ct_lookup(ct1, h, col) == next1
+        // So next2 == phi_inv(next1)
+        assert(next2 < ct2.num_cosets);
+        assert(phi_inv(next1) == next2);
+        // IH: if trace(ct1, next1, rest) is Some(final1), then
+        //     trace(ct2, phi_inv(next1), rest) == Some(phi_inv(final1))
+        //     i.e., trace(ct2, next2, rest) == Some(phi_inv(final1))
+        lemma_phi_inv_commutes_trace(ct1, ct2, phi, phi_inv, data, rest, next1);
     }
 }
 
