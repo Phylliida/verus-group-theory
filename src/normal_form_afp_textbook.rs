@@ -4510,9 +4510,12 @@ proof fn lemma_a_rcoset_word_transfer(
     data: AmalgamatedData, g1: Word, g2: Word, l: nat,
 )
     requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
         same_a_rcoset(data, g1, g2),
         has_a_rcoset_word_of_len(data, g1, l),
-        presentation_valid(data.p1),
     ensures
         has_a_rcoset_word_of_len(data, g2, l),
 {
