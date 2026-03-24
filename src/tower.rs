@@ -30,7 +30,7 @@ verus! {
 ///   p2 = base
 ///   identifications[i] = (shift(a_i, k*ng), b_i)
 pub open spec fn tower_afp_data(data: HNNData, k: nat) -> AmalgamatedData
-    decreases k,
+    decreases k, 1nat,
 {
     let ng = data.base.num_generators;
     AmalgamatedData {
@@ -64,16 +64,37 @@ pub open spec fn word_in_copy(w: Word, ng: nat, k: nat) -> Word {
     shift_word(w, k * ng)
 }
 
-/// All tower AFP levels have suitable Cayley tables for AFP injectivity.
-/// This bundles: Cayley table existence, validity, phi compatibility,
-/// AND identifications_isomorphic (all included in h_prereqs).
-pub open spec fn tower_cayley_chain(data: HNNData, n: nat) -> bool {
-    forall|k: nat| k < n ==>
-        exists|ct1: crate::todd_coxeter::CosetTable,
-               ct2: crate::todd_coxeter::CosetTable,
-               phi: spec_fn(nat) -> nat,
-               phi_inv: spec_fn(nat) -> nat|
-            h_prereqs(ct1, ct2, phi, phi_inv, tower_afp_data(data, k))
+/// Curry a 2-argument spec_fn into a 1-argument spec_fn at a fixed first argument.
+pub open spec fn curry(f: spec_fn(nat, nat) -> nat, k: nat) -> spec_fn(nat) -> nat {
+    |h: nat| f(k, h)
+}
+
+/// h_prereqs holds at tower level k with indexed Cayley tables and phi maps.
+pub open spec fn tower_h_prereqs_at(
+    data: HNNData,
+    tower_cts: Seq<crate::todd_coxeter::CosetTable>,
+    base_ct: crate::todd_coxeter::CosetTable,
+    phi_at: spec_fn(nat, nat) -> nat,
+    phi_inv_at: spec_fn(nat, nat) -> nat,
+    k: nat,
+) -> bool {
+    k < tower_cts.len() &&
+    h_prereqs(tower_cts[k as int], base_ct,
+              curry(phi_at, k), curry(phi_inv_at, k),
+              tower_afp_data(data, k))
+}
+
+/// All tower AFP levels 0..n-1 have suitable Cayley tables for AFP injectivity.
+pub open spec fn tower_cayley_chain(
+    data: HNNData, n: nat,
+    tower_cts: Seq<crate::todd_coxeter::CosetTable>,
+    base_ct: crate::todd_coxeter::CosetTable,
+    phi_at: spec_fn(nat, nat) -> nat,
+    phi_inv_at: spec_fn(nat, nat) -> nat,
+) -> bool {
+    &&& tower_cts.len() >= n
+    &&& forall|k: nat| k < n ==>
+        #[trigger] tower_h_prereqs_at(data, tower_cts, base_ct, phi_at, phi_inv_at, k)
 }
 
 // ============================================================
@@ -196,25 +217,6 @@ pub proof fn lemma_tower_afp_data_valid(data: HNNData, k: nat)
 // Part C: Main embedding theorem
 // ============================================================
 
-/// tower_cayley_chain is monotone: chain for n implies chain for any m <= n.
-proof fn lemma_tower_cayley_chain_monotone(data: HNNData, n: nat, m: nat)
-    requires
-        tower_cayley_chain(data, n),
-        m <= n,
-    ensures
-        tower_cayley_chain(data, m),
-{
-    assert forall|k: nat| k < m
-        implies exists|ct1: crate::todd_coxeter::CosetTable,
-                       ct2: crate::todd_coxeter::CosetTable,
-                       phi: spec_fn(nat) -> nat,
-                       phi_inv: spec_fn(nat) -> nat|
-            h_prereqs(ct1, ct2, phi, phi_inv, tower_afp_data(data, k))
-    by {
-        assert(k < n);
-    }
-}
-
 /// G_0 embeds in the tower: if w is a base word and w ≡ ε in tower(n), then w ≡ ε in G.
 ///
 /// Proof by induction on n:
@@ -222,12 +224,18 @@ proof fn lemma_tower_cayley_chain_monotone(data: HNNData, n: nat, m: nat)
 ///   n > 0: tower(n) = AFP(tower(n-1), base, identifications).
 ///          By AFP injectivity: w ≡ ε in tower(n-1).
 ///          By IH: w ≡ ε in base.
-pub proof fn lemma_g0_embeds_in_tower(data: HNNData, n: nat, w: Word)
+pub proof fn lemma_g0_embeds_in_tower(
+    data: HNNData, n: nat, w: Word,
+    tower_cts: Seq<crate::todd_coxeter::CosetTable>,
+    base_ct: crate::todd_coxeter::CosetTable,
+    phi_at: spec_fn(nat, nat) -> nat,
+    phi_inv_at: spec_fn(nat, nat) -> nat,
+)
     requires
         hnn_data_valid(data),
         word_valid(w, data.base.num_generators),
         equiv_in_presentation(tower_presentation(data, n), w, empty_word()),
-        tower_cayley_chain(data, n),
+        tower_cayley_chain(data, n, tower_cts, base_ct, phi_at, phi_inv_at),
     ensures
         equiv_in_presentation(data.base, w, empty_word()),
     decreases n,
@@ -247,31 +255,24 @@ pub proof fn lemma_g0_embeds_in_tower(data: HNNData, n: nat, w: Word)
             lemma_word_valid_weaken(w, ng, n * ng);
         }
 
-        // Extract Cayley tables for level prev from tower_cayley_chain
-        assert(prev < n);
-        let ct1 = choose|ct1: crate::todd_coxeter::CosetTable|
-            exists|ct2: crate::todd_coxeter::CosetTable,
-                   phi: spec_fn(nat) -> nat,
-                   phi_inv: spec_fn(nat) -> nat|
-                h_prereqs(ct1, ct2, phi, phi_inv, afp_data);
-        let ct2 = choose|ct2: crate::todd_coxeter::CosetTable|
-            exists|phi: spec_fn(nat) -> nat,
-                   phi_inv: spec_fn(nat) -> nat|
-                h_prereqs(ct1, ct2, phi, phi_inv, afp_data);
-        let phi: spec_fn(nat) -> nat = choose|phi: spec_fn(nat) -> nat|
-            exists|phi_inv: spec_fn(nat) -> nat|
-                h_prereqs(ct1, ct2, phi, phi_inv, afp_data);
-        let phi_inv: spec_fn(nat) -> nat = choose|phi_inv: spec_fn(nat) -> nat|
-            h_prereqs(ct1, ct2, phi, phi_inv, afp_data);
+        // Get Cayley tables for level prev directly from the indexed parameters
+        assert(tower_h_prereqs_at(data, tower_cts, base_ct, phi_at, phi_inv_at, prev));
+        let ct1 = tower_cts[prev as int];
+        let phi = curry(phi_at, prev);
+        let phi_inv = curry(phi_inv_at, prev);
 
         // Apply AFP injectivity: w ≡ ε in tower(prev)
-        lemma_afp_injectivity(ct1, ct2, phi, phi_inv, afp_data, w);
+        lemma_afp_injectivity(ct1, base_ct, phi, phi_inv, afp_data, w);
 
-        // tower_cayley_chain(data, n) implies tower_cayley_chain(data, prev)
-        lemma_tower_cayley_chain_monotone(data, n, prev);
+        // tower_cayley_chain for prev levels (monotonicity)
+        assert(tower_cayley_chain(data, prev, tower_cts, base_ct, phi_at, phi_inv_at)) by {
+            assert forall|k: nat| k < prev
+                implies #[trigger] tower_h_prereqs_at(data, tower_cts, base_ct, phi_at, phi_inv_at, k)
+            by { assert(k < n); }
+        }
 
         // IH: w ≡ ε in base
-        lemma_g0_embeds_in_tower(data, prev, w);
+        lemma_g0_embeds_in_tower(data, prev, w, tower_cts, base_ct, phi_at, phi_inv_at);
     }
 }
 
