@@ -1299,12 +1299,40 @@ proof fn lemma_h_relator(
             assert(crate::todd_coxeter::trace_word(ct1, h, inverse_word(raw)) == Some(h));
             assert(r == inverse_word(raw));
         }
+    } else if relator_index < data.p1.relators.len() + data.p2.relators.len() {
+        // G₂ relator: all symbols have gen_index >= n1.
+        // The h-only action: each G₂ symbol does phi(ct_lookup(ct2, phi_inv(h), col)).
+        // For a G₂ relator r_g2: processing all symbols traces through ct2.
+        // ct2 is relator-closed: trace_word(ct2, phi_inv(h), r_g2) == Some(phi_inv(h)).
+        // After translating back via phi: phi(phi_inv(h)) == h.
+        //
+        // More precisely: h_act_word(r, h) where r is a shifted G₂ relator.
+        // Each symbol of r has gen_index >= n1, so h_act_sym uses the G₂ branch:
+        //   h → phi(ct_lookup(ct2, phi_inv(h), col_local))
+        // The composition of all symbols = phi(trace_word(ct2, phi_inv(h), unshifted_r)).
+        // By relator_closed(ct2, p2): trace_word(ct2, phi_inv(h), unshifted_r) == Some(phi_inv(h)).
+        // So the result = phi(phi_inv(h)) = h. ✓
+        //
+        // TODO: formalize by defining an "h_act_g2_is_trace" lemma analogous to h_act_is_trace.
+        // For now: this is a straightforward but tedious G₂ analog.
+        assert(false); // TODO: G₂ relator case (symmetric to G₁)
     } else {
-        // G₂ or identification relator
-        // TODO: these cases are more involved.
-        // G₂: similar to G₁ but using ct2 + phi compatibility.
-        // Identification: use h_act_is_trace for G₁ part + phi for G₂ part.
-        assert(false); // TODO: G₂ and identification cases
+        // Identification relator: u_i · inv(shift(v_i)).
+        // u_i is a G₁-word. inv(shift(v_i)) is a G₂-word.
+        // h_act_word(r, h) processes u_i then inv(shift(v_i)).
+        //
+        // u_i part: by h_act_is_trace, gives trace_word(ct1, h, u_i_or_inv).
+        // For get_relator with inverted=false: relator = u_i · inv(shift(v_i)).
+        //   u_i traces in ct1 from h → h' = trace(ct1, h, u_i).
+        //   Then inv(shift(v_i)) traces in ct2 from phi_inv(h') → end.
+        //   After phi: result = phi(end).
+        //   By the phi compatibility: phi(trace(ct2, phi_inv(h'), inv(v_i)))
+        //     = trace(ct1, h', inv(u_i))  [phi commutes with traces]
+        //     = h  [by trace_inverse_word since trace(ct1, h, u_i) = h']
+        //
+        // This uses the phi compatibility property from valid_phi.
+        // TODO: formalize this chain of equalities.
+        assert(false); // TODO: identification relator case
     }
 }
 
@@ -1417,6 +1445,91 @@ proof fn lemma_h_act_is_trace(
         assert(next_h < ct1.num_cosets);
         lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, rest, next_h);
     }
+}
+
+/// For a pure G₂-word w (shifted): h_act_word(w, h) traces through ct2 via phi.
+/// Specifically: h_act_word(w, h) = phi(trace_word(ct2, phi_inv(h), unshift(w))).
+///
+/// This is the G₂ analog of lemma_h_act_is_trace.
+proof fn lemma_h_act_g2_is_trace(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    n1: nat,
+    w: Word,  // a pure G₂-word (all gen indices >= n1)
+    h: nat,
+)
+    requires
+        forall|k: int| 0 <= k < w.len() ==> generator_index(#[trigger] w[k]) >= n1,
+        forall|k: int| 0 <= k < w.len() ==> generator_index(#[trigger] w[k]) < 2 * n1,
+        n1 == ct1.num_gens,
+        n1 == ct2.num_gens,
+        crate::todd_coxeter::coset_table_wf(ct2),
+        crate::finite::coset_table_complete(ct2),
+        h < ct1.num_cosets,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a,
+        forall|h2: nat, col: nat|
+            h2 < ct2.num_cosets && col < 2 * ct2.num_gens ==>
+            #[trigger] phi(ct_lookup(ct2, h2, col)) == ct_lookup(ct1, phi(h2), col),
+    ensures ({
+        let uw = shift_word_down(w, n1);
+        h_act_word(ct1, ct2, phi, phi_inv, n1, w, h) ==
+            phi(match crate::todd_coxeter::trace_word(ct2, phi_inv(h), uw) {
+                Some(v) => v,
+                None => phi_inv(h),
+            })
+    }),
+    decreases w.len(),
+{
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::finite::coset_table_complete);
+
+    if w.len() == 0 {
+        // h_act_word(ε, h) = h. trace_word(ct2, phi_inv(h), ε) = Some(phi_inv(h)).
+        // phi(phi_inv(h)) = h. ✓
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert(generator_index(s) >= n1);
+        assert(generator_index(s) < 2 * n1);
+        assert forall|k: int| 0 <= k < rest.len()
+            implies generator_index(#[trigger] rest[k]) >= n1 && generator_index(rest[k]) < 2 * n1
+        by { assert(rest[k] == w[k + 1]); }
+
+        // h_act_sym(s, h) = phi(ct_lookup(ct2, phi_inv(h), sym_col(unshift(s))))
+        let s_local = unshift_sym(s, n1);
+        let col = sym_col(s_local);
+        let h_g2 = phi_inv(h);
+        let next_g2 = ct_lookup(ct2, h_g2, col);
+        let next_h = phi(next_g2);
+        assert(h_act_sym(ct1, ct2, phi, phi_inv, n1, s, h) == next_h);
+
+        // next_g2 < ct2.num_cosets
+        assert(col < 2 * ct2.num_gens) by {
+            match s_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+
+        // phi_inv(next_h) = phi_inv(phi(next_g2)) = next_g2
+        assert(phi_inv(next_h) == next_g2);
+        // next_h < ct1.num_cosets
+        // assert(next_h < ct1.num_cosets); // should follow from phi bound
+
+        // IH: h_act_word(rest, next_h) = phi(trace_word(ct2, phi_inv(next_h), unshift(rest)))
+        //                                = phi(trace_word(ct2, next_g2, unshift(rest)))
+        lemma_h_act_g2_is_trace(ct1, ct2, phi, phi_inv, n1, rest, next_h);
+
+        // trace_word(ct2, h_g2, unshift(w)) = trace_word(ct2, next_g2, unshift(rest))
+        // since the first symbol traces h_g2 → next_g2.
+    }
+}
+
+/// Unshift an entire word (subtract n1 from each generator index).
+pub open spec fn shift_word_down(w: Word, n1: nat) -> Word {
+    Seq::new(w.len(), |i: int| unshift_sym(w[i], n1))
 }
 
 /// AFP injectivity for finite groups.
