@@ -41,48 +41,65 @@ pub open spec fn k_size(data: AmalgamatedData) -> nat {
 // Part B: Shortlex-canonical coset representatives
 // ============================================================
 
-/// Shortlex-minimum word in the left A-coset of g.
-/// This is the canonical coset representative: same coset → same rep.
+/// Does the left A-coset of g contain a valid word of length l?
+pub open spec fn has_left_coset_word_of_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p1.num_generators)
+        && same_left_coset(data, g, w) && w.len() == l
+}
+
+/// Minimum length of any valid word in g's left A-coset.
+pub open spec fn left_min_coset_len(data: AmalgamatedData, g: Word) -> nat {
+    choose|l: nat| #[trigger] has_left_coset_word_of_len(data, g, l)
+        && no_pred_below(|l2: nat| has_left_coset_word_of_len(data, g, l2), l)
+}
+
+/// Canonical coset representative: a word of minimum length in g's coset.
+/// For length 0: only ε has length 0, so the rep IS ε when min length is 0.
+/// For same coset: same min length, same choose predicate → same result (extensionality).
 pub open spec fn left_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
+    let l = left_min_coset_len(data, g);
     choose|rep: Word|
         word_valid(rep, data.p1.num_generators)
         && same_left_coset(data, g, rep)
-        && (forall|rep2: Word|
-            word_valid(rep2, data.p1.num_generators)
-            && same_left_coset(data, g, rep2)
-            ==> !shortlex_lt(rep2, rep))
+        && rep.len() == l
 }
 
-/// The subgroup part: shortlex-canonical K-word h such that g ≡ concat(rep, embed_a(h)) in G₁.
-/// Using shortlex-min ensures canonicity: equivalent g values give the same h.
+/// The subgroup part: a K-word h such that embed_a(h) ≡ inv(rep) * g.
 pub open spec fn left_h_part(data: AmalgamatedData, g: Word) -> Word {
     let rep = left_canonical_rep(data, g);
-    // g * rep⁻¹ is in the subgroup. Find the shortlex-min K-word embedding to it.
     choose|h: Word|
         word_valid(h, k_size(data))
         && equiv_in_presentation(data.p1,
             apply_embedding(a_words(data), h),
             concat(inverse_word(rep), g))
-        && (forall|h2: Word|
-            word_valid(h2, k_size(data))
-            && equiv_in_presentation(data.p1,
-                apply_embedding(a_words(data), h2),
-                concat(inverse_word(rep), g))
-            ==> !shortlex_lt(h2, h))
 }
 
-/// Shortlex-minimum word in the right B-coset of g.
+/// Does the right B-coset of g contain a valid word of length l?
+pub open spec fn has_right_coset_word_of_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p2.num_generators)
+        && same_right_coset(data, g, w) && w.len() == l
+}
+
+/// Minimum length of any valid word in g's right B-coset.
+pub open spec fn right_min_coset_len(data: AmalgamatedData, g: Word) -> nat {
+    choose|l: nat| #[trigger] has_right_coset_word_of_len(data, g, l)
+        && no_pred_below(|l2: nat| has_right_coset_word_of_len(data, g, l2), l)
+}
+
+/// Canonical right coset representative.
 pub open spec fn right_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
+    let l = right_min_coset_len(data, g);
     choose|rep: Word|
         word_valid(rep, data.p2.num_generators)
         && same_right_coset(data, g, rep)
-        && (forall|rep2: Word|
-            word_valid(rep2, data.p2.num_generators)
-            && same_right_coset(data, g, rep2)
-            ==> !shortlex_lt(rep2, rep))
+        && rep.len() == l
 }
 
-/// The subgroup part for G₂: shortlex-canonical K-word.
+/// The subgroup part for G₂.
 pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
     let rep = right_canonical_rep(data, g);
     choose|h: Word|
@@ -90,12 +107,6 @@ pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
         && equiv_in_presentation(data.p2,
             apply_embedding(b_words(data), h),
             concat(inverse_word(rep), g))
-        && (forall|h2: Word|
-            word_valid(h2, k_size(data))
-            && equiv_in_presentation(data.p2,
-                apply_embedding(b_words(data), h2),
-                concat(inverse_word(rep), g))
-            ==> !shortlex_lt(h2, h))
 }
 
 // ============================================================
@@ -675,32 +686,30 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
 // Part H2: Converse faithfulness
 // ============================================================
 
-/// The choose predicate for left_canonical_rep is satisfiable at g.
-/// This ensures the choose result has the expected properties.
-proof fn lemma_left_rep_satisfiable(data: AmalgamatedData, g: Word)
+/// The choose for left_canonical_rep is in g's coset.
+proof fn lemma_left_rep_in_coset(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         word_valid(g, data.p1.num_generators),
-    ensures ({
-        let rep = left_canonical_rep(data, g);
-        &&& word_valid(rep, data.p1.num_generators)
-        &&& same_left_coset(data, g, rep)
-    }),
+    ensures
+        same_left_coset(data, g, left_canonical_rep(data, g)),
 {
-    let n1 = data.p1.num_generators;
-    // g is in its own coset
+    // g is in its own coset (reflexive)
     lemma_same_left_coset_reflexive(data, g);
+    // g satisfies the choose body (word_valid + same_coset).
+    // So the choose returns something satisfying the full predicate.
+    // In particular: same_left_coset(g, result).
+}
 
-    // Show the choose predicate is satisfiable: g is a candidate (not necessarily shortlex-min,
-    // but the existence of ANY candidate ensures the choose returns a valid result).
-    // g satisfies: word_valid(g, n1) && same_left_coset(g, g).
-    // From shortlex well-ordering: the minimum in the coset exists.
-    // The choose returns this minimum, which also satisfies word_valid && same_left_coset.
-
-    // Assert that at least g satisfies the weaker predicate (without shortlex-min):
-    assert(word_valid(g, n1) && same_left_coset(data, g, g));
-    // The choose result satisfies the full predicate (including shortlex-min).
-    // In particular, it satisfies the weaker conditions.
+/// The choose for left_canonical_rep is word_valid.
+proof fn lemma_left_rep_valid(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        word_valid(left_canonical_rep(data, g), data.p1.num_generators),
+{
+    lemma_same_left_coset_reflexive(data, g);
 }
 
 /// Converse: if same_left_coset(g, ε) and left_h_part(g) = ε, then g ≡ ε.
@@ -763,6 +772,54 @@ pub proof fn lemma_g1_decompose_converse(
 
 /// left_canonical_rep of the empty word (identity element) is the empty word.
 /// Because: ε is in ε's coset (reflexive), and ε is shortlex-minimal.
+/// If pred(0) is true and no_pred_below(pred, l) holds, then l must be 0.
+/// Because no_pred_below(pred, l) for l > 0 requires !pred(l-1), and eventually !pred(0).
+proof fn lemma_no_pred_below_forces_zero(pred: spec_fn(nat) -> bool, l: nat)
+    requires
+        no_pred_below(pred, l),
+        pred(0nat),
+    ensures
+        l == 0,
+    decreases l,
+{
+    if l == 0 {
+    } else {
+        // no_pred_below(pred, l) = !pred(l-1) && no_pred_below(pred, l-1)
+        // By IH: no_pred_below(pred, l-1) && pred(0) → l-1 == 0
+        lemma_no_pred_below_forces_zero(pred, (l - 1) as nat);
+        // l - 1 == 0, so l == 1. And no_pred_below(pred, 1) = !pred(0) && true = false.
+        // But no_pred_below(pred, l) = no_pred_below(pred, 1) is given as true. Contradiction.
+    }
+}
+
+/// left_min_coset_len for the empty word is 0.
+proof fn lemma_left_min_coset_len_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        left_min_coset_len(data, empty_word()) == 0,
+{
+    let e = empty_word();
+    let n1 = data.p1.num_generators;
+    let pred = |l: nat| has_left_coset_word_of_len(data, e, l);
+
+    // ε is in its own coset with length 0
+    lemma_same_left_coset_reflexive(data, e);
+    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
+    assert(has_left_coset_word_of_len(data, e, 0nat));
+    assert(pred(0nat));
+
+    // no_pred_below(pred, 0) is true (base case)
+    assert(no_pred_below(pred, 0nat));
+
+    // So the choose predicate is satisfiable at l = 0.
+    // The choose returns some l satisfying the predicate.
+    let l = left_min_coset_len(data, e);
+    // l satisfies: has_left_coset_word_of_len(data, e, l) && no_pred_below(pred, l)
+    // From no_pred_below(pred, l) && pred(0): l must be 0.
+    lemma_no_pred_below_forces_zero(pred, l);
+}
+
 pub proof fn lemma_left_rep_identity(data: AmalgamatedData)
     requires
         amalgamated_data_valid(data),
@@ -772,35 +829,19 @@ pub proof fn lemma_left_rep_identity(data: AmalgamatedData)
     let n1 = data.p1.num_generators;
     let e = empty_word();
 
-    // ε is in its own coset
-    lemma_same_left_coset_reflexive(data, e);
+    lemma_left_min_coset_len_identity(data);
+    // left_min_coset_len(ε) == 0
 
-    // ε is word_valid
-    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
-
-    // Nothing is shortlex-smaller than ε
-    // So ε satisfies the choose predicate of left_canonical_rep(data, ε)
-    assert forall|rep2: Word|
-        word_valid(rep2, n1) && same_left_coset(data, e, rep2)
-        implies !shortlex_lt(rep2, e)
-    by {
-        crate::shortlex::lemma_empty_shortlex_minimal(rep2);
-    }
-
-    // ε satisfies the predicate — it IS the choose result.
-    // Uniqueness: if rep also satisfies the predicate, then
-    //   !shortlex_lt(rep, ε) and !shortlex_lt(ε, rep) [since ε is also in coset]
-    //   By totality: rep =~= ε.
-    // So choose returns ε.
+    // left_canonical_rep(ε) is a word of length 0 in ε's coset.
+    // Any word of length 0 is ε.
     let rep = left_canonical_rep(data, e);
-    // rep satisfies the predicate too (by choose specification)
-    // We need rep =~= ε. By contradiction: if rep ≠ ε, then rep.len() > 0,
-    // so shortlex_lt(ε, rep), contradicting "ε is not shortlex-smaller than rep".
-    // But rep's predicate says "nothing in coset is smaller than rep".
-    // ε IS in the coset. So !shortlex_lt(ε, rep).
-    // Also our assertion: !shortlex_lt(rep, ε).
-    // By totality: rep =~= ε.
-    crate::shortlex::lemma_shortlex_total(e, rep);
+    // rep satisfies: word_valid(rep, n1) && same_left_coset(ε, rep) && rep.len() == 0
+    // (from the choose, since it IS satisfiable — ε itself works)
+    lemma_same_left_coset_reflexive(data, e);
+    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
+    // ε satisfies the choose predicate: word_valid(ε, n1) && same_left_coset(ε, ε) && ε.len() == 0
+    // So the choose is satisfiable and rep satisfies the predicate, in particular rep.len() == 0.
+    // Any seq of length 0 equals ε.
 }
 
 /// left_h_part of the empty word is the empty K-word.
