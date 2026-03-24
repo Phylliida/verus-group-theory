@@ -131,3 +131,6 @@ pub mod normal_form_free_product;
 
 #[cfg(verus_keep_ghost)]
 pub mod normal_form_amalgamated;
+
+#[cfg(verus_keep_ghost)]
+pub mod tower;
