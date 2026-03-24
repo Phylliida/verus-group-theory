@@ -494,11 +494,11 @@ pub open spec fn act_left_sym(
         // Prepend new left syllable (different factor or empty)
         (new_h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: new_rep }) + syllables)
     } else {
-        // Merge: first syllable is also left
-        let merged = concat(new_rep, syllables.first().rep);
-        let merged_h = left_h_part(data, merged);
-        let merged_rep = left_canonical_rep(data, merged);
-        let combined_h = concat(merged_h, new_h);
+        // Merge (textbook Lyndon-Schupp Ch. IV): compute g·h·u₁ and decompose once.
+        // This matches the textbook's single-step decomposition, ensuring combined_h is canonical.
+        let full_product = concat(product, syllables.first().rep);
+        let combined_h = left_h_part(data, full_product);
+        let merged_rep = left_canonical_rep(data, full_product);
 
         if merged_rep =~= empty_word() {
             // Merge absorbed into subgroup
@@ -527,10 +527,10 @@ pub open spec fn act_right_sym(
     } else if syllables.len() == 0 || syllables.first().is_left {
         (new_h, Seq::new(1, |_i: int| Syllable { is_left: false, rep: new_rep }) + syllables)
     } else {
-        let merged = concat(new_rep, syllables.first().rep);
-        let merged_h = right_h_part(data, merged);
-        let merged_rep = right_canonical_rep(data, merged);
-        let combined_h = concat(merged_h, new_h);
+        // Merge (textbook): compute g·h·u₁ and decompose once.
+        let full_product = concat(product, syllables.first().rep);
+        let combined_h = right_h_part(data, full_product);
+        let merged_rep = right_canonical_rep(data, full_product);
 
         if merged_rep =~= empty_word() {
             (combined_h, syllables.drop_first())
@@ -1315,11 +1315,13 @@ pub open spec fn relator_acts_trivially(
     act_word(data, r, h, syls) == (h, syls)
 }
 
-/// State canonicity: h is a valid K-word.
-/// The action always produces valid K-words (from left_h_part/right_h_part choose).
-/// The identity state (ε, []) satisfies this trivially.
+/// State canonicity: h is a valid K-word AND is the canonical representative
+/// for its subgroup equivalence class (matching textbook element-level states).
+/// The action always produces canonical K-words (from left_h_part choose).
+/// The identity state (ε, []) satisfies this: left_h_part(embed_a(ε)) = left_h_part(ε) =~= ε.
 pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Syllable>) -> bool {
     word_valid(h, k_size(data))
+    && left_h_part(data, apply_embedding(a_words(data), h)) =~= h
 }
 
 /// The action of a single symbol preserves canonical state (h is word_valid for k).
@@ -3222,6 +3224,179 @@ pub proof fn lemma_left_h_part_equiv_invariant(
     }
     assert(base > 0) by { assert(h_lex_base(data) == 2 * k_size(data) + 1); }
     lemma_word_lex_rank_base_injective(h1, h2, base);
+}
+
+// ============================================================
+// Part M: General inverse pair triviality for G₁ symbols
+// ============================================================
+
+/// Subcase A: G₁ inverse pair when product = [s]·embed_a(h) is in the subgroup (rep = ε).
+/// State after s: (h', syls). After inv(s): product2 ≡ embed_a(h) → (h, syls).
+proof fn lemma_inverse_pair_g1_subcase_a(
+    data: AmalgamatedData,
+    s: Symbol,
+    h: Word,
+    syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        is_canonical_state(data, h, syls),
+        generator_index(s) < data.p1.num_generators,
+        left_canonical_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word(),
+    ensures
+        act_word(data, inverse_pair_word(s), h, syls) == (h, syls),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let e = empty_word();
+    let s_word = Seq::new(1, |_i: int| s);
+    let inv_s = inverse_symbol(s);
+    let inv_s_word = Seq::new(1, |_i: int| inv_s);
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(s_word, embed_h);
+    reveal(presentation_valid);
+
+    // Step 1: act_sym(s, h, syls)
+    // product is in subgroup (rep = ε), so act_left_sym gives (h', syls)
+    let h_prime = left_h_part(data, product);
+
+    // Split [s, inv(s)] = [s] ++ [inv(s)] and use composition
+    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+        assert(inverse_pair_word(s).len() == 2);
+        assert(concat(s_word, inv_s_word).len() == 2);
+        assert forall|k: int| 0 <= k < 2
+            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+    }
+    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_single(data, s, h, syls);
+    // act_word([s], h, syls) = act_sym(s, h, syls) = (h', syls) [since rep = ε]
+
+    // Step 2: act_sym(inv(s), h', syls)
+    lemma_act_word_single(data, inv_s, h_prime, syls);
+    // = act_left_sym(inv(s), h', syls) since gen_index(inv(s)) = gen_index(s) < n1
+
+    // product2 = [inv(s)] · embed_a(h')
+    let embed_h_prime = apply_embedding(a_words(data), h_prime);
+    let product2 = concat(inv_s_word, embed_h_prime);
+
+    // Key: embed_a(h') ≡ inv(rep) · product = product = [s] · embed_a(h) [since rep = ε]
+    lemma_h_witness_exists(data, product);
+    let hw: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+            concat(inverse_word(left_canonical_rep(data, product)), product));
+    lemma_left_h_part_props(data, product, hw);
+    // Now: embed_a(h') ≡ target = inv(ε) · product = product
+
+    // product2 ≡ [inv(s)] · [s] · embed_a(h) = concat(inv_s_word, product)
+    // ≡ concat(inv_s_word, concat(s_word, embed_h))
+    // which contains [inv(s), s, ...embed_h...]
+    crate::presentation_lemmas::lemma_equiv_concat_left(
+        p1, embed_h_prime, product, inv_s_word);
+    // concat(inv_s_word, embed_h_prime) ≡ concat(inv_s_word, product)
+
+    // concat(inv_s_word, product) = concat(inv_s_word, concat(s_word, embed_h))
+    // The inverse pair [inv(s), s] cancels: concat(inv_s_word, s_word) ≡ ε
+    assert(inverse_word(s_word) =~= inv_s_word) by {
+        assert(s_word.first() == s);
+        assert(s_word.drop_first().len() == 0);
+        assert(inverse_word(s_word.drop_first()) =~= e);
+        assert(concat(e, Seq::new(1, |_i: int| inverse_symbol(s))).len() == 1);
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p1, s_word);
+    // concat(inv(s_word), s_word) ≡ ε
+
+    // concat(inv_s_word, concat(s_word, embed_h)) ≡ embed_h
+    // by: concat(inv_s_word, s_word) ≡ ε, so concat(ε, embed_h) =~= embed_h
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        p1, concat(inv_s_word, s_word), e, embed_h);
+    // concat(concat(inv_s_word, s_word), embed_h) ≡ concat(ε, embed_h)
+    assert(concat(e, embed_h) =~= embed_h) by {
+        assert(concat(e, embed_h).len() == embed_h.len());
+        assert forall|k: int| 0 <= k < embed_h.len()
+            implies concat(e, embed_h)[k] == embed_h[k] by {}
+    }
+    // Need: concat(inv_s_word, concat(s_word, embed_h))
+    //     =~= concat(concat(inv_s_word, s_word), embed_h)  [associativity]
+    assert(concat(inv_s_word, concat(s_word, embed_h)) =~=
+           concat(concat(inv_s_word, s_word), embed_h)) by {
+        let lhs = concat(inv_s_word, concat(s_word, embed_h));
+        let rhs = concat(concat(inv_s_word, s_word), embed_h);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < inv_s_word.len() as int {} else {
+                let j = k - inv_s_word.len() as int;
+                if j < s_word.len() as int {} else {}
+            }
+        }
+    }
+
+    // Chain: product2 ≡ concat(inv_s_word, product)
+    //                  = concat(inv_s_word, concat(s_word, embed_h))
+    //                  =~= concat(concat(inv_s_word, s_word), embed_h)
+    //                  ≡ concat(ε, embed_h) =~= embed_h
+    crate::presentation::lemma_equiv_transitive(p1, product2,
+        concat(inv_s_word, product),
+        concat(concat(inv_s_word, s_word), embed_h));
+    crate::presentation::lemma_equiv_transitive(p1, product2,
+        concat(concat(inv_s_word, s_word), embed_h),
+        embed_h);
+
+    // product2 ≡ embed_a(h). Both are G₁-words.
+    // By coset invariance: left_canonical_rep(product2) =~= left_canonical_rep(embed_a(h))
+    // embed_a(h) is in subgroup → left_canonical_rep(embed_a(h)) =~= ε
+    // We need: embed_a(h) is in the subgroup and has canonical rep ε.
+    // This follows from: is_canonical_state(h) → left_h_part(embed_a(h)) =~= h
+    // embed_a(h) is in the subgroup → same_left_coset(embed_a(h), ε)
+    // → left_canonical_rep(embed_a(h)) =~= left_canonical_rep(ε) =~= ε
+
+    // Establish word_valid for various terms
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    crate::word::lemma_inverse_word_valid(embed_h, n1);
+
+    // Show embed_a(h) is in subgroup → canonical rep is ε
+    // embed_a(h) = apply_embedding(a_words, h) is in generated_subgroup by construction
+    crate::benign::lemma_embedding_in_subgroup(a_words(data), h, p1);
+    // same_left_coset(embed_a(h), ε) from subgroup membership
+    lemma_same_coset_equiv_eps(data, embed_h);
+
+    // left_canonical_rep(embed_a(h)) =~= left_canonical_rep(ε) =~= ε
+    lemma_left_rep_identity(data);
+    lemma_left_rep_props(data, embed_h);
+    lemma_left_rep_coset_invariant(data, embed_h, e);
+    // left_canonical_rep(embed_a(h)) =~= ε
+
+    // By coset invariance: left_canonical_rep(product2) =~= ε
+    lemma_same_left_coset_from_equiv(data, product2, embed_h);
+    crate::word::lemma_concat_word_valid(inv_s_word, embed_h_prime, n1);
+    lemma_left_rep_props(data, product2);
+    lemma_left_rep_coset_invariant(data, product2, embed_h);
+    // left_canonical_rep(product2) =~= left_canonical_rep(embed_h) =~= ε
+
+    // rep2 = ε → act_left_sym(inv(s), h', syls) takes the rep=ε branch: (left_h_part(product2), syls)
+
+    // By h-part invariance: left_h_part(product2) =~= left_h_part(embed_a(h))
+    lemma_h_witness_exists(data, product2);
+    lemma_h_witness_exists(data, embed_h);
+    let hw2: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+            concat(inverse_word(left_canonical_rep(data, product2)), product2));
+    let hw_eh: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+            concat(inverse_word(left_canonical_rep(data, embed_h)), embed_h));
+    lemma_left_h_part_equiv_invariant(data, product2, embed_h, hw2, hw_eh);
+    // left_h_part(product2) =~= left_h_part(embed_a(h))
+
+    // By canonicality: left_h_part(embed_a(h)) =~= h
+    // (from is_canonical_state precondition)
+
+    // Therefore: left_h_part(product2) =~= h
+    // And: act_sym(inv(s), h', syls) = (left_h_part(product2), syls) = (h, syls) ✓
 }
 
 } // verus!
