@@ -4224,6 +4224,179 @@ proof fn lemma_inverse_pair_g1_subcase_b_merge(
     lemma_subgroup_rcoset_restore(data, full_product2, h);
 }
 
+/// Subgroup left cancellation: if x ∈ A and concat(x, y) ∈ A, then y ∈ A.
+proof fn lemma_subgroup_left_cancel(
+    p: Presentation, gens: Seq<Word>, x: Word, y: Word,
+)
+    requires
+        presentation_valid(p),
+        word_valid(x, p.num_generators),
+        word_valid(y, p.num_generators),
+        in_generated_subgroup(p, gens, x),
+        in_generated_subgroup(p, gens, concat(x, y)),
+        forall|i: int| 0 <= i < gens.len() ==> word_valid(#[trigger] gens[i], p.num_generators),
+    ensures
+        in_generated_subgroup(p, gens, y),
+{
+    // inv(x) ∈ A, concat(x,y) ∈ A → concat(inv(x), concat(x,y)) ∈ A
+    crate::word::lemma_inverse_word_valid(x, p.num_generators);
+    lemma_subgroup_inverse(p, gens, x);
+    crate::word::lemma_concat_word_valid(x, y, p.num_generators);
+    lemma_subgroup_concat(p, gens, inverse_word(x), concat(x, y));
+    // concat(inv(x), concat(x,y)) ≡ y
+    crate::presentation_lemmas::lemma_word_inverse_left(p, x);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p, concat(inverse_word(x), x), empty_word(), y);
+    assert(concat(inverse_word(x), concat(x, y)) =~=
+           concat(concat(inverse_word(x), x), y)) by {
+        let lhs = concat(inverse_word(x), concat(x, y));
+        let rhs = concat(concat(inverse_word(x), x), y);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < inverse_word(x).len() as int {} else {
+                let j = k - inverse_word(x).len() as int;
+                if j < x.len() as int {} else {}
+            }
+        }
+    }
+    assert(concat(empty_word(), y) =~= y) by {
+        assert(concat(empty_word(), y).len() == y.len());
+        assert forall|k: int| 0 <= k < y.len()
+            implies concat(empty_word(), y)[k] == y[k] by {}
+    }
+    lemma_in_subgroup_equiv(p, gens,
+        concat(inverse_word(x), concat(x, y)), y);
+}
+
+/// The inverse step's product is NOT in the subgroup when rep' ≠ ε.
+/// Proof by contradiction: if product_inv ∈ A, then inv(rep') ∈ A → rep' ∈ A → product ∈ A → rep' = ε.
+proof fn lemma_inv_step_rep_nonzero(
+    data: AmalgamatedData, s: Symbol, h: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(h, k_size(data)),
+        generator_index(s) < data.p1.num_generators,
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word()),
+    ensures ({
+        let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+        let h_prime = a_rcoset_h(data, product);
+        let product_inv = concat(Seq::new(1, |_i: int| inverse_symbol(s)),
+            apply_embedding(a_words(data), h_prime));
+        !(a_rcoset_rep(data, product_inv) =~= empty_word())
+    }),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(Seq::new(1, |_i: int| s), embed_h);
+    let rep_prime = a_rcoset_rep(data, product);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+
+    // Get h_prime and product_inv
+    lemma_inv_s_rcoset_product_equiv(data, s, h);
+    let h_prime = a_rcoset_h(data, product);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
+    let embed_h_prime = apply_embedding(a_words(data), h_prime);
+    let inv_s_word = Seq::new(1, |_i: int| inverse_symbol(s));
+    let product_inv = concat(inv_s_word, embed_h_prime);
+
+    // Proof by contradiction: assume a_rcoset_rep(product_inv) =~= ε
+    // Then product_inv ∈ A. We'll show this implies rep' =~= ε, contradiction.
+    if a_rcoset_rep(data, product_inv) =~= empty_word() {
+        // product_inv ∈ A
+        assert(word_valid(inv_s_word, n1)) by {
+            assert forall|k: int| 0 <= k < inv_s_word.len()
+                implies symbol_valid(#[trigger] inv_s_word[k], n1) by {
+                    match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+                }
+        }
+        crate::word::lemma_concat_word_valid(inv_s_word, embed_h_prime, n1);
+        crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+
+        lemma_a_rcoset_rep_props(data, product_inv);
+        crate::presentation::lemma_equiv_refl(p1, product_inv);
+        lemma_in_subgroup_equiv(p1, a_words(data),
+            concat(product_inv, inverse_word(a_rcoset_rep(data, product_inv))), product_inv);
+        // product_inv ∈ A
+
+        // embed_a(h') · rep' ≡ product (from rcoset decomposition)
+        lemma_a_rcoset_rep_props(data, product);
+        crate::word::lemma_inverse_word_valid(rep_prime, n1);
+        crate::word::lemma_concat_word_valid(product, inverse_word(rep_prime), n1);
+        lemma_subgroup_to_k_word(p1, a_words(data), concat(product, inverse_word(rep_prime)));
+        let hw_r: Word = choose|hw: Word| word_valid(hw, a_words(data).len())
+            && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+                concat(product, inverse_word(rep_prime)));
+        assert(a_words(data).len() == k_size(data));
+        lemma_rcoset_decomposition(data, product, hw_r);
+        // concat(embed_a(h'), rep') ≡ product
+
+        // [inv(s)] · embed_a(h') · rep' ≡ embed_a(h) (from general helper)
+        // Already have: concat(concat(inv_s_word, embed_h_prime), rep_prime) ≡ embed_a(h)
+        let full = concat(concat(inv_s_word, embed_h_prime), rep_prime);
+        // full ≡ embed_a(h) ∈ A → full ∈ A
+        lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
+        crate::word::lemma_concat_word_valid(concat(inv_s_word, embed_h_prime), rep_prime, n1);
+        crate::presentation::lemma_equiv_symmetric(p1, full, embed_h);
+        lemma_in_subgroup_equiv(p1, a_words(data), embed_h, full);
+
+        // full = concat(product_inv, rep_prime). product_inv ∈ A and full ∈ A
+        // → rep_prime ∈ A (by left cancellation)
+        lemma_subgroup_left_cancel(p1, a_words(data), product_inv, rep_prime);
+
+        // rep' ∈ A → product ∈ A:
+        // same_a_rcoset(product, rep') gives product·inv(rep') ∈ A
+        // rep' ∈ A → concat(product·inv(rep'), rep') ∈ A by subgroup_concat
+        // And concat(product·inv(rep'), rep') ≡ product → product ∈ A
+        lemma_subgroup_concat(p1, a_words(data),
+            concat(product, inverse_word(rep_prime)), rep_prime);
+        crate::presentation_lemmas::lemma_word_inverse_right(p1, rep_prime);
+        crate::presentation_lemmas::lemma_equiv_concat_left(
+            p1, concat(inverse_word(rep_prime), rep_prime), empty_word(), empty_word());
+
+        // concat(concat(product, inv(rep')), rep') ≡ product (assoc + inv cancellation)
+        assert(concat(concat(product, inverse_word(rep_prime)), rep_prime) =~=
+               concat(product, concat(inverse_word(rep_prime), rep_prime))) by {
+            let lhs = concat(concat(product, inverse_word(rep_prime)), rep_prime);
+            let rhs = concat(product, concat(inverse_word(rep_prime), rep_prime));
+            assert(lhs.len() == rhs.len());
+            assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+                if k < product.len() as int {} else {
+                    let j = k - product.len() as int;
+                    if j < inverse_word(rep_prime).len() as int {} else {}
+                }
+            }
+        }
+        crate::presentation_lemmas::lemma_equiv_concat_right(
+            p1, product, concat(inverse_word(rep_prime), rep_prime), empty_word());
+        assert(concat(product, empty_word()) =~= product) by {
+            assert(concat(product, empty_word()).len() == product.len());
+            assert forall|k: int| 0 <= k < product.len()
+                implies concat(product, empty_word())[k] == product[k] by {}
+        }
+        let s_word = Seq::new(1, |_i: int| s);
+        assert(word_valid(s_word, n1)) by {
+            assert forall|k: int| 0 <= k < s_word.len()
+                implies symbol_valid(#[trigger] s_word[k], n1) by {
+                    match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+                }
+        }
+        crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
+        lemma_in_subgroup_equiv(p1, a_words(data),
+            concat(concat(product, inverse_word(rep_prime)), rep_prime), product);
+        // product ∈ A → a_rcoset_rep(product) =~= ε
+        lemma_a_rcoset_in_subgroup(data, product);
+        // But rep' = a_rcoset_rep(product) ≠ ε. Contradiction!
+    }
+}
+
 /// Helper: When the merge case of act_left_sym produces merged_rep = ε,
 /// the result is (combined_h, syllables.drop_first()).
 /// This is a small focused helper to help Z3 unfold act_left_sym.
