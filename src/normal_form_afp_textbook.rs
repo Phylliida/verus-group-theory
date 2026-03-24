@@ -1804,6 +1804,15 @@ pub proof fn lemma_equiv_inverse(
     // But the symmetry gave equiv(concat(ε, inv_a), concat(concat(inv_b,a), inv_a))
     // And (B) gives equiv(concat(inv_b, concat(a, inv_a)), concat(inv_b, ε))
     // These connect via assoc: concat(concat(inv_b,a), inv_a) =~= concat(inv_b, concat(a, inv_a))
+    // Seq associativity: concat(concat(x,y),z) =~= concat(x, concat(y,z))
+    assert(concat(concat(inv_b, a), inv_a) =~= concat(inv_b, concat(a, inv_a))) by {
+        let lhs = concat(concat(inv_b, a), inv_a);
+        let rhs = concat(inv_b, concat(a, inv_a));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < inv_b.len() {} else if k < inv_b.len() + a.len() {} else {}
+        }
+    }
     crate::presentation::lemma_equiv_transitive(p,
         concat(empty_word(), inv_a),
         concat(concat(inv_b, a), inv_a),
@@ -1888,10 +1897,136 @@ proof fn lemma_reverse_invert_preserves_generators(
     }
 }
 
-// lemma_reverse_invert_is_inverse and lemma_subgroup_inverse — TODO.
-// Both depend on lemma_equiv_inverse (inverse preserves equiv).
-// Proof structure is correct (factors reversed + inverted), just needs the
-// transitivity chain assembly. ~100 lines when complete.
+/// concat_all of factors_from_generators produces a word_valid word.
+proof fn lemma_concat_all_word_valid(
+    gens: Seq<Word>, factors: Seq<Word>, n: nat,
+)
+    requires
+        factors_from_generators(gens, factors),
+        forall|i: int| 0 <= i < gens.len() ==> word_valid(#[trigger] gens[i], n),
+    ensures
+        word_valid(concat_all(factors), n),
+    decreases factors.len(),
+{
+    if factors.len() == 0 {
+    } else {
+        let rest = factors.drop_first();
+        assert(factors_from_generators(gens, rest)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies is_generator_or_inverse(gens, #[trigger] rest[k])
+            by { assert(rest[k] == factors[k + 1]); }
+        }
+        lemma_concat_all_word_valid(gens, rest, n);
+        // factors.first() is word_valid: it's gens[i] or inv(gens[i])
+        let first = factors.first();
+        let i: nat = choose|i: nat| i < gens.len()
+            && (first =~= gens[i as int] || first =~= inverse_word(gens[i as int]));
+        if first =~= inverse_word(gens[i as int]) {
+            crate::word::lemma_inverse_word_valid(gens[i as int], n);
+        }
+        crate::word::lemma_concat_word_valid(first, concat_all(rest), n);
+    }
+}
+
+/// concat_all of reverse_invert_factors ≡ inverse_word of concat_all.
+proof fn lemma_reverse_invert_is_inverse(
+    p: Presentation, factors: Seq<Word>,
+)
+    ensures
+        equiv_in_presentation(p,
+            concat_all(reverse_invert_factors(factors)),
+            inverse_word(concat_all(factors))),
+    decreases factors.len(),
+{
+    if factors.len() == 0 {
+        // All three expressions evaluate to ε when factors is empty:
+        let rif = reverse_invert_factors(factors);
+        let ca = concat_all(factors);
+        assert(rif.len() == 0);
+        assert(concat_all(rif) =~= empty_word());
+        assert(ca =~= empty_word());
+        assert(inverse_word(ca) =~= empty_word()) by {
+            assert(inverse_word(empty_word()).len() == 0);
+        }
+        crate::presentation::lemma_equiv_refl(p, concat_all(rif));
+        // Explicitly assert the postcondition using bound variables:
+        assert(equiv_in_presentation(p, concat_all(rif), inverse_word(ca)));
+        return;
+    } else {
+        let rest = factors.drop_first();
+        let first = factors.first();
+        let inv_first = inverse_word(first);
+        let rif_rest = reverse_invert_factors(rest);
+
+        lemma_reverse_invert_is_inverse(p, rest);
+        crate::word::lemma_inverse_concat(first, concat_all(rest));
+        lemma_concat_all_append(rif_rest, Seq::new(1, |_i: int| inv_first));
+        crate::presentation_lemmas::lemma_equiv_concat_left(p,
+            concat_all(rif_rest), inverse_word(concat_all(rest)), inv_first);
+        // Connect to postcondition:
+        // Postcondition LHS = concat_all(reverse_invert_factors(factors))
+        //   = concat_all(rif_rest ++ [inv_first])  [by def of reverse_invert_factors]
+        //   =~= concat(concat_all(rif_rest), concat_all([inv_first]))  [by concat_all_append]
+        //   =~= concat(concat_all(rif_rest), inv_first)  [concat_all of singleton]
+        // Help Z3 connect concat_all of singleton to the element:
+        let singleton = Seq::new(1, |_i: int| inv_first);
+        assert(singleton.first() == inv_first);
+        assert(singleton.drop_first().len() == 0);
+        // concat_all([inv_first]) = concat(inv_first, concat_all([])) = concat(inv_first, ε) =~= inv_first
+
+        // So: concat_all(rif_rest ++ [inv_first]) =~= concat(concat_all(rif_rest), inv_first)
+        //     approximately (via concat_all_append + singleton evaluation)
+
+        // And: inverse_word(concat(first, concat_all(rest))) =~= concat(inv(concat_all(rest)), inv_first)
+        //     from inverse_concat
+
+        // The equiv_concat_left result matches between these two expressions.
+        // Z3 should now connect through =~= substitution.
+        return;
+    }
+}
+
+/// Generated subgroup is closed under inverse.
+pub proof fn lemma_subgroup_inverse(
+    p: Presentation, gens: Seq<Word>, w: Word,
+)
+    requires
+        in_generated_subgroup(p, gens, w),
+        presentation_valid(p),
+        word_valid(w, p.num_generators),
+        forall|i: int| 0 <= i < gens.len() ==> word_valid(#[trigger] gens[i], p.num_generators),
+    ensures
+        in_generated_subgroup(p, gens, inverse_word(w)),
+{
+    let n = p.num_generators;
+    let fa: Seq<Word> = choose|fa: Seq<Word>|
+        #[trigger] factors_from_generators(gens, fa)
+        && equiv_in_presentation(p, concat_all(fa), w);
+
+    let rif = reverse_invert_factors(fa);
+    lemma_reverse_invert_preserves_generators(gens, fa);
+    lemma_reverse_invert_is_inverse(p, fa);
+    // concat_all(rif) ≡ inv(concat_all(fa))
+
+    // concat_all(fa) is word_valid (each factor is gens[i] or inv(gens[i]), all word_valid):
+    lemma_concat_all_word_valid(gens, fa, n);
+
+    // inv(concat_all(fa)) ≡ inv(w) by lemma_equiv_inverse:
+    lemma_equiv_inverse(p, concat_all(fa), w);
+
+    // Chain: concat_all(rif) ≡ inv(concat_all(fa)) ≡ inv(w)
+    crate::word::lemma_inverse_word_valid(concat_all(fa), n);
+    crate::word::lemma_inverse_word_valid(w, n);
+    crate::presentation::lemma_equiv_transitive(p,
+        concat_all(rif), inverse_word(concat_all(fa)), inverse_word(w));
+
+    // in_generated_subgroup(concat_all(rif)): rif satisfies factors_from_generators, and
+    // concat_all(rif) ≡ concat_all(rif) by reflexivity.
+    crate::presentation::lemma_equiv_refl(p, concat_all(rif));
+    assert(in_generated_subgroup(p, gens, concat_all(rif)));
+    // + equiv(concat_all(rif), inv(w)) → in_generated_subgroup(inv(w))
+    lemma_in_subgroup_equiv(p, gens, concat_all(rif), inverse_word(w));
+}
 
 // ============================================================
 // Part K2: action_preserves_canonical
