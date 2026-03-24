@@ -1075,6 +1075,39 @@ pub open spec fn vdw_act_word(
     }
 }
 
+/// The action composes over concatenation:
+/// vdw_act_word(w1 ++ w2, h, s) == vdw_act_word(w2, vdw_act_word(w1, h, s)).
+/// This is the "homomorphism" property of the action.
+proof fn lemma_vdw_act_concat(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    st1: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    n1: nat,
+    w1: Word, w2: Word,
+    h: nat, sylls: Seq<(bool, nat)>,
+)
+    ensures
+        vdw_act_word(ct1, ct2, st1, st2, phi, n1, concat(w1, w2), h, sylls)
+            == ({
+                let (h_mid, sylls_mid) = vdw_act_word(ct1, ct2, st1, st2, phi, n1, w1, h, sylls);
+                vdw_act_word(ct1, ct2, st1, st2, phi, n1, w2, h_mid, sylls_mid)
+            }),
+    decreases w1.len(),
+{
+    if w1.len() == 0 {
+        assert(concat(w1, w2) =~= w2);
+    } else {
+        let s = w1.first();
+        let rest1 = w1.drop_first();
+        assert(concat(w1, w2).first() == s);
+        assert(concat(w1, w2).drop_first() =~= concat(rest1, w2));
+        let (h_s, sylls_s) = vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls);
+        lemma_vdw_act_concat(ct1, ct2, st1, st2, phi, n1, rest1, w2, h_s, sylls_s);
+    }
+}
+
 // ============================================================
 // Part I: AFP injectivity via the VDW action
 // ============================================================
