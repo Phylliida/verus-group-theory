@@ -1362,10 +1362,141 @@ proof fn lemma_h_relator(
         // get_relator either returns it or its inverse.
     } else {
         // Identification relator: u_i · inv(shift(v_i)).
-        // This is the KEY case using the phi homomorphism.
-        // TODO: implement using h_act_concat to split u_i from inv(shift(v_i)),
-        // then h_act_is_trace for u_i part and h_act_g2_phi_inv_trace for v_i part.
-        assert(false); // TODO: identification relator
+        // Identification relator: u_i · inv(shift(v_i)).
+        let ident_idx = (relator_index - data.p1.relators.len() - data.p2.relators.len()) as nat;
+        let (u_i, v_i) = data.identifications[ident_idx as int];
+        let shifted_v = shift_word(v_i, n1);
+        let inv_shifted_v = inverse_word(shifted_v);
+        let raw_rel = amalgamation_relator(data, ident_idx as int);
+        // raw_rel = concat(u_i, inv_shifted_v)
+
+        // AFP relator at this index = raw_rel = concat(u_i, inv_shifted_v)
+        assert(raw_rel == concat(u_i, inv_shifted_v));
+        lemma_afp_relator_ident(data, ident_idx);
+        // afp.relators[relator_index] == raw_rel
+
+        // For non-inverted: r = raw_rel = concat(u_i, inv_shifted_v)
+        // For inverted: r = inverse_word(raw_rel)
+        if !inverted {
+            assert(r == raw_rel);
+            // r = concat(u_i, inv_shifted_v)
+            // By h_act_concat: h_act_word(r, h) = h_act_word(inv_shifted_v, h_act_word(u_i, h))
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, u_i, inv_shifted_v, h);
+            let h_mid = h_act_word(ct1, ct2, phi, phi_inv, n1, u_i, h);
+
+            // u_i is a G₁-word: h_act_is_trace gives trace_word(ct1, h, u_i) = Some(h_mid)
+            reveal(presentation_valid);
+            assert(word_valid(u_i, n1));
+            assert(is_left_word(u_i, n1)) by {
+                assert forall|k: int| 0 <= k < u_i.len()
+                    implies generator_index(u_i[k]) < n1
+                by { assert(symbol_valid(u_i[k], n1)); }
+            }
+            lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, u_i, h);
+            // trace_word(ct1, h, u_i) == Some(h_mid)
+
+            // inv_shifted_v is a G₂-word (shifted inverse of v_i)
+            // inverse_word(shift_word(v_i, n1)) =~= shift_word(inverse_word(v_i), n1)
+            crate::free_product::lemma_shift_inverse_word(v_i, n1);
+            let inv_v = inverse_word(v_i);
+            let shift_inv_v = shift_word(inv_v, n1);
+            assert(inv_shifted_v =~= shift_inv_v);
+
+            // inv_v is word_valid for p2
+            assert(word_valid(v_i, data.p2.num_generators));
+            crate::word::lemma_inverse_word_valid(v_i, data.p2.num_generators);
+            assert(word_valid(inv_v, data.p2.num_generators));
+
+            // shift relation
+            assert forall|k: int| 0 <= k < shift_inv_v.len()
+                implies shift_inv_v[k] == shift_symbol(#[trigger] inv_v[k], n1)
+            by {}
+
+            // h_mid < ct1.num_cosets (needed for h_act_g2_phi_inv_trace)
+            crate::completeness::lemma_trace_complete(ct1, h, u_i);
+            reveal(crate::todd_coxeter::coset_table_wf);
+            // trace_word is Some, so h_mid is the unwrapped value < ct1.num_cosets
+            // Actually h_act_is_trace gives trace_word(ct1, h, u_i) == Some(h_mid)
+            // and h_mid = h_act_word(..., u_i, h). We need h_mid < ct1.num_cosets.
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, u_i, h);
+
+            // By h_act_g2_phi_inv_trace on inv_shifted_v:
+            // trace_word(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(h_act_word(inv_shifted_v, h_mid)))
+            lemma_h_act_g2_phi_inv_trace(ct1, ct2, phi, phi_inv, data,
+                shift_inv_v, inv_v, h_mid);
+
+            // Now: trace_word(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(result))
+            // where result = h_act_word(inv_shifted_v, h_mid)
+            //
+            // We need result == h.
+            // phi_inv(h_mid) = phi_inv(trace_word(ct1, h, u_i).unwrap())
+            // By phi compatibility (generator respecting):
+            //   phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i)
+            // But we need the trace from h, not from 0...
+            //
+            // Actually, the phi compatibility in valid_phi says:
+            //   phi(ct_lookup(ct2, h2, col)) == ct_lookup(ct1, phi(h2), col)
+            // This means: for EACH SYMBOL, the phi-translated action equals the ct1 action.
+            // So: phi_inv(h_mid) = phi_inv(trace(ct1, h, u_i))
+            //   = trace(ct2, phi_inv(h), unshift(u_i))  [by phi_inv compatibility]
+            // But u_i IS a G₁-word, not a G₂-word. The phi compatibility applies to
+            // ct2 columns, not ct1 columns directly.
+            //
+            // Wait — the phi compatibility says phi(ct_lookup(ct2, h2, col)) == ct_lookup(ct1, phi(h2), col).
+            // Taking phi_inv: ct_lookup(ct2, h2, col) == phi_inv(ct_lookup(ct1, phi(h2), col)).
+            // With h2 = phi_inv(h) and phi(h2) = h:
+            //   ct_lookup(ct2, phi_inv(h), col) == phi_inv(ct_lookup(ct1, h, col))
+            //
+            // So for EACH SYMBOL col of u_i:
+            //   phi_inv(ct_lookup(ct1, h, col)) == ct_lookup(ct2, phi_inv(h), col)
+            //
+            // This means: phi_inv(trace(ct1, h, u_i)) == trace(ct2, phi_inv(h), u_i)
+            // (where u_i is viewed as using the SAME columns in ct2).
+            //
+            // And then: trace(ct2, phi_inv(h_mid), inv(v_i))
+            //   = trace(ct2, trace(ct2, phi_inv(h), u_i), inv(v_i))
+            //
+            // Hmm, this needs u_i and v_i to be related via the identification.
+            // The phi generator compatibility says: phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i).
+            // This is a GLOBAL statement about the complete words, not per-symbol.
+            //
+            // For the identification relator to act trivially:
+            // After u_i: h_mid = trace(ct1, h, u_i)
+            // phi_inv(h_mid) should equal trace(ct2, phi_inv(h), u_i) [by phi compat per-symbol]
+            //
+            // BUT u_i uses G₁ generators (columns 0..2n1-1). And ct2 also has columns
+            // 0..2n1-1 (since ct2.num_gens == n1). So tracing u_i through ct2 IS valid.
+            //
+            // Then: trace(ct2, phi_inv(h), u_i) — what does this represent?
+            // u_i is a word in G₁'s generators. Tracing it through ct2 (G₂'s Cayley table)
+            // gives... well, ct2 has the same columns as ct1 (same num_gens).
+            // By the phi compatibility: phi_inv(trace(ct1, h, u_i)) == trace(ct2, phi_inv(h), u_i).
+            // So phi_inv(h_mid) == trace(ct2, phi_inv(h), u_i).
+            //
+            // Then: trace(ct2, phi_inv(h_mid), inv(v_i))
+            //   = trace(ct2, trace(ct2, phi_inv(h), u_i), inv(v_i))
+            //   = trace(ct2, phi_inv(h), concat(u_i, inv(v_i)))  [by trace concat]
+            //
+            // Now: the valid_phi generator-respecting says:
+            //   phi(trace(ct2, 0, v_i)) == trace(ct1, 0, u_i)
+            // This doesn't directly give: trace(ct2, phi_inv(h), concat(u_i, inv(v_i))) == phi_inv(h).
+            //
+            // I think I need a STRONGER phi compatibility: not just for generators,
+            // but for entire words. Or use the per-symbol compatibility to show
+            // phi_inv(trace(ct1, h, u_i)) == trace(ct2, phi_inv(h), u_i).
+            //
+            // This per-symbol compatibility (phi_inv commutes with ct1/ct2 traces)
+            // is the KEY property that makes the identification relator trivial.
+            // It follows from the existing valid_phi per-column property by induction.
+            //
+            // Let me just assert the conclusion and see if Z3 can derive it.
+            // The conclusion: trace(ct2, phi_inv(h_mid), inv(v_i)) == Some(phi_inv(h)).
+            // This means: phi_inv(result) == phi_inv(h), hence result == h.
+
+            // For now: this is the deepest mathematical step.
+            // It requires proving phi_inv commutes with multi-symbol traces,
+            // which needs another inductive lemma.
+            assert(false); // LAST GAP: phi_inv commutes with trace
     }
 }
 
