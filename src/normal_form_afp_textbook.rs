@@ -756,6 +756,28 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
 // ============================================================
 
 /// The choose for left_canonical_rep is in g's coset.
+/// left_min_coset_len(g) satisfies its choose predicate.
+proof fn lemma_left_min_coset_len_satisfiable(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        has_left_coset_word_of_len(data, g, left_min_coset_len(data, g)),
+{
+    // g is in its own coset at length g.len()
+    lemma_same_left_coset_reflexive(data, g);
+    assert(has_left_coset_word_of_len(data, g, g.len() as nat));
+
+    // Use nat well-ordering to show exists|l| is_nat_min(pred, l)
+    let pred = |l: nat| has_left_coset_word_of_len(data, g, l);
+    assert(pred(g.len() as nat));
+    lemma_nat_well_ordering(pred, g.len() as nat);
+    // Now: exists|m| m <= g.len() && is_nat_min(pred, m)
+    // = exists|m| pred(m) && no_pred_below(pred, m)
+    // This is the satisfiability of left_min_coset_len's choose.
+    // So left_min_coset_len(g) satisfies: has_left_coset_word_of_len(g, l) && no_pred_below(pred, l)
+}
+
 /// left_canonical_rep(g) is in g's coset and word_valid.
 proof fn lemma_left_rep_props(data: AmalgamatedData, g: Word)
     requires
@@ -765,12 +787,12 @@ proof fn lemma_left_rep_props(data: AmalgamatedData, g: Word)
         same_left_coset(data, g, left_canonical_rep(data, g)),
         word_valid(left_canonical_rep(data, g), data.p1.num_generators),
 {
-    // g is in its own coset → has_left_coset_word_of_len(g, g.len())
-    lemma_same_left_coset_reflexive(data, g);
-    assert(has_left_coset_word_of_len(data, g, g.len() as nat));
-    // So left_min_coset_len's choose is satisfiable.
-    // And left_canonical_rep's choose (word at min length in coset) is satisfiable.
-    // g itself witnesses this. The result satisfies the predicate.
+    // Step 1: left_min_coset_len(g) is satisfiable
+    lemma_left_min_coset_len_satisfiable(data, g);
+    let l = left_min_coset_len(data, g);
+    // has_left_coset_word_of_len(g, l) = exists|w| word_valid(w, n1) && same_left_coset(g, w) && w.len() == l
+    // This existential is exactly the left_canonical_rep choose predicate.
+    // So the choose is satisfiable → the result satisfies the predicate.
 }
 
 /// Converse: if same_left_coset(g, ε) and left_h_part(g) = ε, then g ≡ ε.
@@ -821,19 +843,33 @@ pub proof fn lemma_g1_decompose_converse(
         assert(c.len() == g.len());
         assert forall|k: int| 0 <= k < g.len() implies c[k] == g[k] by {}
     }
-    // h_witness satisfies the choose predicate for left_h_part(g).
-    // The choose returned ε. Since h_witness satisfies, the predicate IS satisfiable.
-    // The choose result (ε) also satisfies: equiv(p1, embed_a(ε), target)
-    // With embed_a(ε) = ε and target =~= g: equiv(p1, ε, g)
-    // By symmetry: equiv(p1, g, ε)
+    // h_witness satisfies the left_h_part choose predicate at level left_h_min_len.
+    // First: show left_h_min_len's choose is satisfiable via h_witness.
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
 
-    // equiv_symmetric needs word_valid(ε, n1) which is trivial
+    // h_witness has embed_a(h_witness) ≡ g. And target =~= g (since rep = ε).
+    // So embed_a(h_witness) ≡ target. This means h_witness witnesses
+    // has_left_h_witness_of_len(data, target, h_witness.len()).
+    assert(has_left_h_witness_of_len(data, target, h_witness.len() as nat));
+
+    // Use nat well-ordering on has_left_h_witness_of_len
+    let pred_h = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+    // Now left_h_min_len's choose is satisfiable.
+    // left_h_min_len(g) satisfies: has_left_h_witness_of_len(target, l) && no_pred_below
+    // In particular: has_left_h_witness_of_len(target, left_h_min_len(g))
+    // = exists|h| word_valid(h, k) && h.len() == left_h_min_len(g) && equiv(embed_a(h), target)
+
+    // This existential is the left_h_part choose predicate → satisfiable.
+    // left_h_part(g) satisfies: equiv(embed_a(left_h_part(g)), target)
+    // With left_h_part(g) = ε: equiv(embed_a(ε), target) = equiv(ε, target) = equiv(ε, g)
+
+    // Now derive equiv(g, ε) by symmetry
     assert(word_valid(empty_word(), data.p1.num_generators)) by {
         assert(empty_word().len() == 0);
     }
-    // Z3 should see: left_h_part(g) = ε, the choose is satisfiable (h_witness),
-    // so ε satisfies the predicate, giving equiv(embed_a(ε), target) = equiv(ε, g).
-    // Then symmetry: equiv(g, ε).
     crate::presentation::lemma_equiv_symmetric(data.p1, empty_word(), g);
 }
 
