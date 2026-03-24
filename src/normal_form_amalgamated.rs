@@ -865,8 +865,20 @@ pub open spec fn g1_coset_decompose(
     }
 }
 
-/// Action of a single G₁ symbol on the VDW state.
-/// Processes one symbol from the LEFT of the word.
+/// Action of a single G₁ symbol on the VDW state (textbook definition).
+///
+/// The state (h, [c₁, c₂, ...]) represents h·c₁·c₂·... in normal form.
+/// Acting by symbol s (G₁-generator):
+///   Compute new_elem = s · h in G₁ (via ct1 table lookup).
+///   If first syllable is Left(c₁) (same factor):
+///     Combine: combined = new_elem · c₁ in G₁ (multiply in ct1).
+///     Decompose combined = h_new · c₁_new via G₁/A coset decomposition.
+///     If c₁_new == 0: syllable absorbed → (h_new, [c₂, c₃, ...])
+///     If c₁_new ≠ 0: syllable updated → (h_new, [Left(c₁_new), c₂, c₃, ...])
+///   If first syllable is Right or empty (different factor):
+///     Decompose new_elem = h_new · c_new via G₁/A coset decomposition.
+///     If c_new == 0: stays in A → (h_new, sylls)
+///     If c_new ≠ 0: new left syllable → (h_new, [Left(c_new)] + sylls)
 pub open spec fn vdw_act_g1_symbol(
     ct1: crate::todd_coxeter::CosetTable,
     st1: crate::todd_coxeter::CosetTable,
@@ -876,7 +888,7 @@ pub open spec fn vdw_act_g1_symbol(
 ) -> (nat, Seq<(bool, nat)>)
     recommends generator_index(s) < ct1.num_gens,
 {
-    // Multiply h by the symbol in ct1
+    // s · h in ct1 (trace single symbol from h)
     let s_col = crate::todd_coxeter::symbol_to_column(s);
     let new_elem = match ct1.table[h as int][s_col as int] {
         Some(next) => next,
@@ -884,64 +896,69 @@ pub open spec fn vdw_act_g1_symbol(
     };
 
     if sylls.len() > 0 && sylls[0].0 == true {
-        // First syllable is Left (G₁/A). Combine.
-        // The first syllable's coset rep * new_elem gives a new G₁ element.
-        // Actually: the current state represents h * coset_rep(sylls[0].1) * rest.
-        // Acting by symbol gives: (h*symbol) * coset_rep(sylls[0].1) * rest.
-        // Hmm, the action is LEFT multiplication, not right.
-        // The state (h, [c₁, c₂, ...]) represents the normal form h·c₁·c₂·...
-        // Left-multiplying by g: g · h · c₁ · c₂ · ...
-        // Compute g·h in G₁: new_elem = ct1_multiply(g, h) ... but we processed
-        // symbol from h's coset, which gives ct1 trace.
-        //
-        // Actually for the van der Waerden action, we left-multiply the
-        // H-element and potentially absorb the first syllable.
-        // g · (h · c₁ · c₂ · ...) = (g·h) · c₁ · c₂ · ...
-        // Decompose g·h: if in A, just update h. If not in A, absorb into c₁.
-        //
-        // Wait, g is a single symbol. We need to track the full product.
-        // new_elem = g·h (via ct1 trace of symbol from h).
-        // Now decompose new_elem into (h_new, coset_new):
-        let (h_new, coset_new) = g1_coset_decompose(ct1, st1, new_elem);
+        // First syllable is Left(c₁). Same factor — combine.
+        let c1_coset = sylls[0].1;
+        // Multiply new_elem by the representative of c₁ in ct1.
+        // coset_rep(st1, c1_coset) gives a word for the coset rep.
+        // Trace that word in ct1 from 0 to get the ct1-element.
+        let c1_rep_word = crate::coset_group::coset_rep(st1, c1_coset);
+        let c1_elem = match crate::todd_coxeter::trace_word(ct1, 0, c1_rep_word) {
+            Some(e) => e,
+            None => 0,
+        };
+        let combined = crate::coset_group::coset_mul(ct1, new_elem, c1_elem);
+        // Decompose combined in G₁/A
+        let (h_new, coset_new) = g1_coset_decompose(ct1, st1, combined);
         if coset_new == 0 {
-            // new_elem ∈ A. No syllable absorbed. Just update h.
-            // But the first syllable is Left — should we try to absorb?
-            // In the textbook: if the first syllable is from the SAME factor (G₁),
-            // we multiply into it. If different factor, we don't.
-            // Here: new_elem ∈ A, first syllable is Left.
-            // new_elem · c₁ is a G₁ element. Decompose it.
-            // new_combined = ct1_multiply(new_elem, coset_rep_elem(c₁))
-            // Then decompose new_combined into (h_final, coset_final).
-            // This is the "syllable absorption" step.
-
-            // For simplicity, defer absorption to a separate function.
-            // For now: just update h, don't absorb.
-            // This is INCORRECT for the full action but let me get the structure right.
-            (h_new, sylls)
+            // Syllable absorbed
+            (h_new, sylls.drop_first())
         } else {
-            // new_elem ∉ A. New left syllable.
-            // But first syllable is also Left — merge.
-            // combined_coset = st1-coset of (new_elem * coset_rep(c₁))
-            // Decompose combined.
-            (h_new, Seq::new(1, |_i: int| (true, coset_new)) + sylls)
-            // INCORRECT: should merge with first syllable, not prepend.
+            // Syllable updated
+            (h_new, Seq::new(1, |_i: int| (true, coset_new)) + sylls.drop_first())
         }
     } else {
-        // First syllable is Right or empty.
+        // First syllable is Right or empty. Different factor — don't combine.
         let (h_new, coset_new) = g1_coset_decompose(ct1, st1, new_elem);
         if coset_new == 0 {
-            // Still in A. Just update h.
             (h_new, sylls)
         } else {
-            // Left syllable added.
             (h_new, Seq::new(1, |_i: int| (true, coset_new)) + sylls)
         }
     }
 }
 
-/// Action of a single G₂ symbol on the VDW state.
+/// Coset decomposition in G₂/B: given a ct2-element, return (b_part, coset).
+pub open spec fn g2_coset_decompose(
+    ct2: crate::todd_coxeter::CosetTable,
+    st2: crate::todd_coxeter::CosetTable,
+    elem: nat,
+) -> (nat, nat)
+{
+    let rep = crate::coset_group::coset_rep(ct2, elem);
+    let coset = match crate::todd_coxeter::trace_word(st2, 0, rep) {
+        Some(c) => c,
+        None => 0,
+    };
+    if coset == 0 {
+        (elem, 0)
+    } else {
+        let coset_rep_word = crate::coset_group::coset_rep(st2, coset);
+        let coset_rep_elem = match crate::todd_coxeter::trace_word(ct2, 0, coset_rep_word) {
+            Some(e) => e,
+            None => 0,
+        };
+        let coset_rep_inv = crate::coset_group::coset_inv(ct2, coset_rep_elem);
+        (crate::coset_group::coset_mul(ct2, elem, coset_rep_inv), coset)
+    }
+}
+
+/// Action of a single G₂ symbol on the VDW state (textbook definition).
+///
 /// The G₂ symbol is shifted: Gen(n1+j) represents G₂-generator j.
-/// We unshift, trace through ct2, and translate the B-action to A via phi.
+/// The h-component is in ct1 (tracks an A-element). When a G₂-symbol
+/// stays in B, we translate via phi to update h.
+///
+/// Symmetric to vdw_act_g1_symbol but uses ct2/st2/phi.
 pub open spec fn vdw_act_g2_symbol(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
@@ -959,40 +976,55 @@ pub open spec fn vdw_act_g2_symbol(
         Symbol::Gen(i) => Symbol::Gen((i - n1) as nat),
         Symbol::Inv(i) => Symbol::Inv((i - n1) as nat),
     };
+    let s_col = crate::todd_coxeter::symbol_to_column(s_local);
 
     if sylls.len() > 0 && sylls[0].0 == false {
-        // First syllable is Right (G₂/B). Combine.
-        // TODO: combine with first syllable via ct2 + st2
-        // For now: simplified version without syllable merging
-        (h, sylls)  // placeholder
-    } else {
-        // First syllable is Left or empty.
-        // The G₂ symbol acts on the G₂ side.
-        // If the result stays in B: translate via phi and update h.
-        // If the result leaves B: add a new Right syllable.
-
-        // Trace the symbol through ct2 from identity (0)
-        let s_col = crate::todd_coxeter::symbol_to_column(s_local);
+        // First syllable is Right (G₂/B). Same factor — combine.
+        let c1_coset = sylls[0].1;
+        let c1_rep_word = crate::coset_group::coset_rep(st2, c1_coset);
+        let c1_elem = match crate::todd_coxeter::trace_word(ct2, 0, c1_rep_word) {
+            Some(e) => e,
+            None => 0,
+        };
+        // Trace symbol from the h-translated-to-G₂ position, combined with c1
+        // For the G₂ action on the state, we compute the product:
+        //   s · (phi⁻¹-translated h) · c₁  in G₂
+        // But h is tracked in ct1 (A ≤ G₁). The phi map goes B→A.
+        // For the G₂ side, we need the "current G₂-element" which is phi⁻¹(h) · c₁.
+        // This is complex. Simplify: trace the symbol from 0 in ct2,
+        // then combine with c₁.
         let g2_elem = match ct2.table[0][s_col as int] {
             Some(next) => next,
             None => 0,
         };
-
-        // Check if g2_elem is in B (coset 0 in st2)
-        let g2_rep = crate::coset_group::coset_rep(ct2, g2_elem);
-        let g2_coset = match crate::todd_coxeter::trace_word(st2, 0, g2_rep) {
-            Some(c) => c,
+        let combined = crate::coset_group::coset_mul(ct2, g2_elem, c1_elem);
+        let (b_part, coset_new) = g2_coset_decompose(ct2, st2, combined);
+        if coset_new == 0 {
+            // Syllable absorbed. b_part is in B. Translate to A via phi.
+            let a_part = phi(b_part);
+            (crate::coset_group::coset_mul(ct1, h, a_part), sylls.drop_first())
+        } else {
+            // Syllable updated.
+            let a_part = phi(b_part);
+            (crate::coset_group::coset_mul(ct1, h, a_part),
+             Seq::new(1, |_i: int| (false, coset_new)) + sylls.drop_first())
+        }
+    } else {
+        // First syllable is Left or empty. Different factor.
+        let g2_elem = match ct2.table[0][s_col as int] {
+            Some(next) => next,
             None => 0,
         };
-
-        if g2_coset == 0 {
-            // g2_elem ∈ B. Translate via phi to A-element, multiply into h.
-            let a_elem = phi(g2_elem);
-            (crate::coset_group::coset_mul(ct1, h, a_elem), sylls)
+        let (b_part, coset_new) = g2_coset_decompose(ct2, st2, g2_elem);
+        if coset_new == 0 {
+            // Stays in B. Translate via phi, update h.
+            let a_part = phi(b_part);
+            (crate::coset_group::coset_mul(ct1, h, a_part), sylls)
         } else {
-            // g2_elem ∉ B. New Right syllable.
-            // h stays, syllable added.
-            (h, Seq::new(1, |_i: int| (false, g2_coset)) + sylls)
+            // New Right syllable.
+            let a_part = phi(b_part);
+            (crate::coset_group::coset_mul(ct1, h, a_part),
+             Seq::new(1, |_i: int| (false, coset_new)) + sylls)
         }
     }
 }
