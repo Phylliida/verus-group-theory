@@ -50,7 +50,7 @@ pub open spec fn tower_afp_data(data: HNNData, k: nat) -> AmalgamatedData
 ///   tower(data, 0) = data.base
 ///   tower(data, n+1) = amalgamated_free_product(tower_afp_data(data, n))
 pub open spec fn tower_presentation(data: HNNData, n: nat) -> Presentation
-    decreases n,
+    decreases n, 0nat,
 {
     if n == 0 {
         data.base
@@ -126,7 +126,7 @@ pub proof fn lemma_tower_num_generators(data: HNNData, n: nat)
         assert(afp_data.p1.num_generators == n * ng);
         assert(afp_data.p2.num_generators == ng);
         assert(tower_presentation(data, n).num_generators == n * ng + ng);
-        assert(n * ng + ng == (n + 1) * ng);
+        assert(n * ng + ng == (n + 1) * ng) by (nonlinear_arith);
     }
 }
 
@@ -155,7 +155,7 @@ pub proof fn lemma_tower_valid(data: HNNData, n: nat)
         hnn_data_valid(data),
     ensures
         presentation_valid(tower_presentation(data, n)),
-    decreases n,
+    decreases n, 0nat,
 {
     if n == 0 {
         reveal(presentation_valid);
@@ -172,7 +172,7 @@ pub proof fn lemma_tower_afp_data_valid(data: HNNData, k: nat)
         hnn_data_valid(data),
     ensures
         amalgamated_data_valid(tower_afp_data(data, k)),
-    decreases k,
+    decreases k, 1nat,
 {
     let ng = data.base.num_generators;
     let afp_data = tower_afp_data(data, k);
@@ -251,9 +251,9 @@ pub proof fn lemma_g0_embeds_in_tower(
 
         // w is valid for p1 = tower(prev) which has n*ng generators
         lemma_tower_num_generators(data, prev);
-        if n > 1 {
-            lemma_word_valid_weaken(w, ng, n * ng);
-        }
+        assert(ng <= n * ng) by (nonlinear_arith)
+            requires n >= 1;
+        lemma_word_valid_weaken(w, ng, n * ng);
 
         // Get Cayley tables for level prev directly from the indexed parameters
         assert(tower_h_prereqs_at(data, tower_cts, base_ct, phi_at, phi_inv_at, prev));
