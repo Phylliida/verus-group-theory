@@ -4371,6 +4371,7 @@ proof fn lemma_inv_step_rep_nonzero(
                 }
             }
         }
+        crate::presentation_lemmas::lemma_word_inverse_left(p1, rep_prime);
         crate::presentation_lemmas::lemma_equiv_concat_right(
             p1, product, concat(inverse_word(rep_prime), rep_prime), empty_word());
         assert(concat(product, empty_word()) =~= product) by {
