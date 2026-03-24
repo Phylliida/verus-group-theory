@@ -1446,6 +1446,60 @@ proof fn lemma_inverse_pair_identity_case1(
     // And act_word([s, inv(s)], ε, []) = act_word([inv(s)], h1, []) = (ε, [])
 }
 
+/// For a single G₁ symbol s: act_word([s], ε, []) = g1_decompose_state([s]).
+/// This connects the symbol-by-symbol action to the one-shot decomposition.
+pub proof fn lemma_act_single_eq_decompose(
+    data: AmalgamatedData,
+    s: Symbol,
+)
+    requires
+        amalgamated_data_valid(data),
+        generator_index(s) < data.p1.num_generators,
+    ensures
+        act_word(data, Seq::new(1, |_i: int| s), empty_word(), Seq::<Syllable>::empty())
+            == g1_decompose_state(data, Seq::new(1, |_i: int| s)),
+{
+    let e = empty_word();
+    let s_word = Seq::new(1, |_i: int| s);
+
+    // act_word([s], ε, []) = act_sym(s, ε, [])
+    lemma_act_word_single(data, s, e, Seq::<Syllable>::empty());
+
+    // act_sym(s, ε, []) = act_left_sym(s, ε, []) since gen_index(s) < n1
+
+    // act_left_sym uses:
+    //   product = concat([s], embed_a(ε)) = concat([s], ε) =~= [s]
+    //   h' = left_h_part(product)
+    //   rep' = left_canonical_rep(product)
+
+    // g1_decompose_state([s]) uses:
+    //   rep = left_canonical_rep([s])
+    //   h = left_h_part([s])
+
+    // Since product =~= [s]: the canonical reps and h-parts are the same.
+    assert(apply_embedding(a_words(data), e) =~= e);
+    let product = concat(s_word, apply_embedding(a_words(data), e));
+    assert(product =~= s_word) by {
+        assert(product.len() == s_word.len());
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies product[k] == s_word[k] by {}
+    }
+    // product == s_word (from =~= on Seq)
+    // So left_canonical_rep(product) == left_canonical_rep(s_word)
+    // And left_h_part(product) == left_h_part(s_word)
+    // And act_left_sym gives the same as g1_decompose_state.
+}
+
+/// For a G₁-word w ≡ ε in G₁ acting on identity state:
+/// act_word(w, ε, []) gives a state whose decomposition matches the identity.
+///
+/// This combines the action-to-decompose connection (for single symbols, already proved)
+/// with the equivalence chain. The full multi-symbol connection is the remaining gap.
+///
+/// For now, we provide the key building blocks. The full act-to-decompose induction
+/// is deferred — it requires showing the transversal decomposition is compatible
+/// with the step-by-step merging logic.
+
 /// AFP injectivity from the textbook reduced-sequence action.
 ///
 /// If:
