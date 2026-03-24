@@ -1705,14 +1705,193 @@ pub proof fn lemma_subgroup_concat(
     // we get equiv(concat_all(fab), concat(a, b)).
 }
 
+/// Inverse preserves equivalence: if a ≡ b then inv(a) ≡ inv(b).
+/// Split into two helpers to stay within rlimit.
+proof fn lemma_equiv_inverse_helper(
+    p: Presentation, a: Word, b: Word,
+)
+    requires
+        equiv_in_presentation(p, a, b),
+        presentation_valid(p),
+        word_valid(a, p.num_generators),
+        word_valid(b, p.num_generators),
+    ensures
+        // concat(inv(b), a) ≡ ε
+        equiv_in_presentation(p, concat(inverse_word(b), a), empty_word()),
+{
+    let inv_b = inverse_word(b);
+    crate::word::lemma_inverse_word_valid(b, p.num_generators);
+    // inv(b) * b ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_left(p, b);
+    // a ≡ b → concat(inv(b), a) ≡ concat(inv(b), b) by right-congruence
+    crate::presentation_lemmas::lemma_equiv_concat_right(p, inv_b, a, b);
+    // ε ≡ concat(inv(b), b) by symmetry
+    crate::word::lemma_concat_word_valid(inv_b, b, p.num_generators);
+    crate::presentation::lemma_equiv_symmetric(p, concat(inv_b, b), empty_word());
+    // concat(inv(b), a) ≡ concat(inv(b), b) ≡... need direction.
+    // We have: equiv(concat(inv_b, a), concat(inv_b, b)) from right-congruence
+    // And: equiv(concat(inv_b, b), ε) from word_inverse_left
+    // Transitivity: equiv(concat(inv_b, a), ε)
+    crate::presentation::lemma_equiv_transitive(p,
+        concat(inv_b, a), concat(inv_b, b), empty_word());
+}
+
+pub proof fn lemma_equiv_inverse(
+    p: Presentation, a: Word, b: Word,
+)
+    requires
+        equiv_in_presentation(p, a, b),
+        presentation_valid(p),
+        word_valid(a, p.num_generators),
+        word_valid(b, p.num_generators),
+    ensures
+        equiv_in_presentation(p, inverse_word(a), inverse_word(b)),
+{
+    let inv_a = inverse_word(a);
+    let inv_b = inverse_word(b);
+    crate::word::lemma_inverse_word_valid(a, p.num_generators);
+    crate::word::lemma_inverse_word_valid(b, p.num_generators);
+
+    // From helper: concat(inv(b), a) ≡ ε
+    lemma_equiv_inverse_helper(p, a, b);
+
+    // concat(concat(inv(b), a), inv(a)) ≡ concat(ε, inv(a)) by left-congruence
+    crate::word::lemma_concat_word_valid(inv_b, a, p.num_generators);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p,
+        concat(inv_b, a), empty_word(), inv_a);
+    // LHS ≡ concat(ε, inv(a)) =~= inv(a)
+
+    // a * inv(a) ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_right(p, a);
+    // concat(inv(b), concat(a, inv(a))) ≡ concat(inv(b), ε) by right-congruence
+    crate::presentation_lemmas::lemma_equiv_concat_right(p, inv_b,
+        concat(a, inv_a), empty_word());
+    // RHS ≡ concat(inv(b), ε) =~= inv(b)
+
+    // Key: concat(concat(inv(b), a), inv(a)) =~= concat(inv(b), concat(a, inv(a))) [seq assoc]
+    // From above: LHS ≡ inv(a) and RHS ≡ inv(b)
+    // Since LHS =~= RHS: inv(a) ≡ LHS =~= RHS ≡ inv(b)
+    // i.e., equiv(inv(a), inv(b)) by the chain.
+
+    // Step by step for Z3:
+    // equiv(concat(concat(inv_b, a), inv_a), concat(ε, inv_a))  [from left-congruence]
+    // equiv(concat(inv_b, concat(a, inv_a)), concat(inv_b, ε))  [from right-congruence]
+    // These two LHS expressions are =~= (seq associativity)
+    // So: equiv(concat(inv_b, concat(a, inv_a)), concat(ε, inv_a)) by chain:
+    //   concat(inv_b, concat(a, inv_a)) =~= concat(concat(inv_b, a), inv_a) ≡ concat(ε, inv_a)
+    // And: equiv(concat(inv_b, ε), concat(ε, inv_a)) by transitivity with above
+    //   concat(inv_b, ε) ≡ concat(inv_b, concat(a, inv_a)) ≡ concat(ε, inv_a)
+    // And concat(inv_b, ε) =~= inv_b and concat(ε, inv_a) =~= inv_a
+    // So equiv(inv_b, inv_a), hence equiv(inv_a, inv_b) by symmetry.
+
+    // Explicit chain: connect the two congruence results through seq associativity.
+    // We have:
+    //   (A) equiv(concat(concat(inv_b, a), inv_a), concat(ε, inv_a))  [left-cong]
+    //   (B) equiv(concat(inv_b, concat(a, inv_a)), concat(inv_b, ε))  [right-cong]
+    // And concat(concat(inv_b, a), inv_a) =~= concat(inv_b, concat(a, inv_a)) [assoc]
+
+    // From (A): symmetry gives equiv(concat(ε, inv_a), concat(concat(inv_b, a), inv_a))
+    // =~= equiv(concat(ε, inv_a), concat(inv_b, concat(a, inv_a)))
+    // Then transitivity with (B): equiv(concat(ε, inv_a), concat(inv_b, ε))
+    // word_valid for intermediate expressions
+    crate::word::lemma_concat_word_valid(concat(inv_b, a), inv_a, p.num_generators);
+    crate::word::lemma_concat_word_valid(a, inv_a, p.num_generators);
+    // Symmetry on (A): equiv(concat(ε, inv_a), concat(concat(inv_b, a), inv_a))
+    crate::presentation::lemma_equiv_symmetric(p,
+        concat(concat(inv_b, a), inv_a), concat(empty_word(), inv_a));
+    // Transitivity: concat(ε, inv_a) ≡ concat(concat(inv_b,a), inv_a) =~= concat(inv_b, concat(a,inv_a)) ≡ concat(inv_b, ε)
+    // The middle =~= (assoc) is automatic for Z3 since Seq =~= implies ==.
+    // But the symmetry gave equiv(concat(ε, inv_a), concat(concat(inv_b,a), inv_a))
+    // And (B) gives equiv(concat(inv_b, concat(a, inv_a)), concat(inv_b, ε))
+    // These connect via assoc: concat(concat(inv_b,a), inv_a) =~= concat(inv_b, concat(a, inv_a))
+    crate::presentation::lemma_equiv_transitive(p,
+        concat(empty_word(), inv_a),
+        concat(concat(inv_b, a), inv_a),
+        concat(inv_b, empty_word()));
+    // Now: equiv(concat(ε, inv_a), concat(inv_b, ε))
+    // concat(ε, inv_a) =~= inv_a and concat(inv_b, ε) =~= inv_b
+    // So equiv(inv_a, inv_b). Z3 should handle the =~= substitution.
+    assert(concat(empty_word(), inv_a) =~= inv_a) by {
+        let c = concat(empty_word(), inv_a);
+        assert(c.len() == inv_a.len());
+        assert forall|k: int| 0 <= k < inv_a.len() implies c[k] == inv_a[k] by {}
+    }
+    assert(concat(inv_b, empty_word()) =~= inv_b) by {
+        let c = concat(inv_b, empty_word());
+        assert(c.len() == inv_b.len());
+        assert forall|k: int| 0 <= k < inv_b.len() implies c[k] == inv_b[k] by {}
+    }
+}
+
 /// Generated subgroup is closed under equivalence (already proved as lemma_in_subgroup_equiv).
 
-// Generated subgroup is closed under inverse — TODO.
-// Proof sketch: reverse the factor list and invert each factor.
-// Each inv(gen_i) is still a generator-or-inverse.
-// concat_all(reversed_inverted) ≡ inv(concat_all(original)) by lemma_inverse_concat induction.
-// Needs: reverse_invert_factors spec fn + preservation + inverse_concat chain.
-// ~80 lines when complete.
+/// Reverse a sequence of words and invert each element.
+pub open spec fn reverse_invert_factors(factors: Seq<Word>) -> Seq<Word>
+    decreases factors.len(),
+{
+    if factors.len() == 0 {
+        Seq::empty()
+    } else {
+        reverse_invert_factors(factors.drop_first())
+            + Seq::new(1, |_i: int| inverse_word(factors.first()))
+    }
+}
+
+/// Each factor in reverse_invert_factors is still a generator-or-inverse.
+proof fn lemma_reverse_invert_preserves_generators(
+    gens: Seq<Word>, factors: Seq<Word>,
+)
+    requires
+        factors_from_generators(gens, factors),
+    ensures
+        factors_from_generators(gens, reverse_invert_factors(factors)),
+    decreases factors.len(),
+{
+    if factors.len() == 0 {
+    } else {
+        let rest = factors.drop_first();
+        assert(factors_from_generators(gens, rest)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies is_generator_or_inverse(gens, #[trigger] rest[k])
+            by { assert(rest[k] == factors[k + 1]); }
+        }
+        lemma_reverse_invert_preserves_generators(gens, rest);
+        let rif = reverse_invert_factors(factors);
+        let rif_rest = reverse_invert_factors(rest);
+        let inv_first = inverse_word(factors.first());
+        assert forall|k: int| 0 <= k < rif.len()
+            implies is_generator_or_inverse(gens, #[trigger] rif[k])
+        by {
+            if k < rif_rest.len() {
+                assert(rif[k] == rif_rest[k]);
+            } else {
+                assert(rif[k] == inv_first);
+                // inv_first = inv(factors.first())
+                // factors.first() is is_generator_or_inverse(gens, ...)
+                // So exists i: factors.first() == gens[i] or factors.first() == inv(gens[i])
+                // Case 1: factors.first() == gens[i] → inv_first == inv(gens[i])
+                //   → is_generator_or_inverse(gens, inv_first) with the inv case ✓
+                // Case 2: factors.first() == inv(gens[i]) → inv_first == inv(inv(gens[i]))
+                //   inv(inv(gens[i])) =~= gens[i] by inverse involution
+                //   → is_generator_or_inverse(gens, inv_first) with the direct case ✓
+                let i: nat = choose|i: nat| i < gens.len()
+                    && (factors.first() =~= gens[i as int]
+                        || factors.first() =~= inverse_word(gens[i as int]));
+                if factors.first() =~= gens[i as int] {
+                    // inv_first = inv(gens[i]) → is_gen_or_inv
+                } else {
+                    // inv_first = inv(inv(gens[i])) =~= gens[i]
+                    crate::word::lemma_inverse_involution(gens[i as int]);
+                }
+            }
+        }
+    }
+}
+
+// lemma_reverse_invert_is_inverse and lemma_subgroup_inverse — TODO.
+// Both depend on lemma_equiv_inverse (inverse preserves equiv).
+// Proof structure is correct (factors reversed + inverted), just needs the
+// transitivity chain assembly. ~100 lines when complete.
 
 // ============================================================
 // Part K2: action_preserves_canonical
