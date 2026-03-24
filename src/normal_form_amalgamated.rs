@@ -1491,6 +1491,7 @@ proof fn lemma_h_act_g2_is_trace(
     if w.len() == 0 {
         // h_act_word(ε, h) = h. trace_word(ct2, phi_inv(h), ε) = Some(phi_inv(h)).
         // phi(phi_inv(h)) = h. ✓
+        assert(shift_word_down(w, n1) =~= Seq::<Symbol>::empty());
     } else {
         let s = w.first();
         let rest = w.drop_first();
@@ -1514,16 +1515,39 @@ proof fn lemma_h_act_g2_is_trace(
         }
 
         // phi_inv(next_h) = phi_inv(phi(next_g2)) = next_g2
+        assert(next_g2 < ct2.num_cosets);
         assert(phi_inv(next_h) == next_g2);
-        // next_h < ct1.num_cosets
-        // assert(next_h < ct1.num_cosets); // should follow from phi bound
+        assert(next_h < ct1.num_cosets);
 
         // IH: h_act_word(rest, next_h) = phi(trace_word(ct2, phi_inv(next_h), unshift(rest)))
         //                                = phi(trace_word(ct2, next_g2, unshift(rest)))
         lemma_h_act_g2_is_trace(ct1, ct2, phi, phi_inv, n1, rest, next_h);
 
-        // trace_word(ct2, h_g2, unshift(w)) = trace_word(ct2, next_g2, unshift(rest))
-        // since the first symbol traces h_g2 → next_g2.
+        // Connect shift_word_down(w) to shift_word_down(rest):
+        let uw = shift_word_down(w, n1);
+        let ur = shift_word_down(rest, n1);
+        assert(uw.first() == s_local);
+        assert(uw.drop_first() =~= ur) by {
+            assert(uw.drop_first().len() == ur.len());
+            assert forall|k: int| 0 <= k < ur.len()
+                implies uw.drop_first()[k] == ur[k]
+            by {
+                assert(uw.drop_first()[k] == uw[k + 1]);
+                assert(uw[k + 1] == unshift_sym(w[k + 1], n1));
+                assert(ur[k] == unshift_sym(rest[k], n1));
+                assert(rest[k] == w[k + 1]);
+            }
+        }
+        // Help Z3 unfold trace_word one step:
+        assert(h_g2 < ct2.num_cosets);
+        assert(crate::todd_coxeter::symbol_to_column(uw.first()) == col);
+        assert(col < 2 * ct2.num_gens);
+        // completeness: ct2.table[h_g2][col] is Some
+        assert(ct2.table[h_g2 as int][col as int] is Some);
+        // ct_lookup(ct2, h_g2, col) == unwrap of that entry = next_g2
+        assert(ct2.table[h_g2 as int][col as int] == Some(next_g2));
+        // trace_word(ct2, h_g2, uw) = trace_word(ct2, next_g2, uw.drop_first())
+        //                            = trace_word(ct2, next_g2, ur)
     }
 }
 
