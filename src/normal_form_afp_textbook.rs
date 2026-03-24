@@ -1074,10 +1074,25 @@ pub open spec fn relator_acts_trivially(
     act_word(data, r, h, syls) == (h, syls)
 }
 
-/// Placeholder for state canonicity — currently vacuous.
-/// The per-relator triviality proofs handle canonicity internally.
+/// State canonicity: h is a valid K-word.
+/// The action always produces valid K-words (from left_h_part/right_h_part choose).
+/// The identity state (ε, []) satisfies this trivially.
 pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Syllable>) -> bool {
-    true
+    word_valid(h, k_size(data))
+}
+
+/// The action of a single symbol preserves canonical state (h is word_valid for k).
+/// This follows from left_h_part and right_h_part always producing word_valid K-words.
+///
+/// For now we state this as a spec-level property that the action preserves.
+/// A full inductive proof requires showing act_sym preserves word_valid(h, k),
+/// which follows from the choose predicates of left_h_part/right_h_part.
+pub open spec fn action_preserves_canonical(data: AmalgamatedData) -> bool {
+    forall|w: Word, h: Word, syls: Seq<Syllable>|
+        is_canonical_state(data, h, syls) ==>
+        #[trigger] is_canonical_state(data,
+            act_word(data, w, h, syls).0,
+            act_word(data, w, h, syls).1)
 }
 
 /// The action is well-defined on canonical states:
@@ -1104,6 +1119,7 @@ pub proof fn lemma_act_word_deriv(
 )
     requires
         action_well_defined(data),
+        action_preserves_canonical(data),
         amalgamated_data_valid(data),
         is_canonical_state(data, h, syllables),
         derivation_produces(amalgamated_free_product(data), steps, w1) == Some(w2),
@@ -1149,6 +1165,8 @@ pub proof fn lemma_act_word_deriv(
                 assert(w_mid =~= concat(prefix, suffix));
                 // pair acts trivially on the intermediate (canonical) state
                 let (ph, ps) = act_word(data, prefix, h, syllables);
+                // intermediate state is canonical (from action_preserves_canonical)
+                assert(is_canonical_state(data, ph, ps));
                 assert(relator_acts_trivially(data, inverse_pair_word(s1), ph, ps));
                 assert(act_word(data, pair, ph, ps) == (ph, ps));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
@@ -1165,6 +1183,8 @@ pub proof fn lemma_act_word_deriv(
                     by { if k < position {} else {} }
                 }
                 let (ph, ps) = act_word(data, prefix, h, syllables);
+                // intermediate state is canonical (from action_preserves_canonical)
+                assert(is_canonical_state(data, ph, ps));
                 assert(relator_acts_trivially(data, inverse_pair_word(symbol), ph, ps));
                 assert(act_word(data, pair, ph, ps) == (ph, ps));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
@@ -1181,6 +1201,8 @@ pub proof fn lemma_act_word_deriv(
                     by { if k < position {} else {} }
                 }
                 let (ph, ps) = act_word(data, prefix, h, syllables);
+                // intermediate state is canonical (from action_preserves_canonical)
+                assert(is_canonical_state(data, ph, ps));
                 assert(relator_acts_trivially(data,
                     get_relator(afp, relator_index, inverted), ph, ps));
                 assert(act_word(data, r, ph, ps) == (ph, ps));
@@ -1203,6 +1225,8 @@ pub proof fn lemma_act_word_deriv(
                 }
                 assert(w_mid =~= concat(prefix, suffix));
                 let (ph, ps) = act_word(data, prefix, h, syllables);
+                // intermediate state is canonical (from action_preserves_canonical)
+                assert(is_canonical_state(data, ph, ps));
                 assert(relator_acts_trivially(data,
                     get_relator(afp, relator_index, inverted), ph, ps));
                 assert(act_word(data, r, ph, ps) == (ph, ps));
@@ -1217,6 +1241,33 @@ pub proof fn lemma_act_word_deriv(
             afp, w1, step, w_mid);
         lemma_act_word_deriv(data, steps.drop_first(), w_mid, w2, h, syllables);
     }
+}
+
+/// The action preserves canonical state for a single symbol.
+/// act_sym produces h from left_h_part or right_h_part, which are choose results
+/// satisfying word_valid(h, k). So the output h is word_valid.
+///
+/// Note: this requires the left_h_part and right_h_part choose predicates to be
+/// satisfiable for the products encountered. This is guaranteed when the
+/// starting state is canonical and the transversal decomposition exists.
+///
+/// For the identity state and action-produced states, satisfiability holds.
+/// We take it as a precondition for now.
+proof fn lemma_action_preserves_canonical(
+    data: AmalgamatedData,
+    w: Word,
+    h: Word,
+    syls: Seq<Syllable>,
+)
+    requires
+        action_preserves_canonical(data),
+        is_canonical_state(data, h, syls),
+    ensures
+        is_canonical_state(data,
+            act_word(data, w, h, syls).0,
+            act_word(data, w, h, syls).1),
+{
+    // Direct from action_preserves_canonical spec.
 }
 
 /// AFP injectivity from the textbook reduced-sequence action.
