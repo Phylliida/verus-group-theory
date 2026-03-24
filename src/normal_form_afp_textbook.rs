@@ -4505,6 +4505,68 @@ proof fn lemma_inverse_pair_g1_subcase_b(
 // Part N: Right A-coset rep invariance (parallel to left coset)
 // ============================================================
 
+/// 4-part cancellation: concat(concat(a, inv(b)), concat(b, c)) ≡ concat(a, c).
+/// Used for right A-coset transitivity: a·inv(b)·b·c ≡ a·c.
+proof fn lemma_four_part_cancel(
+    p: Presentation, a: Word, b: Word, c: Word,
+)
+    requires
+        presentation_valid(p),
+        word_valid(a, p.num_generators),
+        word_valid(b, p.num_generators),
+        word_valid(c, p.num_generators),
+    ensures
+        equiv_in_presentation(p,
+            concat(concat(a, inverse_word(b)), concat(b, c)),
+            concat(a, c)),
+{
+    crate::word::lemma_inverse_word_valid(b, p.num_generators);
+    // inv(b)·b ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_left(p, b);
+    // concat(inv(b), concat(b, c)) =~= concat(concat(inv(b), b), c) [associativity]
+    assert(concat(inverse_word(b), concat(b, c)) =~=
+           concat(concat(inverse_word(b), b), c)) by {
+        let lhs = concat(inverse_word(b), concat(b, c));
+        let rhs = concat(concat(inverse_word(b), b), c);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < inverse_word(b).len() as int {} else {
+                let j = k - inverse_word(b).len() as int;
+                if j < b.len() as int {} else {}
+            }
+        }
+    }
+    // concat(concat(inv(b), b), c) ≡ concat(ε, c) =~= c
+    crate::presentation_lemmas::lemma_equiv_concat_left(
+        p, concat(inverse_word(b), b), empty_word(), c);
+    assert(concat(empty_word(), c) =~= c) by {
+        assert(concat(empty_word(), c).len() == c.len());
+        assert forall|k: int| 0 <= k < c.len()
+            implies concat(empty_word(), c)[k] == c[k] by {}
+    }
+    // Chain: concat(inv(b), concat(b, c)) =~= concat(concat(inv(b), b), c) ≡ concat(ε, c) =~= c
+    crate::presentation::lemma_equiv_transitive(p,
+        concat(inverse_word(b), concat(b, c)),
+        concat(concat(inverse_word(b), b), c),
+        concat(empty_word(), c));
+    // concat(a, concat(inv(b), concat(b, c))) ≡ concat(a, c) [equiv_concat_right]
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        p, a, concat(inverse_word(b), concat(b, c)), c);
+    // concat(concat(a, inv(b)), concat(b, c)) =~= concat(a, concat(inv(b), concat(b, c))) [associativity]
+    assert(concat(concat(a, inverse_word(b)), concat(b, c)) =~=
+           concat(a, concat(inverse_word(b), concat(b, c)))) by {
+        let lhs = concat(concat(a, inverse_word(b)), concat(b, c));
+        let rhs = concat(a, concat(inverse_word(b), concat(b, c)));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < a.len() as int {} else {
+                let j = k - a.len() as int;
+                if j < inverse_word(b).len() as int {} else {}
+            }
+        }
+    }
+}
+
 /// Transfer: same rcoset → coset words transfer.
 proof fn lemma_a_rcoset_word_transfer(
     data: AmalgamatedData, g1: Word, g2: Word, l: nat,
@@ -4551,8 +4613,14 @@ proof fn lemma_a_rcoset_word_transfer(
             if k < g2.len() as int {} else {}
         }
     }
+    crate::presentation::lemma_equiv_refl(data.p1, concat(g2, inverse_word(g1)));
     lemma_in_subgroup_equiv(data.p1, a_words(data),
         inv_pair, concat(g2, inverse_word(g1)));
+
+    // concat(g2·inv(g1), g1·inv(w)) in subgroup (from subgroup_concat above)
+    lemma_subgroup_concat(data.p1, a_words(data),
+        concat(g2, inverse_word(g1)),
+        concat(g1, inverse_word(w)));
 
     // Now: concat(g2, inv(g1))·concat(g1, inv(w)) ≡ concat(g2, inv(w))
     // by associativity + inv(g1)·g1 cancellation
@@ -4561,30 +4629,52 @@ proof fn lemma_a_rcoset_word_transfer(
     // =~= concat(g2, concat(concat(inv(g1), g1), inv(w)))
     // ≡ concat(g2, concat(ε, inv(w))) =~= concat(g2, inv(w))
 
-    // This is complex. Instead, just use equiv transitivity:
-    // in_left_subgroup(concat(g2, inv(g1))·concat(g1, inv(w)))
-    // and this ≡ concat(g2, inv(w)) (by assoc + cancellation)
-    // → in_left_subgroup(concat(g2, inv(w)))
-    crate::word::lemma_inverse_word_valid(g1, data.p1.num_generators);
-    crate::word::lemma_inverse_word_valid(w, data.p1.num_generators);
-    crate::word::lemma_concat_word_valid(g2, inverse_word(g1), data.p1.num_generators);
-    crate::word::lemma_concat_word_valid(g1, inverse_word(w), data.p1.num_generators);
-
-    // Associativity chain: a·b ≡ g2·inv(w) where a=g2·inv(g1), b=g1·inv(w)
-    // concat(a, b) has: a[..]b[..] = g2 inv(g1) g1 inv(w)
-    // g2 inv(w) by cancelling inv(g1)g1
-    crate::presentation_lemmas::lemma_word_inverse_left(data.p1, g1);
-    // concat(inv(g1), g1) ≡ ε
-    // Need to show concat(a, b) ≡ concat(g2, inv(w))
-    // a·b = (g2·inv(g1))·(g1·inv(w))
-    // By assoc: g2·(inv(g1)·g1)·inv(w) ≡ g2·ε·inv(w) =~= g2·inv(w)
-    // This requires 4-way associativity which is tedious. Let me use a simpler approach:
-    // Just assert the subgroup membership directly.
-    crate::word::lemma_concat_word_valid(g2, inverse_word(w), data.p1.num_generators);
+    // concat(g2·inv(g1), g1·inv(w)) ≡ g2·inv(w) by 4-part cancellation
+    lemma_four_part_cancel(data.p1, g2, g1, inverse_word(w));
     lemma_in_subgroup_equiv(data.p1, a_words(data),
         concat(concat(g2, inverse_word(g1)), concat(g1, inverse_word(w))),
         concat(g2, inverse_word(w)));
     // same_a_rcoset(g2, w) → has_a_rcoset_word_of_len(g2, l)
+}
+
+/// Transfer with rank: same rcoset → rank witnesses transfer.
+proof fn lemma_a_rcoset_word_rank_transfer(
+    data: AmalgamatedData, g1: Word, g2: Word, l: nat, r: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        same_a_rcoset(data, g1, g2),
+        has_a_rcoset_word_of_len_rank(data, g1, l, r),
+    ensures
+        has_a_rcoset_word_of_len_rank(data, g2, l, r),
+{
+    // Extract the rank witness from g1's coset
+    let n1 = data.p1.num_generators;
+    let w: Word = choose|w: Word| word_valid(w, n1)
+        && same_a_rcoset(data, g1, w) && w.len() == l
+        && word_lex_rank_base(w, lex_base(data)) == r;
+    // w is in g1's rcoset → also in g2's rcoset (by transitivity)
+    // same_a_rcoset(g1, w) and same_a_rcoset(g1, g2) → same_a_rcoset(g2, w)
+    lemma_same_a_rcoset_symmetric(data, g1, g2);
+    // same_a_rcoset(g2, g1) + same_a_rcoset(g1, w) → same_a_rcoset(g2, w)
+    // Use the transfer infrastructure from lemma_a_rcoset_word_transfer
+    // Actually, we just need: same_a_rcoset(g2, w) = in_left_subgroup(g2·inv(w))
+    // From same_a_rcoset(g2, g1) + same_a_rcoset(g1, w):
+    //   g2·inv(g1) ∈ A and g1·inv(w) ∈ A → (g2·inv(g1))·(g1·inv(w)) ∈ A
+    //   ≡ g2·inv(w) ∈ A. So same_a_rcoset(g2, w).
+    lemma_subgroup_concat(data.p1, a_words(data),
+        concat(g2, inverse_word(g1)),
+        concat(g1, inverse_word(w)));
+    crate::word::lemma_inverse_word_valid(w, n1);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(w), n1);
+    // 4-part cancellation: concat(g2·inv(g1), g1·inv(w)) ≡ g2·inv(w)
+    lemma_four_part_cancel(data.p1, g2, g1, inverse_word(w));
+    lemma_in_subgroup_equiv(data.p1, a_words(data),
+        concat(concat(g2, inverse_word(g1)), concat(g1, inverse_word(w))),
+        concat(g2, inverse_word(w)));
 }
 
 /// No shorter → ≥ for right A-cosets.
@@ -4603,6 +4693,42 @@ proof fn lemma_no_shorter_a_rcoset_word_implies_ge(
     } else if k < m - 1 {
         lemma_no_shorter_a_rcoset_word_implies_ge(data, g, (m - 1) as nat, k);
     }
+}
+
+/// same_a_rcoset is symmetric.
+proof fn lemma_same_a_rcoset_symmetric(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        same_a_rcoset(data, g1, g2),
+    ensures
+        same_a_rcoset(data, g2, g1),
+{
+    let n1 = data.p1.num_generators;
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::word::lemma_inverse_word_valid(g2, n1);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g2), n1);
+    lemma_subgroup_inverse(data.p1, a_words(data), concat(g1, inverse_word(g2)));
+    crate::word::lemma_inverse_concat(g1, inverse_word(g2));
+    crate::word::lemma_inverse_involution(g2);
+    let inv_pair = inverse_word(concat(g1, inverse_word(g2)));
+    assert(inv_pair =~= concat(g2, inverse_word(g1))) by {
+        assert(inv_pair =~= concat(inverse_word(inverse_word(g2)), inverse_word(g1)));
+        assert forall|k: int| 0 <= k < concat(g2, inverse_word(g1)).len()
+            implies inv_pair[k] == concat(g2, inverse_word(g1))[k]
+        by { if k < g2.len() as int {} else {} }
+    }
+    crate::word::lemma_inverse_word_valid(g1, n1);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(g1), n1);
+    crate::presentation::lemma_equiv_refl(data.p1, concat(g2, inverse_word(g1)));
+    lemma_in_subgroup_equiv(data.p1, a_words(data),
+        inv_pair, concat(g2, inverse_word(g1)));
 }
 
 /// Right A-coset rep invariance: same_a_rcoset → same a_rcoset_rep.
@@ -4627,28 +4753,7 @@ proof fn lemma_a_rcoset_rep_invariant(
 
     // Transfer in both directions → bidirectional ≥ → equal
     lemma_a_rcoset_word_transfer(data, g1, g2, l1);
-    // same_a_rcoset is symmetric
-    assert forall|i: int| 0 <= i < a_words(data).len()
-        implies word_valid(#[trigger] a_words(data)[i], n1)
-    by { assert(word_valid(data.identifications[i].0, n1)); }
-    crate::word::lemma_inverse_word_valid(g2, n1);
-    crate::word::lemma_concat_word_valid(g1, inverse_word(g2), n1);
-    lemma_subgroup_inverse(data.p1, a_words(data), concat(g1, inverse_word(g2)));
-    crate::word::lemma_inverse_concat(g1, inverse_word(g2));
-    crate::word::lemma_inverse_involution(g2);
-    let inv_pair = inverse_word(concat(g1, inverse_word(g2)));
-    assert(inv_pair =~= concat(g2, inverse_word(g1))) by {
-        assert(inv_pair =~= concat(inverse_word(inverse_word(g2)), inverse_word(g1)));
-        assert forall|k: int| 0 <= k < concat(g2, inverse_word(g1)).len()
-            implies inv_pair[k] == concat(g2, inverse_word(g1))[k]
-        by { if k < g2.len() as int {} else {} }
-    }
-    crate::word::lemma_inverse_word_valid(g1, n1);
-    crate::word::lemma_concat_word_valid(g2, inverse_word(g1), n1);
-    crate::presentation::lemma_equiv_refl(data.p1, concat(g2, inverse_word(g1)));
-    lemma_in_subgroup_equiv(data.p1, a_words(data),
-        inv_pair, concat(g2, inverse_word(g1)));
-    // Now same_a_rcoset(g2, g1)
+    lemma_same_a_rcoset_symmetric(data, g1, g2);
     lemma_a_rcoset_word_transfer(data, g2, g1, l2);
 
     // Bidirectional ≥
@@ -4673,18 +4778,9 @@ proof fn lemma_a_rcoset_rep_invariant(
 
     let r1 = a_rcoset_min_lex(data, g1);
     let r2 = a_rcoset_min_lex(data, g2);
-    // Transfer rank witnesses between g1 and g2
-    // The rep1 word satisfies same_a_rcoset(g1, rep1). We need same_a_rcoset(g2, rep1) to get rank transfer.
-    // rep1 is the g1-choose result. From rep_props: same_a_rcoset(g1, rep1).
-    // From same_a_rcoset(g1, g2) + same_a_rcoset(g1, rep1) → same_a_rcoset(g2, rep1) (transitivity via transfer)
-    lemma_a_rcoset_rep_props(data, g1);
-    lemma_a_rcoset_rep_props(data, g2);
-    let rep1 = a_rcoset_rep(data, g1);
-    let rep2 = a_rcoset_rep(data, g2);
-    // rep1 has rank r1, is in g1's coset → same_a_rcoset(g2, rep1) → has_rank(g2, l, r1)
-    assert(has_a_rcoset_word_of_len_rank(data, g2, l, r1));
-    // rep2 has rank r2, is in g2's coset → same_a_rcoset(g1, rep2) → has_rank(g1, l, r2)
-    assert(has_a_rcoset_word_of_len_rank(data, g1, l, r2));
+    // Transfer rank witnesses via explicit helper
+    lemma_a_rcoset_word_rank_transfer(data, g1, g2, l, r1);
+    lemma_a_rcoset_word_rank_transfer(data, g2, g1, l, r2);
     lemma_no_smaller_a_rcoset_lex_implies_ge(data, g2, l, r2, r1);
     lemma_no_smaller_a_rcoset_lex_implies_ge(data, g1, l, r1, r2);
     // r1 == r2
