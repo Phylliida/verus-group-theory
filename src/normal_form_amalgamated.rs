@@ -1191,8 +1191,29 @@ proof fn lemma_vdw_step(
     }
 }
 
-/// Inverse pair acts trivially.
-#[verifier::rlimit(40)]
+/// Helper: ct_lookup round-trip via table consistency.
+proof fn lemma_ct_roundtrip(
+    ct: crate::todd_coxeter::CosetTable,
+    h: nat, s_col: nat,
+)
+    requires
+        crate::todd_coxeter::coset_table_wf(ct),
+        crate::todd_coxeter::coset_table_consistent(ct),
+        crate::finite::coset_table_complete(ct),
+        h < ct.num_cosets,
+        s_col < 2 * ct.num_gens,
+    ensures
+        ct_lookup(ct, ct_lookup(ct, h, s_col),
+            crate::todd_coxeter::inverse_column(s_col)) == h,
+        ct_lookup(ct, h, s_col) < ct.num_cosets,
+{
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::todd_coxeter::coset_table_consistent);
+    reveal(crate::finite::coset_table_complete);
+}
+
+/// Inverse pair acts trivially on the VDW action.
+/// Strategy: factor the proof through lemma_ct_roundtrip to keep Z3 happy.
 proof fn lemma_vdw_inv_pair(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
@@ -1226,37 +1247,58 @@ proof fn lemma_vdw_inv_pair(
     reveal(crate::todd_coxeter::coset_table_consistent);
     reveal(crate::finite::coset_table_complete);
 
-    // Unfold: vdw_word([s1, s2], h, sylls)
-    //       = vdw_word([s2], vdw_sym(s1, h, sylls))
-    //       = vdw_sym(s2, vdw_sym(s1, h, sylls))
-    //
-    // The pair [s1, s2] processes s1 then s2.
-    let w = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
-    assert(w.first() == s1);
-    assert(w.drop_first() =~= Seq::new(1, |_i: int| s2));
-    assert(w.drop_first().first() == s2);
-    assert(w.drop_first().drop_first() =~= Seq::<Symbol>::empty());
+    // Word structure hints
+    let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+    assert(pair.first() == s1);
+    assert(pair.drop_first() =~= Seq::new(1, |_i: int| s2));
+    assert(pair.drop_first().first() == s2);
+    assert(pair.drop_first().drop_first() =~= Seq::<Symbol>::empty());
 
-    // Let Z3 unfold the action and use table consistency.
-    // Table consistency says: table[c][col] = Some(d) => table[d][inv_col] = Some(c).
-    // This means tracing s then inv(s) returns to the start.
-    //
-    // The action does coset decomposition which complicates things.
-    // But the round-trip through the Cayley table is the identity,
-    // and the coset decomposition is deterministic, so the round-trip
-    // through the full action is also the identity.
-    //
-    // The pair [s1, s2] processes s1 then s2 = inv(s1).
-    // The Cayley table consistency guarantees the round-trip is identity.
-    // The coset decomposition is deterministic, so the full VDW action
-    // round-trips as well.
-    // With increased rlimit and revealed opaque defs, Z3 should handle this.
+    // Generator index relationship
+    assert(generator_index(s2) == generator_index(s1));
 
-    let w = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
-    assert(w.first() == s1);
-    assert(w.drop_first() =~= Seq::new(1, |_i: int| s2));
-    assert(w.drop_first().first() == s2);
-    assert(w.drop_first().drop_first() =~= Seq::<Symbol>::empty());
+    // Column relationship: s2's column is the inverse of s1's column
+    let s1_col = sym_col(s1);
+    let s2_col = sym_col(s2);
+
+    // Establish the round-trip in the appropriate Cayley table
+    if generator_index(s1) < n1 {
+        // G₁ symbols
+        assert(s1_col < 2 * ct1.num_gens) by {
+            match s1 { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        assert(s2_col == crate::todd_coxeter::inverse_column(s1_col)) by {
+            match s1 { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        lemma_ct_roundtrip(ct1, h, s1_col);
+        // Z3 now knows: ct_lookup(ct1, ct_lookup(ct1, h, s1_col), s2_col) == h
+        // and ct_lookup(ct1, h, s1_col) < ct1.num_cosets
+        //
+        // The VDW action of s1 on (h, sylls) traces s1 in ct1 from h,
+        // then does coset decomposition.
+        // The VDW action of s2 on the result traces s2 in ct1,
+        // getting back to h (round-trip), then decomposes.
+        // Since the final ct1-element is h (same as start),
+        // the coset decomposition gives the same result as the original state.
+    } else {
+        // G₂ symbols
+        let h_g2 = phi_inv(h);
+        let s1_local = unshift_sym(s1, n1);
+        let s1_local_col = sym_col(s1_local);
+        assert(s1_local_col < 2 * ct2.num_gens) by {
+            match s1_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        let s2_local = unshift_sym(s2, n1);
+        let s2_local_col = sym_col(s2_local);
+        assert(s2_local_col == crate::todd_coxeter::inverse_column(s1_local_col)) by {
+            match s1_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        lemma_ct_roundtrip(ct2, h_g2, s1_local_col);
+        // ct_lookup(ct2, ct_lookup(ct2, h_g2, s1_local_col), s2_local_col) == h_g2
+        // After round-trip: back to h_g2 in ct2, which translates back to h via phi.
+    }
+    // Z3 should now be able to unfold the VDW action for the pair
+    // and verify it equals (h, sylls), using the established round-trip facts.
 }
 
 /// AFP relator acts trivially.
