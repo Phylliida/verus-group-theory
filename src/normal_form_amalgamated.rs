@@ -1130,6 +1130,7 @@ proof fn lemma_h_act_step(
 {
     let n1 = data.p1.num_generators;
     let n_total = n1 + data.p2.num_generators;
+    assert(n_total == 2 * n1); // from h_prereqs: p1.num_generators == p2.num_generators
     let afp = amalgamated_free_product(data);
 
     match step {
@@ -1985,8 +1986,27 @@ proof fn lemma_h_relator(
             // By trace_inverse_word: trace(ct1, trace(ct1, h, u_i).unwrap(), inv(u_i)) == Some(h)
             crate::completeness::lemma_trace_complete(ct1, h, u_i);
             crate::completeness::lemma_trace_inverse_word(ct1, h, u_i);
-            // trace(ct1, h_mid_g2, inv_u) == Some(h)
-            // So h_act_word(inv_u, h_mid_g2) == h
+            // Chain the equalities explicitly:
+            // Establish h_mid_g2 == trace(ct1, h, u_i).unwrap()
+            // From h_act_g2_phi_inv_trace: phi_inv(h_mid_g2) == trace(ct2, phi_inv(h), v_i).unwrap()
+            // From word-level ident: trace(ct2, phi_inv(h), v_i).unwrap() == phi_inv(trace(ct1, h, u_i).unwrap())
+            // So phi_inv(h_mid_g2) == phi_inv(trace(ct1, h, u_i).unwrap())
+            // h_mid_g2 < ct1.num_cosets [from h_act_bound]
+            assert(h_mid_g2 < ct1.num_cosets);
+            crate::completeness::lemma_trace_complete(ct1, h, u_i);
+            reveal(crate::todd_coxeter::coset_table_wf);
+            let u_trace = crate::todd_coxeter::trace_word(ct1, h, u_i).unwrap();
+            assert(u_trace < ct1.num_cosets);
+            // phi_inv(h_mid_g2) == phi_inv(u_trace) [from the two trace equalities]
+            assert(phi_inv(h_mid_g2) == phi_inv(u_trace));
+            // phi is injective: phi(phi_inv(x)) == x for x < ct1.num_cosets
+            assert(phi(phi_inv(h_mid_g2)) == h_mid_g2);
+            assert(phi(phi_inv(u_trace)) == u_trace);
+            // So: h_mid_g2 == phi(phi_inv(h_mid_g2)) == phi(phi_inv(u_trace)) == u_trace
+            assert(h_mid_g2 == u_trace);
+            // trace_inverse_word: trace(ct1, u_trace, inv_u) == Some(h)
+            // h_act_is_trace: trace(ct1, h_mid_g2, inv_u) == Some(h_act_word(inv_u, h_mid_g2))
+            // So h_act_word(inv_u, h_mid_g2) == h.
         }
     }
 }
