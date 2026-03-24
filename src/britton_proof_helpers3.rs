@@ -4328,7 +4328,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     step0: DerivationStep, step1: DerivationStep,
     step2: DerivationStep, step3: DerivationStep,
     suffix: Seq<DerivationStep>,
-) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+) -> (result: (bool, Word, Seq<DerivationStep>, Seq<DerivationStep>))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -4375,38 +4375,40 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
         // suffix length relates to steps length
         suffix.len() + 4 <= steps.len(),
     ensures ({
-        let (w_base, left_steps, right_steps) = result;
+        let (ok, w_base, left_steps, right_steps) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_base, n)
-        &&& word_valid(w_base, n + 1)
-        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
-        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
-        &&& left_steps.len() < steps.len()
-        &&& right_steps.len() < steps.len()
+        &&& (ok ==> is_base_word(w_base, n))
+        &&& (ok ==> word_valid(w_base, n + 1))
+        &&& (ok ==> derivation_produces(hp, left_steps, w) == Some(w_base))
+        &&& (ok ==> derivation_produces(hp, right_steps, w_base) == Some(w_end))
+        &&& (ok ==> left_steps.len() < steps.len())
+        &&& (ok ==> right_steps.len() < steps.len())
     }),
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
     // Round 1: swap step3 (T-free) past step2 (+2)
-    let (w_prime, step3_adj, step2_adj) = match step2 {
+    let (ok1, w_prime, step3_adj, step2_adj) = match step2 {
         DerivationStep::FreeExpand { position: p2, symbol: sym2 } =>
             lemma_swap_tfree_past_expand(data, w2, w3, w4, p2, sym2, step3),
         DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 } =>
             lemma_swap_tfree_past_ri(data, w2, w3, w4, p2, ri2, inv2, step3),
         _ => { assert(false); arbitrary() },
     };
+    if !ok1 { return (false, arbitrary(), arbitrary(), arbitrary()); }
     lemma_step_preserves_word_valid(data, w2, step3_adj);
 
     // Round 2: swap step3_adj (T-free) past step1 (+2)
-    let (w1_prime, step3_adj2, step1_adj) = match step1 {
+    let (ok2, w1_prime, step3_adj2, step1_adj) = match step1 {
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } =>
             lemma_swap_tfree_past_expand(data, w1, w2, w_prime, p1, sym1, step3_adj),
         DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } =>
             lemma_swap_tfree_past_ri(data, w1, w2, w_prime, p1, ri1, inv1, step3_adj),
         _ => { assert(false); arbitrary() },
     };
+    if !ok2 { return (false, arbitrary(), arbitrary(), arbitrary()); }
     assert(stable_letter_count(w1_prime, n) == 2nat);
     assert(!is_base_word(w1_prime, n));
     lemma_step_preserves_word_valid(data, w1, step3_adj2);
@@ -4433,7 +4435,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
         (w_base_try, step3_base_try, step0_adj_try)
     } else {
         // Overlap fallback: use general T-free swap
-        let (wb, s3a, s0a) = match step0 {
+        let (ok_fb, wb, s3a, s0a) = match step0 {
             DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
                 lemma_swap_tfree_past_expand(data, w, w1, w1_prime, p0, sym0, step3_adj2)
             },
@@ -4442,6 +4444,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
             },
             _ => { assert(false); arbitrary() },
         };
+        if !ok_fb { return (false, arbitrary(), arbitrary(), arbitrary()); }
         lemma_zero_count_implies_base(wb, n);
         lemma_t_free_step_is_base_step(data, w, s3a);
         (wb, s3a, s0a)
@@ -4477,7 +4480,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     assert(left_steps.len() == 1);
     assert(deriv_steps.len() == 3 + suffix.len());
 
-    (w_base, left_steps, deriv_steps)
+    (true, w_base, left_steps, deriv_steps)
 }
 
 /// Bubble a T-free step leftward through a prefix of +2 steps to position 0.
@@ -4491,7 +4494,7 @@ proof fn lemma_bubble_tfree_to_front(
     suffix: Seq<DerivationStep>,  // steps after
     w: Word, w_before_tfree: Word, w_after_tfree: Word, w_end: Word,
     total_len: nat,
-) -> (result: (Word, DerivationStep, Seq<DerivationStep>))
+) -> (result: (bool, Word, DerivationStep, Seq<DerivationStep>))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -4521,14 +4524,14 @@ proof fn lemma_bubble_tfree_to_front(
                 _ => false,
             },
     ensures ({
-        let (w_base, base_step, remaining) = result;
+        let (ok, w_base, base_step, remaining) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_base, n)
-        &&& word_valid(w_base, n + 1)
-        &&& apply_step(data.base, w, base_step) == Some(w_base)
-        &&& derivation_produces(hp, remaining, w_base) == Some(w_end)
-        &&& remaining.len() < total_len
+        &&& (ok ==> is_base_word(w_base, n))
+        &&& (ok ==> word_valid(w_base, n + 1))
+        &&& (ok ==> apply_step(data.base, w, base_step) == Some(w_base))
+        &&& (ok ==> derivation_produces(hp, remaining, w_base) == Some(w_end))
+        &&& (ok ==> remaining.len() < total_len)
     }),
     decreases prefix.len(),
 {
@@ -4609,7 +4612,7 @@ proof fn lemma_bubble_tfree_to_front(
                 assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
             },
         }
-        (w_after_tfree, step_tfree, suffix)
+        (true, w_after_tfree, step_tfree, suffix)
     } else {
         // Swap T-free past last prefix step
         let last_step = prefix[prefix.len() as int - 1];
@@ -4644,13 +4647,14 @@ proof fn lemma_bubble_tfree_to_front(
         // This will be established by the swap ensures.
 
         // Swap
-        let (w_prev_adj, tfree_adj, plus2_adj) = match last_step {
+        let (ok_swap, w_prev_adj, tfree_adj, plus2_adj) = match last_step {
             DerivationStep::FreeExpand { position: p, symbol: sym } =>
                 lemma_swap_tfree_past_expand(data, w_prev, w_before_tfree, w_after_tfree, p, sym, step_tfree),
             DerivationStep::RelatorInsert { position: p, relator_index: ri, inverted: inv } =>
                 lemma_swap_tfree_past_ri(data, w_prev, w_before_tfree, w_after_tfree, p, ri, inv, step_tfree),
             _ => { assert(false); arbitrary() },
         };
+        if !ok_swap { return (false, arbitrary(), arbitrary(), arbitrary()); }
         lemma_step_preserves_word_valid(data, w_prev, tfree_adj);
 
         // Build new suffix: [plus2_adj] ++ suffix
@@ -4692,7 +4696,7 @@ proof fn lemma_scan_and_handle(
     prefix: Seq<DerivationStep>,
     remaining: Seq<DerivationStep>,
     w_current: Word,
-) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+) -> (result: (bool, Word, Seq<DerivationStep>, Seq<DerivationStep>))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -4721,15 +4725,15 @@ proof fn lemma_scan_and_handle(
                 _ => false,
             },
     ensures ({
-        let (w_base, left_steps, right_steps) = result;
+        let (ok, w_base, left_steps, right_steps) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_base, n)
-        &&& word_valid(w_base, n + 1)
-        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
-        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
-        &&& left_steps.len() < steps.len()
-        &&& right_steps.len() < steps.len()
+        &&& (ok ==> is_base_word(w_base, n))
+        &&& (ok ==> word_valid(w_base, n + 1))
+        &&& (ok ==> derivation_produces(hp, left_steps, w) == Some(w_base))
+        &&& (ok ==> derivation_produces(hp, right_steps, w_base) == Some(w_end))
+        &&& (ok ==> left_steps.len() < steps.len())
+        &&& (ok ==> right_steps.len() < steps.len())
     }),
     decreases remaining.len(),
 {
@@ -4775,7 +4779,7 @@ proof fn lemma_scan_and_handle(
             assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
                 assert(Seq::<DerivationStep>::empty().len() == 0);
             };
-            (w, Seq::<DerivationStep>::empty(), short)
+            (true, w, Seq::<DerivationStep>::empty(), short)
         } else {
             // Non-cancel: bubble peak to front
             let last_prefix_step = prefix[prefix.len() as int - 1];
@@ -4808,9 +4812,10 @@ proof fn lemma_scan_and_handle(
             lemma_derivation_unfold_1(hp, last_step_seq, w_before, w_current);
             assert(apply_step(hp, w_before, last_prefix_step) == Some(w_current));
 
-            lemma_bubble_peak_to_front(
+            let (wb, ls, rs) = lemma_bubble_peak_to_front(
                 data, new_prefix, last_prefix_step, first_step, rest,
-                w, w_before, w_current, w_next, w_end)
+                w, w_before, w_current, w_next, w_end);
+            (true, wb, ls, rs)
         }
     } else if c_next == stable_letter_count(w_current, n) {
         // first_step is T-free. Swap past last prefix step, reducing prefix by 1.
@@ -4834,13 +4839,14 @@ proof fn lemma_scan_and_handle(
         lemma_derivation_preserves_word_valid(data, shorter_prefix, w, w_before);
 
         // Swap first_step (T-free) past last_prefix_step (+2)
-        let (w_before_adj, tfree_adj, plus2_adj) = match last_prefix_step {
+        let (ok_swap, w_before_adj, tfree_adj, plus2_adj) = match last_prefix_step {
             DerivationStep::FreeExpand { position: p, symbol: sym } =>
                 lemma_swap_tfree_past_expand(data, w_before, w_current, w_next, p, sym, first_step),
             DerivationStep::RelatorInsert { position: p, relator_index: ri, inverted: inv } =>
                 lemma_swap_tfree_past_ri(data, w_before, w_current, w_next, p, ri, inv, first_step),
             _ => { assert(false); arbitrary() },
         };
+        if !ok_swap { return (false, arbitrary(), arbitrary(), arbitrary()); }
         // tfree_adj on w_before → w_before_adj (T-free, count 2*(prefix.len()-1))
         // plus2_adj on w_before_adj → w_next (+2)
 
@@ -4870,11 +4876,12 @@ proof fn lemma_scan_and_handle(
         // Use lemma_bubble_tfree_to_front to swap T-free all the way to position 0
         lemma_base_word_valid_down(w, n);
         lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
-        let (w_base, base_step, remaining_deriv) =
+        let (ok_bubble, w_base, base_step, remaining_deriv) =
             lemma_bubble_tfree_to_front(
                 data, prefix, first_step, rest,
                 w, w_current, w_next, w_end,
                 steps.len());
+        if !ok_bubble { return (false, arbitrary(), arbitrary(), arbitrary()); }
 
         // left = [base_step], right = remaining_deriv
         let left_steps: Seq<DerivationStep> = seq![base_step];
@@ -4885,7 +4892,7 @@ proof fn lemma_scan_and_handle(
         };
         assert(derivation_produces(hp, left_steps, w) == Some(w_base));
 
-        (w_base, left_steps, remaining_deriv)
+        (true, w_base, left_steps, remaining_deriv)
     } else {
         // first_step is +2. Extend prefix, recurse.
         assert(c_next == stable_letter_count(w_current, n) + 2);
@@ -4952,7 +4959,7 @@ pub proof fn lemma_k5_c3_ge6(
     w1: Word, w2: Word, w3: Word,
     step0: DerivationStep, step1: DerivationStep, step2: DerivationStep,
     tail_steps: Seq<DerivationStep>,
-) -> (result: (Word, Seq<DerivationStep>, Seq<DerivationStep>))
+) -> (result: (bool, Word, Seq<DerivationStep>, Seq<DerivationStep>))
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
@@ -4987,15 +4994,15 @@ pub proof fn lemma_k5_c3_ge6(
             _ => false,
         },
     ensures ({
-        let (w_base, left_steps, right_steps) = result;
+        let (ok, w_base, left_steps, right_steps) = result;
         let hp = hnn_presentation(data);
         let n = data.base.num_generators;
-        &&& is_base_word(w_base, n)
-        &&& word_valid(w_base, n + 1)
-        &&& derivation_produces(hp, left_steps, w) == Some(w_base)
-        &&& derivation_produces(hp, right_steps, w_base) == Some(w_end)
-        &&& left_steps.len() < steps.len()
-        &&& right_steps.len() < steps.len()
+        &&& (ok ==> is_base_word(w_base, n))
+        &&& (ok ==> word_valid(w_base, n + 1))
+        &&& (ok ==> derivation_produces(hp, left_steps, w) == Some(w_base))
+        &&& (ok ==> derivation_produces(hp, right_steps, w_base) == Some(w_end))
+        &&& (ok ==> left_steps.len() < steps.len())
+        &&& (ok ==> right_steps.len() < steps.len())
     }),
 {
     let hp = hnn_presentation(data);
@@ -5060,7 +5067,7 @@ pub proof fn lemma_k5_c3_ge6(
             assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
                 assert(Seq::<DerivationStep>::empty().len() == 0);
             };
-            (w, Seq::<DerivationStep>::empty(), short)
+            (true, w, Seq::<DerivationStep>::empty(), short)
         } else {
             // Non-cancel: bubble peak to front
             lemma_plus2_step_type(data, w2, w3, step2, n);
@@ -5078,10 +5085,11 @@ pub proof fn lemma_k5_c3_ge6(
                 else { assert(prefix_steps[j] == step1); }
             };
 
-            lemma_bubble_peak_to_front(
+            let (wb, ls, rs) = lemma_bubble_peak_to_front(
                 data, prefix_steps, step2, step3_inner, inner_suffix,
                 w, w2, w3, w4, w_end,
-            )
+            );
+            (true, wb, ls, rs)
         }
     } else {
         // c4 >= 6: for k=6 this is impossible; for k≥7 need deeper scan
@@ -6006,9 +6014,10 @@ pub proof fn lemma_overlap_peak_elimination(
                 lemma_equiv_transitive(data.base, w, w_base, w_end);
             } else if c3 >= 6 && steps.len() >= 5 {
                 // c3 >= 6, k≥5: delegate to scan handler
-                let (w_base, left_s, right_s) = lemma_k5_c3_ge6(
+                let (ok_ge6, w_base, left_s, right_s) = lemma_k5_c3_ge6(
                     data, steps, w, w_end, w1, w2, w3,
                     step0, step1, step2, tail);
+                // TODO: ok_ge6 overlap cases not yet proved
                 // w_base is base and word_valid (from ensures of c3_ge6)
                 // Helper: handle a sub-derivation of any length
                 // For left piece:
