@@ -5104,6 +5104,36 @@ proof fn lemma_rcoset_decompose_subgroup_times_rep(
     // So a_rcoset_h(product) = left_h_part(product·inv(c1)) =~= h
 }
 
+/// Helper: When the merge case of act_left_sym produces merged_rep ≠ ε,
+/// the result replaces the first syllable.
+proof fn lemma_act_left_sym_merge_replaced(
+    data: AmalgamatedData, s: Symbol, h: Word, syllables: Seq<Syllable>,
+)
+    requires
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word()),
+        syllables.len() > 0,
+        syllables.first().is_left,
+        !({
+            let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+            let full_product = concat(product, syllables.first().rep);
+            a_rcoset_rep(data, full_product) =~= empty_word()
+        }),
+    ensures ({
+        let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+        let full_product = concat(product, syllables.first().rep);
+        let merged_rep = a_rcoset_rep(data, full_product);
+        act_left_sym(data, s, h, syllables)
+            == (a_rcoset_h(data, full_product),
+                Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep })
+                + syllables.drop_first())
+    }),
+{
+    // Z3 unfolds act_left_sym: rep ≠ ε, first syl left → merge case
+    // merged_rep ≠ ε → replace first syllable
+}
+
 /// Subcase C: G₁ inverse pair when rep' ≠ ε and first syllable IS left (merge).
 /// Forward: merge [s]·embed_a(h)·c₁ → (combined_h, merged_syls).
 /// Inverse: [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁ → decompose → (h, c₁, rest).
