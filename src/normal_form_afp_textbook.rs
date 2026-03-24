@@ -3363,20 +3363,12 @@ proof fn lemma_inverse_pair_g1_subcase_a(
         assert(concat(e, Seq::new(1, |_i: int| inverse_symbol(s))).len() == 1);
     }
     crate::presentation_lemmas::lemma_word_inverse_left(p1, s_word);
-    // concat(inv(s_word), s_word) ≡ ε
+    // concat(inverse_word(s_word), s_word) ≡ ε
+    // inv_s_word =~= inverse_word(s_word), so concat(inv_s_word, s_word) =~= concat(inverse_word(s_word), s_word)
+    assert(concat(inv_s_word, s_word) =~= concat(inverse_word(s_word), s_word));
 
-    // concat(inv_s_word, concat(s_word, embed_h)) ≡ embed_h
-    // by: concat(inv_s_word, s_word) ≡ ε, so concat(ε, embed_h) =~= embed_h
-    crate::presentation_lemmas::lemma_equiv_concat_right(
-        p1, concat(inv_s_word, s_word), e, embed_h);
-    // concat(concat(inv_s_word, s_word), embed_h) ≡ concat(ε, embed_h)
-    assert(concat(e, embed_h) =~= embed_h) by {
-        assert(concat(e, embed_h).len() == embed_h.len());
-        assert forall|k: int| 0 <= k < embed_h.len()
-            implies concat(e, embed_h)[k] == embed_h[k] by {}
-    }
-    // Need: concat(inv_s_word, concat(s_word, embed_h))
-    //     =~= concat(concat(inv_s_word, s_word), embed_h)  [associativity]
+    // Associativity: concat(inv_s_word, concat(s_word, embed_h))
+    //             =~= concat(concat(inv_s_word, s_word), embed_h)
     assert(concat(inv_s_word, concat(s_word, embed_h)) =~=
            concat(concat(inv_s_word, s_word), embed_h)) by {
         let lhs = concat(inv_s_word, concat(s_word, embed_h));
@@ -3390,16 +3382,31 @@ proof fn lemma_inverse_pair_g1_subcase_a(
         }
     }
 
-    // Chain: product2 ≡ concat(inv_s_word, product)
-    //                  = concat(inv_s_word, concat(s_word, embed_h))
-    //                  =~= concat(concat(inv_s_word, s_word), embed_h)
-    //                  ≡ concat(ε, embed_h) =~= embed_h
-    crate::presentation::lemma_equiv_transitive(p1, product2,
-        concat(inv_s_word, product),
-        concat(concat(inv_s_word, s_word), embed_h));
+    // concat(concat(inv_s_word, s_word), embed_h) ≡ concat(ε, embed_h) by equiv_concat_left
+    crate::presentation_lemmas::lemma_equiv_concat_left(
+        p1, concat(inv_s_word, s_word), e, embed_h);
+
+    // concat(ε, embed_h) =~= embed_h
+    assert(concat(e, embed_h) =~= embed_h) by {
+        assert(concat(e, embed_h).len() == embed_h.len());
+        assert forall|k: int| 0 <= k < embed_h.len()
+            implies concat(e, embed_h)[k] == embed_h[k] by {}
+    }
+
+    // Chain: product2 ≡ concat(inv_s_word, product) [from equiv_concat_left on embed_h_prime ≡ product]
+    //        = concat(inv_s_word, concat(s_word, embed_h))
+    //        =~= concat(concat(inv_s_word, s_word), embed_h)
+    //        ≡ concat(ε, embed_h) [from equiv_concat_left above]
+    //        =~= embed_h
+
+    // Help Z3 connect product2 to the associativity chain:
+    assert(concat(inv_s_word, product) =~= concat(concat(inv_s_word, s_word), embed_h));
+
+    // concat(concat(inv_s_word, s_word), embed_h) ≡ concat(ε, embed_h) =~= embed_h
+    // Two-step: first the ≡, then the =~=
     crate::presentation::lemma_equiv_transitive(p1, product2,
         concat(concat(inv_s_word, s_word), embed_h),
-        embed_h);
+        concat(e, embed_h));
 
     // product2 ≡ embed_a(h). Both are G₁-words.
     // By coset invariance: left_canonical_rep(product2) =~= left_canonical_rep(embed_a(h))
@@ -3433,6 +3440,8 @@ proof fn lemma_inverse_pair_g1_subcase_a(
         assert forall|k: int| 0 <= k < inverse_word(embed_h).len()
             implies concat(inverse_word(embed_h), e)[k] == inverse_word(embed_h)[k] by {}
     }
+    // inv(embed_h) =~= concat(inv(embed_h), ε), so equiv by refl
+    crate::presentation::lemma_equiv_refl(p1, inverse_word(embed_h));
     lemma_in_subgroup_equiv(p1, a_words(data),
         inverse_word(embed_h), concat(inverse_word(embed_h), e));
     // Now: in_left_subgroup(concat(inv(embed_h), ε)) = same_left_coset(embed_h, ε)
