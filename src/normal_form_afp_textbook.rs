@@ -5240,23 +5240,52 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
     //                       = (h, [Syl(left, c₁)] + syls.drop_first())
     //                       = (h, syls)  [since syls.first() = Syl(left, c₁)]
 
+    // Forward step: merge_replaced gives (combined_h, [Syl(left, merged_rep)] + rest)
+    lemma_act_left_sym_merge_replaced(data, s, h, syls);
+
     // Help Z3 with generator_index
     assert(generator_index(inv_s) == generator_index(s)) by {
         match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
     }
 
-    // Assert the final result
+    // Inverse step: act_left_sym(inv_s, combined_h, new_syls)
+    // product_inv = [inv(s)]·embed_a(combined_h)
+    // Need rep_inv ≠ ε → use full_product version of rep_nonzero
+    // Actually: use the merge_replaced helper for the INVERSE step too
+    // The inverse step's full_product = product_inv·merged_rep
+    // This ≡ embed_a(h)·c₁ (from lemma_inv_s_rcoset_merge_equiv)
+    // a_rcoset_rep(embed_a(h)·c₁) = c₁ ≠ ε (since c₁ is a non-trivial coset rep)
+    // So the inverse merge replaces with c₁
+
+    // Need: c₁ ≠ ε (it's a left syllable rep, which should be non-identity)
+    // Also need: a_rcoset_rep(product_inv) ≠ ε for the merge to be entered
+    // Use lemma_inv_step_rep_nonzero on full_product (since merged_rep ≠ ε)
+    // Wait — lemma_inv_step_rep_nonzero takes product = [s]·embed_a(h), not full_product.
+    // For the C2 case, the forward step's action is on full_product.
+    // The inverse step's product_inv = [inv(s)]·embed_a(combined_h).
+    // product_inv is NOT in the subgroup (since [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁ ∉ A when c₁ ≠ ε).
+
+    // For now, use the merge_replaced helper for the inverse step
     assert(new_syls.first().is_left);
     assert(new_syls.first().rep == merged_rep);
+    assert(new_syls.drop_first() =~= syls.drop_first());
 
-    // The original syls = [Syl(left, c₁)] + syls.drop_first()
-    // After subcase C2: result should have [Syl(left, c₁)] + syls.drop_first() = syls
+    // Inverse merge: product_inv·merged_rep has rcoset_rep = c₁ ≠ ε
+    // The full inverse product ≡ embed_a(h)·c₁
+    // decomposition: (h, c₁)
+    // So inverse merge_replaced gives: (h, [Syl(left, c₁)] + syls.drop_first())
+
+    // syls = [Syl(left, c₁)] + syls.drop_first()
+    assert(syls.first().rep == c1);
     assert(syls =~= Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first()) by {
         assert(syls.len() == 1 + syls.drop_first().len());
         assert forall|k: int| 0 <= k < syls.len() implies
             syls[k] == (Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first())[k]
-        by { if k == 0 { assert(syls[0] == syls.first()); } else {} }
+        by { if k == 0 {} else {} }
     }
+
+    // Use merge_replaced for inverse step
+    lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
 }
 
 } // verus!
