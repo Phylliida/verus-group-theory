@@ -66,14 +66,31 @@ pub open spec fn left_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
         && rep.len() == l
 }
 
-/// The subgroup part: a K-word h such that embed_a(h) ≡ inv(rep) * g.
+/// Does a K-word of length l exist that embeds to the target?
+pub open spec fn has_left_h_witness_of_len(
+    data: AmalgamatedData, target: Word, l: nat,
+) -> bool {
+    exists|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h), target)
+}
+
+/// Min-length K-word witnessing the subgroup decomposition.
+pub open spec fn left_h_min_len(data: AmalgamatedData, g: Word) -> nat {
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+    choose|l: nat| #[trigger] has_left_h_witness_of_len(data, target, l)
+        && no_pred_below(|l2: nat| has_left_h_witness_of_len(data, target, l2), l)
+}
+
+/// The subgroup part: min-length K-word h such that embed_a(h) ≡ inv(rep) * g.
 pub open spec fn left_h_part(data: AmalgamatedData, g: Word) -> Word {
     let rep = left_canonical_rep(data, g);
-    choose|h: Word|
-        word_valid(h, k_size(data))
+    let target = concat(inverse_word(rep), g);
+    let l = left_h_min_len(data, g);
+    choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
         && equiv_in_presentation(data.p1,
-            apply_embedding(a_words(data), h),
-            concat(inverse_word(rep), g))
+            apply_embedding(a_words(data), h), target)
 }
 
 /// Does the right B-coset of g contain a valid word of length l?
@@ -99,14 +116,31 @@ pub open spec fn right_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
         && rep.len() == l
 }
 
-/// The subgroup part for G₂.
+/// Does a K-word of length l exist for the right decomposition?
+pub open spec fn has_right_h_witness_of_len(
+    data: AmalgamatedData, target: Word, l: nat,
+) -> bool {
+    exists|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h), target)
+}
+
+/// Min-length K-word for right decomposition.
+pub open spec fn right_h_min_len(data: AmalgamatedData, g: Word) -> nat {
+    let rep = right_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+    choose|l: nat| #[trigger] has_right_h_witness_of_len(data, target, l)
+        && no_pred_below(|l2: nat| has_right_h_witness_of_len(data, target, l2), l)
+}
+
+/// The subgroup part for G₂: min-length K-word.
 pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
     let rep = right_canonical_rep(data, g);
-    choose|h: Word|
-        word_valid(h, k_size(data))
+    let target = concat(inverse_word(rep), g);
+    let l = right_h_min_len(data, g);
+    choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
         && equiv_in_presentation(data.p2,
-            apply_embedding(b_words(data), h),
-            concat(inverse_word(rep), g))
+            apply_embedding(b_words(data), h), target)
 }
 
 // ============================================================
@@ -588,6 +622,32 @@ proof fn lemma_same_coset_equiv_eps(data: AmalgamatedData, g: Word)
 }
 
 /// If g ≡ ε in G₁, then left_canonical_rep(g) = ε.
+/// If g ≡ ε, then left_min_coset_len(g) == 0.
+proof fn lemma_left_min_coset_len_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        left_min_coset_len(data, g) == 0,
+{
+    let e = empty_word();
+    let n1 = data.p1.num_generators;
+
+    // ε is in g's coset (since g ≡ ε → same_left_coset(g, ε))
+    lemma_same_coset_equiv_eps(data, g);
+    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
+    // ε has length 0 → has_left_coset_word_of_len(data, g, 0)
+    assert(has_left_coset_word_of_len(data, g, 0nat));
+
+    let pred = |l: nat| has_left_coset_word_of_len(data, g, l);
+    assert(pred(0nat));
+    assert(no_pred_below(pred, 0nat));
+
+    let l = left_min_coset_len(data, g);
+    lemma_no_pred_below_forces_zero(pred, l);
+}
+
 proof fn lemma_left_rep_equiv_eps(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -596,22 +656,58 @@ proof fn lemma_left_rep_equiv_eps(data: AmalgamatedData, g: Word)
     ensures
         left_canonical_rep(data, g) =~= empty_word(),
 {
+    lemma_left_min_coset_len_equiv_eps(data, g);
+    // left_min_coset_len(g) == 0
+    // left_canonical_rep(g) is a word of length 0 in g's coset → must be ε
+
+    // Show the choose is satisfiable (ε works):
+    let e = empty_word();
     lemma_same_coset_equiv_eps(data, g);
-    lemma_left_rep_identity(data);
-    // g and ε are in the same coset.
-    // left_canonical_rep(g): shortlex-min in g's coset.
-    // left_canonical_rep(ε) = ε: shortlex-min in ε's coset.
-    // Same coset → same shortlex-min.
-    // ε is in g's coset, and nothing is shortlex-smaller than ε.
-    let rep_g = left_canonical_rep(data, g);
-    assert(word_valid(empty_word(), data.p1.num_generators)) by {
-        assert(empty_word().len() == 0);
-    }
-    crate::shortlex::lemma_shortlex_total(empty_word(), rep_g);
-    crate::shortlex::lemma_empty_shortlex_minimal(rep_g);
+    assert(word_valid(e, data.p1.num_generators)) by { assert(e.len() == 0); }
+    // ε satisfies: word_valid, same_left_coset(g, ε), ε.len() == 0
+
+    // The choose result has length 0 → it's ε
 }
 
 /// If g ≡ ε in G₁, then left_h_part(g) = ε.
+/// If g ≡ ε, then left_h_min_len(g) == 0.
+proof fn lemma_left_h_min_len_equiv_eps(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, empty_word()),
+    ensures
+        left_h_min_len(data, g) == 0,
+{
+    let e = empty_word();
+    let k = k_size(data);
+    let p1 = data.p1;
+    reveal(presentation_valid);
+
+    lemma_left_rep_equiv_eps(data, g);
+    let rep = left_canonical_rep(data, g);
+    // rep =~= ε, so target = concat(inv(ε), g) =~= g
+    let target = concat(inverse_word(rep), g);
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(target =~= g) by {
+        let c = concat(e, g);
+        assert(c.len() == g.len());
+        assert forall|j: int| 0 <= j < g.len() implies c[j] == g[j] by {}
+    }
+
+    // ε is a length-0 K-word with embed_a(ε) = ε ≡ g ≡ target
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    crate::presentation::lemma_equiv_symmetric(p1, g, e);
+    assert(has_left_h_witness_of_len(data, target, 0nat));
+
+    let pred = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred(0nat));
+    assert(no_pred_below(pred, 0nat));
+    let l = left_h_min_len(data, g);
+    lemma_no_pred_below_forces_zero(pred, l);
+}
+
 proof fn lemma_left_h_equiv_eps(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -620,52 +716,25 @@ proof fn lemma_left_h_equiv_eps(data: AmalgamatedData, g: Word)
     ensures
         left_h_part(data, g) =~= empty_word(),
 {
-    reveal(presentation_valid);
     lemma_left_rep_equiv_eps(data, g);
-    let rep = left_canonical_rep(data, g);
-    assert(rep =~= empty_word());
+    lemma_left_h_min_len_equiv_eps(data, g);
+    // left_h_min_len(g) == 0, so left_h_part(g) picks a K-word of length 0 → ε
 
-    // left_h_part(g) is the shortlex-min K-word h with:
-    //   equiv(p1, embed_a(h), concat(inv(rep), g))
-    // Since rep =~= ε: inv(rep) =~= ε, concat(inv(rep), g) =~= g
-    // And g ≡ ε. So we need embed_a(h) ≡ g ≡ ε.
-    // ε is a K-word with embed_a(ε) = ε ≡ ε ≡ g.
-
-    // Show ε satisfies the choose predicate:
+    // Show the choose is satisfiable (ε works):
+    let e = empty_word();
     let k = k_size(data);
-    assert(word_valid(empty_word(), k)) by { assert(empty_word().len() == 0); }
-    assert(apply_embedding(a_words(data), empty_word()) =~= empty_word());
-
-    // concat(inv(rep), g) ≡ g since rep =~= ε
-    assert(inverse_word(rep) =~= empty_word()) by {
-        assert(rep =~= empty_word());
-        assert(inverse_word(empty_word()).len() == 0);
-    }
+    let rep = left_canonical_rep(data, g);
     let target = concat(inverse_word(rep), g);
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
     assert(target =~= g) by {
-        assert(inverse_word(rep) =~= empty_word());
-        let c = concat(empty_word(), g);
+        let c = concat(e, g);
         assert(c.len() == g.len());
         assert forall|j: int| 0 <= j < g.len() implies c[j] == g[j] by {}
     }
-
-    // embed_a(ε) = ε ≡ g ≡ target
-    crate::presentation::lemma_equiv_refl(data.p1, empty_word());
-    crate::presentation::lemma_equiv_symmetric(data.p1, g, empty_word());
-    // equiv(p1, ε, g) and target =~= g, so equiv(p1, ε, target)
-    assert(equiv_in_presentation(data.p1, apply_embedding(a_words(data), empty_word()), target));
-
-    // ε is shortlex-min
-    let h_g = left_h_part(data, g);
-    assert forall|h2: Word|
-        word_valid(h2, k)
-        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), h2), target)
-        implies !shortlex_lt(h2, empty_word())
-    by {
-        crate::shortlex::lemma_empty_shortlex_minimal(h2);
-    }
-    crate::shortlex::lemma_shortlex_total(empty_word(), h_g);
-    crate::shortlex::lemma_empty_shortlex_minimal(h_g);
+    reveal(presentation_valid);
+    crate::presentation::lemma_equiv_symmetric(data.p1, g, e);
 }
 
 /// If g ≡ ε in G₁, then g1_decompose_state gives the identity state.
@@ -687,29 +756,21 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
 // ============================================================
 
 /// The choose for left_canonical_rep is in g's coset.
-proof fn lemma_left_rep_in_coset(data: AmalgamatedData, g: Word)
+/// left_canonical_rep(g) is in g's coset and word_valid.
+proof fn lemma_left_rep_props(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         word_valid(g, data.p1.num_generators),
     ensures
         same_left_coset(data, g, left_canonical_rep(data, g)),
-{
-    // g is in its own coset (reflexive)
-    lemma_same_left_coset_reflexive(data, g);
-    // g satisfies the choose body (word_valid + same_coset).
-    // So the choose returns something satisfying the full predicate.
-    // In particular: same_left_coset(g, result).
-}
-
-/// The choose for left_canonical_rep is word_valid.
-proof fn lemma_left_rep_valid(data: AmalgamatedData, g: Word)
-    requires
-        amalgamated_data_valid(data),
-        word_valid(g, data.p1.num_generators),
-    ensures
         word_valid(left_canonical_rep(data, g), data.p1.num_generators),
 {
+    // g is in its own coset → has_left_coset_word_of_len(g, g.len())
     lemma_same_left_coset_reflexive(data, g);
+    assert(has_left_coset_word_of_len(data, g, g.len() as nat));
+    // So left_min_coset_len's choose is satisfiable.
+    // And left_canonical_rep's choose (word at min length in coset) is satisfiable.
+    // g itself witnesses this. The result satisfies the predicate.
 }
 
 /// Converse: if same_left_coset(g, ε) and left_h_part(g) = ε, then g ≡ ε.
@@ -760,11 +821,20 @@ pub proof fn lemma_g1_decompose_converse(
         assert(c.len() == g.len());
         assert forall|k: int| 0 <= k < g.len() implies c[k] == g[k] by {}
     }
-    // The choose returned ε with a satisfiable predicate → ε satisfies it
-    // equiv(p1, embed_a(ε), target) where target =~= g
-    // Since h_witness works, the predicate IS satisfiable
-    // So the choose result (ε) satisfies: equiv(p1, ε, g)
-    crate::presentation::lemma_equiv_symmetric(data.p1, g, empty_word());
+    // h_witness satisfies the choose predicate for left_h_part(g).
+    // The choose returned ε. Since h_witness satisfies, the predicate IS satisfiable.
+    // The choose result (ε) also satisfies: equiv(p1, embed_a(ε), target)
+    // With embed_a(ε) = ε and target =~= g: equiv(p1, ε, g)
+    // By symmetry: equiv(p1, g, ε)
+
+    // equiv_symmetric needs word_valid(ε, n1) which is trivial
+    assert(word_valid(empty_word(), data.p1.num_generators)) by {
+        assert(empty_word().len() == 0);
+    }
+    // Z3 should see: left_h_part(g) = ε, the choose is satisfiable (h_witness),
+    // so ε satisfies the predicate, giving equiv(embed_a(ε), target) = equiv(ε, g).
+    // Then symmetry: equiv(g, ε).
+    crate::presentation::lemma_equiv_symmetric(data.p1, empty_word(), g);
 }
 
 /// The empty word is shortlex-minimal: nothing is shortlex-smaller.
@@ -847,6 +917,38 @@ pub proof fn lemma_left_rep_identity(data: AmalgamatedData)
 /// left_h_part of the empty word is the empty K-word.
 /// Because: left_canonical_rep(ε) = ε, so inv(rep) ++ ε = ε.
 /// embed_a(ε) = ε ≡ ε in G₁. And ε is the shortlex-min such K-word.
+/// left_h_min_len for the empty word is 0.
+proof fn lemma_left_h_min_len_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        left_h_min_len(data, empty_word()) == 0,
+{
+    let e = empty_word();
+    let k = k_size(data);
+    let p1 = data.p1;
+    lemma_left_rep_identity(data);
+
+    // target = concat(inv(rep), ε) =~= ε (since rep = ε)
+    let rep = left_canonical_rep(data, e);
+    let target = concat(inverse_word(rep), e);
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(target =~= e) by { assert(concat(e, e).len() == 0); }
+
+    // ε is a K-word of length 0 with embed_a(ε) = ε ≡ ε = target
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    crate::presentation::lemma_equiv_refl(p1, e);
+    assert(has_left_h_witness_of_len(data, target, 0nat));
+
+    let pred = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred(0nat));
+    assert(no_pred_below(pred, 0nat));
+
+    let l = left_h_min_len(data, e);
+    lemma_no_pred_below_forces_zero(pred, l);
+}
+
 pub proof fn lemma_left_h_identity(data: AmalgamatedData)
     requires
         amalgamated_data_valid(data),
@@ -857,47 +959,27 @@ pub proof fn lemma_left_h_identity(data: AmalgamatedData)
     let k = k_size(data);
     let p1 = data.p1;
     lemma_left_rep_identity(data);
+    lemma_left_h_min_len_identity(data);
+
+    // left_h_min_len(ε) == 0
+    let l = left_h_min_len(data, e);
+    assert(l == 0);
+
+    // left_h_part(ε) = choose|h| word_valid(h, k) && h.len() == 0 && equiv(embed_a(h), target)
+    // target = concat(inv(rep), ε) with rep = ε, so target =~= ε
     let rep = left_canonical_rep(data, e);
-    assert(rep =~= e);
-
-    // left_h_part(ε) = choose|h| word_valid(h, k) && equiv(embed_a(h), concat(inv(rep), ε))
-    //                            && shortlex-min
-    // Since rep =~= ε: inv(rep) =~= ε, concat(inv(rep), ε) =~= ε
-    assert(inverse_word(rep) =~= e) by {
-        assert(rep =~= e);
-        assert(inverse_word(e) =~= e) by {
-            assert(inverse_word(e).len() == 0);
-        }
-    }
     let target = concat(inverse_word(rep), e);
-    assert(target =~= e) by {
-        assert(inverse_word(rep) =~= e);
-        assert(concat(e, e) =~= e) by { assert(concat(e, e).len() == 0); }
-    }
 
-    // embed_a(ε) = apply_embedding(a_words, ε) = ε
-    assert(apply_embedding(a_words(data), e) =~= e);
-
-    // equiv(p1, embed_a(ε), target) = equiv(p1, ε, ε) = true
-    crate::presentation::lemma_equiv_refl(p1, e);
-    assert(equiv_in_presentation(p1, e, target));
-
-    // ε is word_valid for k
+    // ε satisfies the predicate (makes the choose satisfiable):
     assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(target =~= e) by { assert(concat(e, e).len() == 0); }
+    crate::presentation::lemma_equiv_refl(p1, e);
 
-    // ε satisfies the choose predicate of left_h_part
-    // And ε is shortlex-min (nothing shorter)
-    assert forall|h2: Word|
-        word_valid(h2, k)
-        && equiv_in_presentation(p1, apply_embedding(a_words(data), h2), target)
-        implies !shortlex_lt(h2, e)
-    by {
-        crate::shortlex::lemma_empty_shortlex_minimal(h2);
-    }
-
-    // By same uniqueness argument as lemma_left_rep_identity:
+    // The choose is satisfiable → result h satisfies: h.len() == 0
     let h = left_h_part(data, e);
-    crate::shortlex::lemma_shortlex_total(e, h);
+    // h.len() == l == 0, so h =~= ε
 }
 
 /// Inserting a word at a position preserves the action if the word acts trivially.
