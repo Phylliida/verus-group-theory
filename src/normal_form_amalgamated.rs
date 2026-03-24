@@ -851,6 +851,7 @@ pub open spec fn h_prereqs(
     &&& valid_phi(phi, phi_inv, ct1, ct2, data)
     &&& ct1.num_gens == data.p1.num_generators
     &&& ct2.num_gens == data.p2.num_generators
+    &&& data.p1.num_generators == data.p2.num_generators  // same factor size (tower case)
 }
 
 // ============================================================
@@ -1114,11 +1115,13 @@ proof fn lemma_h_act_step(
         h_prereqs(ct1, ct2, phi, phi_inv, data),
         apply_step(amalgamated_free_product(data), w, step) == Some(w_prime),
         h < ct1.num_cosets,
+        word_valid(w, data.p1.num_generators + data.p2.num_generators),
     ensures
         h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w, h)
             == h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w_prime, h),
 {
     let n1 = data.p1.num_generators;
+    let n_total = n1 + data.p2.num_generators;
     let afp = amalgamated_free_product(data);
 
     match step {
@@ -1138,9 +1141,20 @@ proof fn lemma_h_act_step(
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
-            // Need: h_act_word(pair, hm) == hm
-            // pair = [w[position], w[position+1]] which is an inverse pair
-            lemma_h_act_bound(ct1, ct2, phi, phi_inv, n1, prefix, h);
+            // Prove prefix is word_valid for the bound lemma
+            assert(word_valid(prefix, n_total)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(prefix[k], n_total)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
+            // generator_index < 2*n1 for inv_pair (if n1 == data.p2.num_generators)
+            assert(generator_index(w[position]) < n_total) by {
+                assert(symbol_valid(w[position], n_total));
+            }
+            assert(generator_index(w[position + 1]) < n_total) by {
+                assert(symbol_valid(w[position + 1], n_total));
+            }
             lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
                 w[position], w[position + 1], hm);
         },
@@ -1158,6 +1172,16 @@ proof fn lemma_h_act_step(
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair + suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
+            assert(word_valid(prefix, n_total)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(prefix[k], n_total)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
+            // symbol_valid from apply_step: AFP uses n1+n2 generators
+            lemma_add_relators_num_generators(
+                free_product(data.p1, data.p2), amalgamation_relators(data));
+            assert(generator_index(symbol) < n_total);
             lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
                 symbol, inverse_symbol(symbol), hm);
         },
@@ -1175,6 +1199,12 @@ proof fn lemma_h_act_step(
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r + suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+            assert(word_valid(prefix, n_total)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(prefix[k], n_total)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
             lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
         },
         DerivationStep::RelatorDelete { position, relator_index, inverted } => {
@@ -1196,6 +1226,12 @@ proof fn lemma_h_act_step(
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
             lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+            assert(word_valid(prefix, n_total)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(prefix[k], n_total)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
             lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
         },
     }
@@ -1352,6 +1388,7 @@ proof fn lemma_h_act_deriv(
         h_prereqs(ct1, ct2, phi, phi_inv, data),
         derivation_produces(amalgamated_free_product(data), steps, w1) == Some(w2),
         h < ct1.num_cosets,
+        word_valid(w1, data.p1.num_generators + data.p2.num_generators),
     ensures
         h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w1, h)
             == h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w2, h),
@@ -1364,6 +1401,11 @@ proof fn lemma_h_act_deriv(
         let step = steps.first();
         let w_mid = apply_step(afp, w1, step).unwrap();
         lemma_h_act_step(ct1, ct2, phi, phi_inv, data, w1, step, w_mid, h);
+        // w_mid is word_valid (derivation step preserves word_valid)
+        lemma_add_relators_num_generators(
+            free_product(data.p1, data.p2), amalgamation_relators(data));
+        lemma_amalgamated_valid(data);
+        lemma_step_preserves_word_valid_pres(afp, w1, step, w_mid);
         lemma_h_act_deriv(ct1, ct2, phi, phi_inv, data, steps.drop_first(), w_mid, w2, h);
     }
 }
@@ -1454,36 +1496,66 @@ proof fn lemma_h_act_bound(
     ct2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
-    n1: nat,
+    data: AmalgamatedData,
     w: Word,
     h: nat,
 )
     requires
-        h_prereqs(ct1, ct2, phi, phi_inv,
-            AmalgamatedData {
-                p1: Presentation { num_generators: n1, relators: Seq::empty() },
-                p2: Presentation { num_generators: n1, relators: Seq::empty() },
-                identifications: Seq::empty(),
-            }),
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
         h < ct1.num_cosets,
+        word_valid(w, data.p1.num_generators + data.p2.num_generators),
     ensures
-        h_act_word(ct1, ct2, phi, phi_inv, n1, w, h) < ct1.num_cosets,
+        h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w, h) < ct1.num_cosets,
     decreases w.len(),
 {
     reveal(crate::todd_coxeter::coset_table_wf);
     reveal(crate::finite::coset_table_complete);
+    let n1 = data.p1.num_generators;
 
     if w.len() == 0 {
     } else {
         let s = w.first();
         let rest = w.drop_first();
+        assert(symbol_valid(s, n1 + data.p2.num_generators));
+        assert(word_valid(rest, n1 + data.p2.num_generators)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies symbol_valid(rest[k], n1 + data.p2.num_generators)
+            by { assert(rest[k] == w[k + 1]); }
+        }
+
         let next_h = h_act_sym(ct1, ct2, phi, phi_inv, n1, s, h);
-        // next_h < ct1.num_cosets: for G₁ symbols, ct_lookup with wf gives bound.
-        // For G₂ symbols, phi(ct_lookup) gives bound via phi.
-        // Z3 should handle this with wf+complete revealed.
-        // If not, we'd need to case-split and help with column bounds.
-        // Let's try just with the reveals first.
-        lemma_h_act_bound(ct1, ct2, phi, phi_inv, n1, rest, next_h);
+        // Prove next_h < ct1.num_cosets by case analysis
+        if generator_index(s) < n1 {
+            // G₁ symbol: next_h = ct_lookup(ct1, h, sym_col(s))
+            // sym_col(s) < 2 * ct1.num_gens because gen_index(s) < n1 = ct1.num_gens
+            let col = sym_col(s);
+            assert(col < 2 * ct1.num_gens) by {
+                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            }
+            // By wf + complete: table[h][col] is Some(v) with v < ct1.num_cosets
+        } else {
+            // G₂ symbol: next_h = phi(ct_lookup(ct2, phi_inv(h), sym_col(unshift(s))))
+            // gen_index(s) < n1 + n2, gen_index(s) >= n1, so gen_index(s) - n1 < n2 = ct2.num_gens
+            let s_local = unshift_sym(s, n1);
+            let col = sym_col(s_local);
+            assert(col < 2 * ct2.num_gens) by {
+                match s {
+                    Symbol::Gen(i) => {
+                        assert(generator_index(s) == i);
+                        assert(i < n1 + data.p2.num_generators);
+                        assert(s_local == Symbol::Gen((i - n1) as nat));
+                    }
+                    Symbol::Inv(i) => {
+                        assert(generator_index(s) == i);
+                        assert(i < n1 + data.p2.num_generators);
+                        assert(s_local == Symbol::Inv((i - n1) as nat));
+                    }
+                }
+            }
+            // phi_inv(h) < ct2.num_cosets, ct_lookup < ct2.num_cosets, phi(that) < ct1.num_cosets
+        }
+        assert(next_h < ct1.num_cosets);
+        lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, rest, next_h);
     }
 }
 
@@ -1600,6 +1672,13 @@ pub proof fn lemma_afp_injectivity(
     let n1 = data.p1.num_generators;
     let afp = amalgamated_free_product(data);
     let d = choose|d: Derivation| derivation_valid(afp, d, w, empty_word());
+
+    // w is word_valid for n1, hence for n1+n2 (monotonicity)
+    assert(word_valid(w, n1 + data.p2.num_generators)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(w[k], n1 + data.p2.num_generators)
+        by { assert(symbol_valid(w[k], n1)); }
+    }
 
     // Step 1: h_act_word(w, 0) == h_act_word(ε, 0) == 0
     lemma_h_act_deriv(ct1, ct2, phi, phi_inv, data, d.steps, w, empty_word(), 0);
