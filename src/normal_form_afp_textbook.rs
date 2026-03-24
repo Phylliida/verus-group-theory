@@ -383,4 +383,51 @@ pub proof fn lemma_act_word_empty(
     // Direct from the definition: empty_word().len() == 0
 }
 
+// ============================================================
+// Part F: Well-definedness — derivation steps
+// ============================================================
+
+/// The action respects derivation: if w1 derives to w2 via steps,
+/// then act_word(w1, h, syls) == act_word(w2, h, syls).
+///
+/// This follows from:
+///   1. lemma_act_word_concat (composition)
+///   2. Per-step: for each step type, the inserted/deleted pair acts trivially
+///
+/// For now, we state the derivation-level well-definedness and build up to it.
+/// The per-step proofs (inverse pairs, relators) are the key lemmas.
+
+/// If two words are equivalent in the AFP, they have the same action on any state.
+/// This is the top-level well-definedness theorem.
+///
+/// Proof chain:
+///   equiv_in_presentation(AFP, w1, w2)
+///   => there exist derivation steps from w1 to w2
+///   => each step preserves the action (by per-step lemmas)
+///   => act_word(w1, ...) == act_word(w2, ...)
+///
+/// This will be proved once all per-step lemmas are in place.
+/// For now, we build the infrastructure.
+
+/// A single AFP-symbol word acts the same as act_sym.
+pub proof fn lemma_act_word_single(
+    data: AmalgamatedData,
+    s: Symbol,
+    h: Word,
+    syllables: Seq<Syllable>,
+)
+    ensures
+        act_word(data, Seq::new(1, |_i: int| s), h, syllables)
+            == act_sym(data, s, h, syllables),
+{
+    let w = Seq::new(1, |_i: int| s);
+    assert(w.first() == s);
+    assert(w.drop_first() =~= empty_word()) by {
+        assert(w.drop_first().len() == 0);
+    }
+    // act_word(w, h, syls) = act_word(w.drop_first(), act_sym(s, h, syls))
+    //                       = act_word(ε, act_sym(s, h, syls))
+    //                       = act_sym(s, h, syls)
+}
+
 } // verus!
