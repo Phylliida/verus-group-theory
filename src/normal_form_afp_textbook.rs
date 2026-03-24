@@ -5104,6 +5104,42 @@ proof fn lemma_rcoset_decompose_subgroup_times_rep(
     // So a_rcoset_h(product) = left_h_part(product·inv(c1)) =~= h
 }
 
+/// If g1 ≡ g2, then same_a_rcoset(g1, g2).
+proof fn lemma_same_a_rcoset_from_equiv(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g1, g2),
+    ensures
+        same_a_rcoset(data, g1, g2),
+{
+    let p1 = data.p1;
+    let n1 = p1.num_generators;
+    // concat(g1, inv(g2)) ≡ concat(g1, inv(g1)) ≡ ε ∈ A
+    crate::word::lemma_inverse_word_valid(g1, n1);
+    crate::word::lemma_inverse_word_valid(g2, n1);
+    crate::presentation::lemma_equiv_symmetric(p1, g1, g2);
+    lemma_equiv_inverse(p1, g2, g1);
+    crate::presentation::lemma_equiv_refl(p1, g1);
+    crate::presentation_lemmas::lemma_equiv_concat(p1,
+        g1, g1, inverse_word(g2), inverse_word(g1));
+    crate::presentation_lemmas::lemma_word_inverse_right(p1, g1);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g1), n1);
+    crate::presentation::lemma_equiv_transitive(p1,
+        concat(g1, inverse_word(g2)),
+        concat(g1, inverse_word(g1)),
+        empty_word());
+    crate::benign::lemma_identity_in_generated_subgroup(p1, a_words(data));
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g2), n1);
+    crate::presentation::lemma_equiv_symmetric(p1, concat(g1, inverse_word(g2)), empty_word());
+    lemma_in_subgroup_equiv(p1, a_words(data),
+        empty_word(), concat(g1, inverse_word(g2)));
+}
+
 /// Helper: When the merge case of act_left_sym produces merged_rep ≠ ε,
 /// the result replaces the first syllable.
 proof fn lemma_act_left_sym_merge_replaced(
