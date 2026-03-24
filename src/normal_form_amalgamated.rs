@@ -1570,9 +1570,8 @@ proof fn lemma_h_relator(
             // phi_inv(h_mid) relates to ct2 trace via phi_inv_commutes_trace:
             // trace(ct1, h, u_i) == Some(h_mid) [from h_act_is_trace]
             // trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid)) [by phi_inv_commutes]
-            assert(word_valid(u_i, n1));
-            lemma_phi_inv_commutes_trace(ct1, ct2, phi, phi_inv, data, u_i, h);
-            // Now: trace(ct2, phi_inv(h), u_i) == Some(phi_inv(h_mid))
+            // NOTE: phi_inv_commutes_trace on u_i is NOT needed here.
+            // The word-level ident from valid_phi directly gives the v_i trace.
 
             // h_act_g2_phi_inv_trace gives:
             // trace(ct2, phi_inv(h_mid), inv_v) == Some(phi_inv(result))
