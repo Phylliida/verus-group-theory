@@ -342,6 +342,127 @@ pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
 }
 
 // ============================================================
+// Part B1c: RIGHT cosets of A in G₁ (textbook Lyndon-Schupp convention)
+// ============================================================
+// The textbook decomposes g = h·c where h ∈ A (on LEFT) and c is a RIGHT
+// coset representative (on RIGHT). This means g·c⁻¹ ∈ A.
+// Using this convention, the action has clean inverse cancellation:
+//   s⁻¹ · (embed_a(h') · c') = s⁻¹ · (s · h · c₁) = h · c₁
+
+/// Two G₁-words are in the same RIGHT coset of A: w₁·w₂⁻¹ ∈ A.
+pub open spec fn same_a_rcoset(data: AmalgamatedData, w1: Word, w2: Word) -> bool {
+    in_left_subgroup(data, concat(w1, inverse_word(w2)))
+}
+
+/// Does the right A-coset of g contain a valid word of length l?
+pub open spec fn has_a_rcoset_word_of_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p1.num_generators)
+        && same_a_rcoset(data, g, w) && w.len() == l
+}
+
+/// No right-A-coset word below length l (named recursive).
+pub open spec fn no_shorter_a_rcoset_word(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool
+    decreases l,
+{
+    if l == 0 { true }
+    else { !has_a_rcoset_word_of_len(data, g, (l - 1) as nat)
+           && no_shorter_a_rcoset_word(data, g, (l - 1) as nat) }
+}
+
+/// l is the minimum right-A-coset length.
+pub open spec fn is_min_a_rcoset_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    has_a_rcoset_word_of_len(data, g, l) && no_shorter_a_rcoset_word(data, g, l)
+}
+
+/// Minimum right-A-coset length.
+pub open spec fn a_rcoset_min_len(data: AmalgamatedData, g: Word) -> nat {
+    choose|l: nat| #[trigger] is_min_a_rcoset_len(data, g, l)
+}
+
+/// Right-A-coset word of length l and lex rank r.
+pub open spec fn has_a_rcoset_word_of_len_rank(
+    data: AmalgamatedData, g: Word, l: nat, r: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p1.num_generators)
+        && same_a_rcoset(data, g, w) && w.len() == l
+        && word_lex_rank_base(w, lex_base(data)) == r
+}
+
+/// No right-A-coset word at length l with lex rank below r.
+pub open spec fn no_smaller_a_rcoset_lex(
+    data: AmalgamatedData, g: Word, l: nat, r: nat,
+) -> bool
+    decreases r,
+{
+    if r == 0 { true }
+    else { !has_a_rcoset_word_of_len_rank(data, g, l, (r - 1) as nat)
+           && no_smaller_a_rcoset_lex(data, g, l, (r - 1) as nat) }
+}
+
+/// r is the minimum right-A-coset lex rank at length l.
+pub open spec fn is_min_a_rcoset_lex(
+    data: AmalgamatedData, g: Word, l: nat, r: nat,
+) -> bool {
+    has_a_rcoset_word_of_len_rank(data, g, l, r)
+    && no_smaller_a_rcoset_lex(data, g, l, r)
+}
+
+/// Minimum lex rank at the minimum length for right A-coset.
+pub open spec fn a_rcoset_min_lex(data: AmalgamatedData, g: Word) -> nat {
+    let l = a_rcoset_min_len(data, g);
+    choose|r: nat| #[trigger] is_min_a_rcoset_lex(data, g, l, r)
+}
+
+/// Canonical right A-coset representative (textbook: c in g = h·c).
+/// Three-step choose: min length, min lex rank, unique word.
+pub open spec fn a_rcoset_rep(data: AmalgamatedData, g: Word) -> Word {
+    let l = a_rcoset_min_len(data, g);
+    let r = a_rcoset_min_lex(data, g);
+    choose|rep: Word|
+        word_valid(rep, data.p1.num_generators)
+        && same_a_rcoset(data, g, rep)
+        && rep.len() == l
+        && word_lex_rank_base(rep, lex_base(data)) == r
+}
+
+/// Min-length K-word for right-coset h-part.
+/// Target = g · inv(rep) (textbook: h = g · c⁻¹).
+/// Reuses has_left_h_witness_of_len since the predicate structure is identical.
+pub open spec fn a_rcoset_h_min_len(data: AmalgamatedData, g: Word) -> nat {
+    let rep = a_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    choose|l: nat| #[trigger] has_left_h_witness_of_len(data, target, l)
+        && no_pred_below(|l2: nat| has_left_h_witness_of_len(data, target, l2), l)
+}
+
+/// Min lex rank for right-coset h-part.
+pub open spec fn a_rcoset_h_min_lex(data: AmalgamatedData, g: Word) -> nat {
+    let rep = a_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    let l = a_rcoset_h_min_len(data, g);
+    choose|r: nat| #[trigger] is_min_h_lex(data, target, l, r)
+}
+
+/// The textbook h-part: canonical K-word h such that embed_a(h) ≡ g · c⁻¹.
+/// Three-step choose for invariance under G₁-equivalence.
+pub open spec fn a_rcoset_h(data: AmalgamatedData, g: Word) -> Word {
+    let rep = a_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    let l = a_rcoset_h_min_len(data, g);
+    let r = a_rcoset_h_min_lex(data, g);
+    choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
+        && equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h), target)
+}
+
+// ============================================================
 // Part B2: Well-ordering and transversal existence
 // ============================================================
 
@@ -473,10 +594,10 @@ pub open spec fn state_valid(data: AmalgamatedData, h: Word, syllables: Seq<Syll
 // Part D: Single-symbol action
 // ============================================================
 
-/// Apply a single G₁ symbol to the state.
-/// product = concat([s], embed_a(h)) in G₁
-/// Decompose: new_rep = left_canonical_rep(product), new_h = left_h_part(product)
-/// Then handle syllable structure.
+/// Apply a single G₁ symbol to the state (textbook Lyndon-Schupp Ch. IV).
+/// product = s · embed_a(h) in G₁.
+/// RIGHT coset decomposition: product ≡ embed_a(new_h) · new_rep (h on LEFT, rep on RIGHT).
+/// This gives clean inverse cancellation: s⁻¹ · embed_a(h') · rep' = s⁻¹ · product.
 pub open spec fn act_left_sym(
     data: AmalgamatedData,
     s: Symbol,  // a G₁ symbol (gen_index < n1)
@@ -484,8 +605,8 @@ pub open spec fn act_left_sym(
     syllables: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
-    let new_h = left_h_part(data, product);
-    let new_rep = left_canonical_rep(data, product);
+    let new_h = a_rcoset_h(data, product);
+    let new_rep = a_rcoset_rep(data, product);
 
     if new_rep =~= empty_word() {
         // Product is in the subgroup
@@ -494,11 +615,10 @@ pub open spec fn act_left_sym(
         // Prepend new left syllable (different factor or empty)
         (new_h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: new_rep }) + syllables)
     } else {
-        // Merge (textbook Lyndon-Schupp Ch. IV): compute g·h·u₁ and decompose once.
-        // This matches the textbook's single-step decomposition, ensuring combined_h is canonical.
+        // Merge (textbook): compute s·h·u₁ and decompose once with RIGHT cosets.
         let full_product = concat(product, syllables.first().rep);
-        let combined_h = left_h_part(data, full_product);
-        let merged_rep = left_canonical_rep(data, full_product);
+        let combined_h = a_rcoset_h(data, full_product);
+        let merged_rep = a_rcoset_rep(data, full_product);
 
         if merged_rep =~= empty_word() {
             // Merge absorbed into subgroup
@@ -717,8 +837,8 @@ pub open spec fn g1_decompose_state(
     data: AmalgamatedData,
     g: Word,
 ) -> (Word, Seq<Syllable>) {
-    let rep = left_canonical_rep(data, g);
-    let h = left_h_part(data, g);
+    let rep = a_rcoset_rep(data, g);
+    let h = a_rcoset_h(data, g);
     if rep =~= empty_word() {
         (h, Seq::empty())
     } else {
@@ -734,8 +854,25 @@ pub proof fn lemma_g1_decompose_identity(data: AmalgamatedData)
         g1_decompose_state(data, empty_word())
             == (empty_word(), Seq::<Syllable>::empty()),
 {
-    lemma_left_rep_identity(data);
-    lemma_left_h_identity(data);
+    let e = empty_word();
+    reveal(presentation_valid);
+    assert(word_valid(e, data.p1.num_generators)) by { assert(e.len() == 0); }
+
+    // ε is in the subgroup → a_rcoset_rep(ε) =~= ε
+    crate::benign::lemma_identity_in_generated_subgroup(data.p1, a_words(data));
+    lemma_a_rcoset_in_subgroup(data, e);
+
+    // a_rcoset_h(ε): target = concat(ε, inv(ε)) =~= ε
+    // ε is a K-word witness with embed ≡ target → h of length 0 → =~= ε
+    assert(word_valid(e, k_size(data))) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    crate::presentation::lemma_equiv_refl(data.p1, e);
+    let target = concat(e, inverse_word(a_rcoset_rep(data, e)));
+    assert(has_left_h_witness_of_len(data, target, 0nat));
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_left_h_witness_of_len_rank(data, target, 0nat, 0nat));
+    assert(no_smaller_h_lex(data, target, 0nat, 0nat));
+    assert(is_min_h_lex(data, target, 0nat, 0nat));
 }
 
 /// If g ≡ ε in G₁, then inv(g) ≡ ε.
@@ -959,8 +1096,30 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
         g1_decompose_state(data, g)
             == (empty_word(), Seq::<Syllable>::empty()),
 {
-    lemma_left_rep_equiv_eps(data, g);
-    lemma_left_h_equiv_eps(data, g);
+    let e = empty_word();
+    let p1 = data.p1;
+    reveal(presentation_valid);
+
+    // g ≡ ε → g is in the subgroup
+    crate::benign::lemma_identity_in_generated_subgroup(p1, a_words(data));
+    crate::presentation::lemma_equiv_symmetric(p1, g, e);
+    lemma_in_subgroup_equiv(p1, a_words(data), e, g);
+
+    // g in subgroup → a_rcoset_rep(g) =~= ε
+    lemma_a_rcoset_in_subgroup(data, g);
+
+    // a_rcoset_h(g): target = concat(g, inv(ε)) =~= g ≡ ε
+    // ε is a K-word witness at length 0 → h =~= ε
+    assert(word_valid(e, k_size(data))) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    let target = concat(g, inverse_word(a_rcoset_rep(data, g)));
+    // target =~= concat(g, inv(ε)) =~= g ≡ ε → equiv(ε, target)
+    crate::presentation::lemma_equiv_symmetric(p1, g, e);
+    assert(has_left_h_witness_of_len(data, target, 0nat));
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_left_h_witness_of_len_rank(data, target, 0nat, 0nat));
+    assert(no_smaller_h_lex(data, target, 0nat, 0nat));
+    assert(is_min_h_lex(data, target, 0nat, 0nat));
 }
 
 // ============================================================
@@ -1576,6 +1735,184 @@ proof fn lemma_left_h_min_lex_satisfiable(
     lemma_scan_min_h_lex(data, target, l, 0, wr);
 }
 
+// ============================================================
+// Part I2: Right A-coset infrastructure (scanning + satisfiability)
+// ============================================================
+
+/// Scan for minimum right-A-coset length.
+proof fn lemma_scan_a_rcoset_len(
+    data: AmalgamatedData, g: Word, current: nat, bound: nat,
+)
+    requires
+        has_a_rcoset_word_of_len(data, g, bound),
+        current <= bound,
+        no_shorter_a_rcoset_word(data, g, current),
+    ensures
+        exists|l: nat| current <= l && l <= bound
+            && #[trigger] is_min_a_rcoset_len(data, g, l),
+    decreases bound - current,
+{
+    if has_a_rcoset_word_of_len(data, g, current) {
+        assert(is_min_a_rcoset_len(data, g, current));
+    } else {
+        lemma_scan_a_rcoset_len(data, g, current + 1, bound);
+    }
+}
+
+/// Scan for minimum right-A-coset lex rank.
+proof fn lemma_scan_a_rcoset_lex(
+    data: AmalgamatedData, g: Word, l: nat, current: nat, bound: nat,
+)
+    requires
+        has_a_rcoset_word_of_len_rank(data, g, l, bound),
+        current <= bound,
+        no_smaller_a_rcoset_lex(data, g, l, current),
+    ensures
+        exists|r: nat| current <= r && r <= bound
+            && #[trigger] is_min_a_rcoset_lex(data, g, l, r),
+    decreases bound - current,
+{
+    if has_a_rcoset_word_of_len_rank(data, g, l, current) {
+        assert(is_min_a_rcoset_lex(data, g, l, current));
+    } else {
+        lemma_scan_a_rcoset_lex(data, g, l, current + 1, bound);
+    }
+}
+
+/// Right-A-coset rep satisfiability: a_rcoset_rep's choose is satisfiable.
+/// Requires: g is word_valid in G₁ (g itself is in its own right A-coset).
+proof fn lemma_a_rcoset_rep_satisfiable(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        is_min_a_rcoset_len(data, g, a_rcoset_min_len(data, g)),
+        is_min_a_rcoset_lex(data, g, a_rcoset_min_len(data, g), a_rcoset_min_lex(data, g)),
+{
+    // g is in its own right A-coset at length g.len()
+    // same_a_rcoset(g, g) = in_left_subgroup(concat(g, inv(g)))
+    // concat(g, inv(g)) ≡ ε by word_inverse_right → in subgroup (identity is in subgroup)
+    reveal(presentation_valid);
+    crate::word::lemma_inverse_word_valid(g, data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(g, inverse_word(g), data.p1.num_generators);
+
+    // concat(g, inv(g)) ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_right(data.p1, g);
+    // ε is in subgroup, concat(g,inv(g)) ≡ ε → in_left_subgroup by equiv
+    crate::benign::lemma_identity_in_generated_subgroup(data.p1, a_words(data));
+    crate::presentation::lemma_equiv_symmetric(data.p1, concat(g, inverse_word(g)), empty_word());
+    lemma_in_subgroup_equiv(data.p1, a_words(data),
+        empty_word(), concat(g, inverse_word(g)));
+    assert(has_a_rcoset_word_of_len(data, g, g.len() as nat));
+
+    // Scan for min length
+    assert(no_shorter_a_rcoset_word(data, g, 0nat));
+    lemma_scan_a_rcoset_len(data, g, 0, g.len() as nat);
+
+    // Scan for min lex rank at min length
+    let l = a_rcoset_min_len(data, g);
+    let w: Word = choose|w: Word| word_valid(w, data.p1.num_generators)
+        && same_a_rcoset(data, g, w) && w.len() == l;
+    let wr = word_lex_rank_base(w, lex_base(data));
+    assert(has_a_rcoset_word_of_len_rank(data, g, l, wr));
+    assert(no_smaller_a_rcoset_lex(data, g, l, 0nat));
+    lemma_scan_a_rcoset_lex(data, g, l, 0, wr);
+}
+
+/// If g is in the subgroup A, then a_rcoset_rep(g) =~= ε and a_rcoset_h(g) =~=
+/// the canonical K-word for embed_a(h) ≡ g. Combined helper for common pattern.
+proof fn lemma_a_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+        in_left_subgroup(data, g),
+    ensures
+        a_rcoset_rep(data, g) =~= empty_word(),
+{
+    let e = empty_word();
+    let n1 = data.p1.num_generators;
+
+    // same_a_rcoset(g, ε) = in_left_subgroup(concat(g, inv(ε)))
+    // concat(g, inv(ε)) =~= g, which is in subgroup
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(concat(g, inverse_word(e)) =~= g) by {
+        assert(concat(g, e).len() == g.len());
+        assert forall|k: int| 0 <= k < g.len()
+            implies concat(g, e)[k] == g[k] by {}
+    }
+    crate::presentation::lemma_equiv_refl(data.p1, g);
+    lemma_in_subgroup_equiv(data.p1, a_words(data), g, concat(g, inverse_word(e)));
+
+    // ε is in same rcoset → has_a_rcoset_word_of_len(g, 0)
+    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
+    assert(has_a_rcoset_word_of_len(data, g, 0nat));
+    assert(no_shorter_a_rcoset_word(data, g, 0nat));
+    lemma_scan_a_rcoset_len(data, g, 0, 0);
+    // a_rcoset_min_len(g) satisfies is_min_a_rcoset_len(g, min_len) with min_len in [0,0] → = 0
+    // ε at lex rank 0 is the only word of length 0
+    assert(word_lex_rank_base(e, lex_base(data)) == 0nat);
+    assert(has_a_rcoset_word_of_len_rank(data, g, 0nat, 0nat));
+    assert(no_smaller_a_rcoset_lex(data, g, 0nat, 0nat));
+    lemma_scan_a_rcoset_lex(data, g, 0, 0, 0);
+    // a_rcoset_rep has length 0 → =~= ε
+}
+
+/// Extract right-A-coset rep properties.
+proof fn lemma_a_rcoset_rep_props(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        same_a_rcoset(data, g, a_rcoset_rep(data, g)),
+        word_valid(a_rcoset_rep(data, g), data.p1.num_generators),
+        a_rcoset_rep(data, g).len() == a_rcoset_min_len(data, g),
+        word_lex_rank_base(a_rcoset_rep(data, g), lex_base(data)) == a_rcoset_min_lex(data, g),
+{
+    lemma_a_rcoset_rep_satisfiable(data, g);
+}
+
+/// Establish h-part satisfiability for right A-coset decomposition.
+/// The target is g · inv(rep) instead of inv(rep) · g, but the h-witness
+/// infrastructure (has_left_h_witness_of_len etc.) works for any target.
+proof fn lemma_a_rcoset_h_satisfiable(data: AmalgamatedData, g: Word, h_witness: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(g, inverse_word(a_rcoset_rep(data, g)))),
+    ensures ({
+        let rep = a_rcoset_rep(data, g);
+        let target = concat(g, inverse_word(rep));
+        let h = a_rcoset_h(data, g);
+        &&& word_valid(h, k_size(data))
+        &&& equiv_in_presentation(data.p1,
+                apply_embedding(a_words(data), h), target)
+    }),
+{
+    let rep = a_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+
+    // h_witness witnesses has_left_h_witness_of_len(target, h_witness.len())
+    assert(has_left_h_witness_of_len(data, target, h_witness.len() as nat));
+
+    // Nat well-ordering → a_rcoset_h_min_len satisfiable
+    let pred_h = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+
+    // h-lex satisfiability (manual scan with right-coset target)
+    let l = a_rcoset_h_min_len(data, g);
+    let w: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), w), target);
+    let wr = word_lex_rank_base(w, h_lex_base(data));
+    assert(has_left_h_witness_of_len_rank(data, target, l, wr));
+    assert(no_smaller_h_lex(data, target, l, 0nat));
+    lemma_scan_min_h_lex(data, target, l, 0, wr);
+}
+
 /// Extract the key property of left_h_part: embed_a(h) ≡ concat(inv(rep), g) in G₁.
 /// Requires a witness K-word to prove the choose is satisfiable.
 proof fn lemma_left_h_part_props(
@@ -1744,11 +2081,7 @@ pub proof fn lemma_h_witness_exists(data: AmalgamatedData, g: Word)
 // Part J: Per-relator triviality — inverse pairs on identity
 // ============================================================
 
-/// Inverse pair on identity: act_word([s, inv(s)], ε, []) = (ε, []).
-/// Case 1: s is in the left subgroup (left_canonical_rep([s]) = ε).
-///   After s: state = (h', []). After inv(s): product = inv(s) * embed_a(h') ≡ ε.
-///   So the state returns to (ε, []).
-/// Helper: act_sym of a G₁ symbol with rep = ε gives (h', []).
+/// Helper: act_sym of a G₁ symbol with a_rcoset_rep = ε gives (h', []).
 proof fn lemma_act_sym_subgroup_identity(
     data: AmalgamatedData,
     s: Symbol,
@@ -1756,32 +2089,34 @@ proof fn lemma_act_sym_subgroup_identity(
     requires
         amalgamated_data_valid(data),
         generator_index(s) < data.p1.num_generators,
-        left_canonical_rep(data,
+        a_rcoset_rep(data,
             concat(Seq::new(1, |_i: int| s), empty_word())) =~= empty_word(),
     ensures ({
         let product = concat(Seq::new(1, |_i: int| s),
             apply_embedding(a_words(data), empty_word()));
-        let h1 = left_h_part(data, product);
+        let h1 = a_rcoset_h(data, product);
         act_sym(data, s, empty_word(), Seq::<Syllable>::empty())
             == (h1, Seq::<Syllable>::empty())
     }),
 {
     // act_sym dispatches to act_left_sym since gen_index(s) < n1.
-    // act_left_sym: product = concat([s], embed_a(ε)), rep = ε → (h1, [])
+    // act_left_sym: product = concat([s], embed_a(ε)), a_rcoset_rep = ε → (h1, [])
 }
 
 /// Inverse pair [s, inv(s)] acts trivially on identity state,
 /// when s is in the left subgroup (left_canonical_rep = ε).
 /// Takes a K-word witness for the subgroup decomposition.
+/// Inverse pair on identity: now uses right A-coset decomposition.
+/// Superseded by lemma_inverse_pair_g1_subcase_a for the general case.
 proof fn lemma_inverse_pair_identity_case1(
     data: AmalgamatedData,
     s: Symbol,
-    h_wit: Word,  // K-word witness: embed_a(h_wit) ≡ [s] in G₁
+    h_wit: Word,
 )
     requires
         amalgamated_data_valid(data),
         generator_index(s) < data.p1.num_generators,
-        left_canonical_rep(data,
+        a_rcoset_rep(data,
             concat(Seq::new(1, |_i: int| s), empty_word())) =~= empty_word(),
         word_valid(h_wit, k_size(data)),
         equiv_in_presentation(data.p1,
@@ -1801,9 +2136,9 @@ proof fn lemma_inverse_pair_identity_case1(
     let inv_s_word = Seq::new(1, |_i: int| inv_s);
     let product1 = concat(s_word, apply_embedding(a_words(data), e));
     assert(apply_embedding(a_words(data), e) =~= e);
-    let h1 = left_h_part(data, product1);
+    let h1 = a_rcoset_h(data, product1);
 
-    // Step 1: act_sym(s, ε, []) = (h1, [])
+    // Step 1: act_sym(s, ε, []) = (h1, []) since a_rcoset_rep = ε
     lemma_act_sym_subgroup_identity(data, s);
 
     // Step 2: decompose via composition
@@ -1815,61 +2150,75 @@ proof fn lemma_inverse_pair_identity_case1(
     }
     lemma_act_word_concat(data, s_word, inv_s_word, e, Seq::<Syllable>::empty());
     lemma_act_word_single(data, s, e, Seq::<Syllable>::empty());
-    // act_word([s], ε, []) = (h1, [])
-
-    // Step 3: Need act_word([inv(s)], h1, []) = (ε, [])
-    // = act_sym(inv(s), h1, []) by single
     lemma_act_word_single(data, inv_s, h1, Seq::<Syllable>::empty());
 
-    // Step 4: show product2 ≡ ε (the second symbol's product)
-    // product2 = concat([inv(s)], embed_a(h1))
-    // embed_a(h1) ≡ product1 (from h_part choose extraction)
-    assert(concat(inverse_word(left_canonical_rep(data, product1)), product1) =~= product1) by {
-        assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
-        let c = concat(e, product1);
-        assert(c.len() == product1.len());
-        assert forall|k: int| 0 <= k < product1.len() implies c[k] == product1[k] by {}
-    }
-    lemma_left_h_part_props(data, product1, h_wit);
-    // embed_a(h1) ≡ product1
-
-    let product2 = concat(inv_s_word, apply_embedding(a_words(data), h1));
-    crate::presentation_lemmas::lemma_equiv_concat_right(
-        p1, inv_s_word, apply_embedding(a_words(data), h1), product1);
-    // product2 ≡ concat([inv(s)], product1)
-
+    // embed_a(h1) ≡ product1 · inv(rep) = product1 (since rep = ε)
     assert(product1 =~= s_word) by {
         assert(product1.len() == s_word.len());
         assert forall|k: int| 0 <= k < s_word.len() implies product1[k] == s_word[k] by {}
     }
-    // concat([inv(s)], product1) =~= concat([inv(s)], [s])
-
-    // concat(inverse_word([s]), [s]) ≡ ε
-    assert(inverse_word(s_word) =~= inv_s_word) by {
-        assert(s_word.first() == s);
-        assert(s_word.drop_first().len() == 0);
-        assert(inverse_word(s_word.drop_first()) =~= e);
-        assert(concat(e, Seq::new(1, |_i: int| inverse_symbol(s))).len() == 1);
+    assert(word_valid(s_word, n1)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(#[trigger] s_word[k], n1) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
     }
-    crate::presentation_lemmas::lemma_word_inverse_left(p1, s_word);
+    // h_wit witnesses the h-part satisfiability
+    // target = concat(product1, inv(a_rcoset_rep(product1))) =~= product1 =~= s_word
+    assert(concat(product1, inverse_word(a_rcoset_rep(data, product1))) =~= product1) by {
+        assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+        let c = concat(product1, e);
+        assert(c.len() == product1.len());
+        assert forall|k: int| 0 <= k < product1.len() implies c[k] == product1[k] by {}
+    }
+    lemma_a_rcoset_h_satisfiable(data, product1, h_wit);
 
-    // Chain: product2 ≡ concat([inv(s)], product1) =~= concat(inv_s_word, s_word) ≡ ε
-    crate::presentation::lemma_equiv_transitive(p1, product2,
-        concat(inv_s_word, product1), e);
-
-    // word_valid(product2, n1)
+    // embed_a(h1) ≡ product1
     assert forall|i: int| 0 <= i < a_words(data).len()
         implies word_valid(#[trigger] a_words(data)[i], n1)
     by { assert(word_valid(data.identifications[i].0, n1)); }
     crate::benign::lemma_apply_embedding_valid(a_words(data), h1, n1);
+
+    // product2 = [inv(s)] · embed_a(h1) ≡ [inv(s)] · product1 ≡ [inv(s)] · [s] ≡ ε
+    let product2 = concat(inv_s_word, apply_embedding(a_words(data), h1));
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        p1, inv_s_word, apply_embedding(a_words(data), h1), product1);
+
+    assert(inverse_word(s_word) =~= inv_s_word) by {
+        assert(s_word.first() == s);
+        assert(s_word.drop_first().len() == 0);
+        assert(inverse_word(s_word.drop_first()) =~= e);
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p1, s_word);
+    crate::presentation::lemma_equiv_transitive(p1, product2,
+        concat(inv_s_word, product1), e);
+
+    // product2 ≡ ε → a_rcoset_rep(product2) = ε, a_rcoset_h(product2) = ε
+    // For now, use the same identity argument:
     crate::word::lemma_concat_word_valid(inv_s_word,
         apply_embedding(a_words(data), h1), n1);
+    // product2 ≡ ε → a_rcoset decomposition gives (ε, ε)
+    // Use lemma_g1_decompose_trivial-style argument inline:
+    crate::word::lemma_inverse_word_valid(product2, n1);
+    crate::word::lemma_concat_word_valid(product2, inverse_word(product2), n1);
+    crate::presentation_lemmas::lemma_word_inverse_right(p1, product2);
+    crate::benign::lemma_identity_in_generated_subgroup(p1, a_words(data));
+    crate::presentation::lemma_equiv_symmetric(p1, concat(product2, inverse_word(product2)), e);
+    lemma_in_subgroup_equiv(p1, a_words(data), e, concat(product2, inverse_word(product2)));
+    // same_a_rcoset(product2, ε) → has_a_rcoset_word_of_len(product2, 0)
+    assert(has_a_rcoset_word_of_len(data, product2, 0nat));
+    assert(no_shorter_a_rcoset_word(data, product2, 0nat));
+    lemma_scan_a_rcoset_len(data, product2, 0, 0);
+    // a_rcoset_min_len(product2) = 0 → rep length 0 → ε
 
-    // product2 ≡ ε → left_canonical_rep(product2) = ε, left_h_part(product2) = ε
-    lemma_left_rep_equiv_eps(data, product2);
-    lemma_left_h_equiv_eps(data, product2);
-    // So act_sym(inv(s), h1, []) = (ε, [])
-    // And act_word([s, inv(s)], ε, []) = act_word([inv(s)], h1, []) = (ε, [])
+    // h target = concat(product2, inv(ε)) =~= product2 ≡ ε
+    assert(word_valid(e, k_size(data))) by { assert(e.len() == 0); }
+    assert(apply_embedding(a_words(data), e) =~= e);
+    crate::presentation::lemma_equiv_symmetric(p1, product2, e);
+    let h_target = concat(product2, inverse_word(a_rcoset_rep(data, product2)));
+    assert(has_left_h_witness_of_len(data, h_target, 0nat));
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_left_h_witness_of_len_rank(data, h_target, 0nat, 0nat));
+    assert(no_smaller_h_lex(data, h_target, 0nat, 0nat));
+    assert(is_min_h_lex(data, h_target, 0nat, 0nat));
 }
 
 /// For a single G₁ symbol s: act_word([s], ε, []) = g1_decompose_state([s]).
@@ -1893,16 +2242,12 @@ pub proof fn lemma_act_single_eq_decompose(
 
     // act_sym(s, ε, []) = act_left_sym(s, ε, []) since gen_index(s) < n1
 
-    // act_left_sym uses:
+    // act_left_sym uses right-coset decomposition:
     //   product = concat([s], embed_a(ε)) = concat([s], ε) =~= [s]
-    //   h' = left_h_part(product)
-    //   rep' = left_canonical_rep(product)
+    //   h' = a_rcoset_h(product), rep' = a_rcoset_rep(product)
 
-    // g1_decompose_state([s]) uses:
-    //   rep = left_canonical_rep([s])
-    //   h = left_h_part([s])
-
-    // Since product =~= [s]: the canonical reps and h-parts are the same.
+    // g1_decompose_state([s]) uses the same right-coset fns.
+    // Since product =~= [s]: the rcoset reps and h-parts are the same.
     assert(apply_embedding(a_words(data), e) =~= e);
     let product = concat(s_word, apply_embedding(a_words(data), e));
     assert(product =~= s_word) by {
@@ -1910,10 +2255,8 @@ pub proof fn lemma_act_single_eq_decompose(
         assert forall|k: int| 0 <= k < s_word.len()
             implies product[k] == s_word[k] by {}
     }
-    // product == s_word (from =~= on Seq)
-    // So left_canonical_rep(product) == left_canonical_rep(s_word)
-    // And left_h_part(product) == left_h_part(s_word)
-    // And act_left_sym gives the same as g1_decompose_state.
+    // product =~= s_word → a_rcoset_rep(product) == a_rcoset_rep(s_word)
+    // and a_rcoset_h(product) == a_rcoset_h(s_word)
 }
 
 // ============================================================
@@ -3417,7 +3760,7 @@ proof fn lemma_inverse_pair_g1_subcase_a(
         presentation_valid(data.p1),
         is_canonical_state(data, h, syls),
         generator_index(s) < data.p1.num_generators,
-        left_canonical_rep(data,
+        a_rcoset_rep(data,
             concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
             =~= empty_word(),
     ensures
