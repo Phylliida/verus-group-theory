@@ -980,24 +980,19 @@ pub open spec fn vdw_act_g2_symbol(
 
     if sylls.len() > 0 && sylls[0].0 == false {
         // First syllable is Right (G₂/B). Same factor — combine.
+        // The syllable represents a G₂-element (its coset rep in ct2).
+        // Trace the new symbol FROM that element to get the combined product.
         let c1_coset = sylls[0].1;
         let c1_rep_word = crate::coset_group::coset_rep(st2, c1_coset);
         let c1_elem = match crate::todd_coxeter::trace_word(ct2, 0, c1_rep_word) {
             Some(e) => e,
             None => 0,
         };
-        // Trace symbol from the h-translated-to-G₂ position, combined with c1
-        // For the G₂ action on the state, we compute the product:
-        //   s · (phi⁻¹-translated h) · c₁  in G₂
-        // But h is tracked in ct1 (A ≤ G₁). The phi map goes B→A.
-        // For the G₂ side, we need the "current G₂-element" which is phi⁻¹(h) · c₁.
-        // This is complex. Simplify: trace the symbol from 0 in ct2,
-        // then combine with c₁.
-        let g2_elem = match ct2.table[0][s_col as int] {
+        // Trace symbol from c1_elem (the current G₂ element), not from 0
+        let combined = match ct2.table[c1_elem as int][s_col as int] {
             Some(next) => next,
             None => 0,
         };
-        let combined = crate::coset_group::coset_mul(ct2, g2_elem, c1_elem);
         let (b_part, coset_new) = g2_coset_decompose(ct2, st2, combined);
         if coset_new == 0 {
             // Syllable absorbed. b_part is in B. Translate to A via phi.
@@ -1403,64 +1398,61 @@ proof fn lemma_vdw_act_symbol_h_bound(
     ensures
         vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets,
 {
-    // The action dispatches to g1 or g2 based on generator_index.
-    // Each branch produces h_new from ct1 operations (table lookups, coset_mul, etc.)
-    // All of which produce values < ct1.num_cosets when inputs are in bounds.
-    //
-    // For the G₁ branch: h_new comes from g1_coset_decompose(ct1, st1, new_elem).
-    //   new_elem comes from ct1.table[h][col] which is < ct1.num_cosets by wf.
-    //   g1_coset_decompose returns either new_elem (if coset 0) or coset_mul result.
-    //   Both are < ct1.num_cosets.
-    //
-    // For the G₂ branch: h_new comes from coset_mul(ct1, h, phi(b_part)).
-    //   phi(b_part) < ct1.num_cosets by the phi bound.
-    //   coset_mul result < ct1.num_cosets (TODO: need this from coset_mul properties).
-    //
-    // This proof requires unwinding the spec functions. For now we assert
-    // the key intermediate facts.
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::finite::coset_table_complete);
 
     if generator_index(s) < n1 {
-        // G₁ symbol: vdw_act_g1_symbol
+        // G₁ branch: vdw_act_g1_symbol
         let s_col = crate::todd_coxeter::symbol_to_column(s);
-        // ct1.table[h][s_col] is Some(next) with next < ct1.num_cosets (by wf + complete)
-        assert(ct1.table[h as int].len() == 2 * ct1.num_gens) by {
-            assert(crate::todd_coxeter::coset_table_wf(ct1));
+        // s_col < 2 * num_gens (from symbol_to_column definition)
+        assert(s_col < 2 * ct1.num_gens) by {
+            match s {
+                Symbol::Gen(i) => { assert(s_col == 2 * i); }
+                Symbol::Inv(i) => { assert(s_col == 2 * i + 1); }
+            }
         }
-        // The new_elem from the table lookup
-        let new_elem = match ct1.table[h as int][s_col as int] {
-            Some(next) => next,
-            None => 0,
-        };
-        // new_elem < ct1.num_cosets
-        assert(new_elem < ct1.num_cosets) by {
-            assert(crate::todd_coxeter::coset_table_wf(ct1));
-            // wf says: entries that are Some have value < num_cosets
-            // complete says: all entries are Some
-            assert(crate::finite::coset_table_complete(ct1));
-        }
-        // g1_coset_decompose produces h values < ct1.num_cosets
-        // (it uses coset_mul and coset_inv which stay in bounds)
-        // For the simplified case where coset == 0: h_new = new_elem < ct1.num_cosets ✓
-        // For coset != 0: h_new = coset_mul(ct1, new_elem, coset_inv(ct1, ...))
-        //   Both arguments < ct1.num_cosets, result < ct1.num_cosets
-        //
-        // We need coset_mul and coset_inv to preserve bounds.
-        // This follows from lemma_coset_group_satisfies_axioms.
-        // For now: the h_new is constructed from ct1 operations on bounded inputs.
-        // Assert the bound.
-        assert(vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets) by {
-            // Z3 should be able to verify this from the spec definitions
-            // since all table lookups and group operations preserve the bound.
-            // If Z3 can't: we'd need to unwind further.
+        // Table entry is Some (from completeness)
+        assert(ct1.table[h as int][s_col as int] is Some);
+        let new_elem = ct1.table[h as int][s_col as int].unwrap();
+        // new_elem < ct1.num_cosets from wf
+        assert(new_elem < ct1.num_cosets);
+
+        if sylls.len() > 0 && sylls[0].0 == true {
+            // Left+Left combine branch
+            let c1_coset = sylls[0].1;
+            let c1_rep_word = crate::coset_group::coset_rep(st1, c1_coset);
+            let c1_elem = match crate::todd_coxeter::trace_word(ct1, 0, c1_rep_word) {
+                Some(e) => e,
+                None => 0,
+            };
+            let combined = crate::coset_group::coset_mul(ct1, new_elem, c1_elem);
+            let (h_new, coset_new) = g1_coset_decompose(ct1, st1, combined);
+            // h_new comes from g1_coset_decompose:
+            // if coset_new == 0: h_new == combined
+            // if coset_new != 0: h_new == coset_mul(ct1, combined, coset_inv(ct1, ...))
+            // In both cases h_new is produced by ct1 operations on bounded inputs.
+            // The result of vdw_act_g1_symbol is h_new.
+            // We need h_new < ct1.num_cosets.
+            // For coset_new == 0: h_new == combined. Need combined < ct1.num_cosets.
+            // combined = coset_mul(ct1, new_elem, c1_elem) which traces coset_rep(c1_elem)
+            // from new_elem. The trace result is < num_cosets by wf.
+            // For coset_new != 0: h_new = coset_mul(ct1, combined, coset_rep_inv).
+            // Same argument.
+            //
+            // These all follow from trace_word producing values < num_cosets,
+            // which follows from wf.
+            // Z3 should handle this now that wf is revealed.
+        } else {
+            // Different factor or empty: g1_coset_decompose(ct1, st1, new_elem)
+            let (h_new, coset_new) = g1_coset_decompose(ct1, st1, new_elem);
+            // Same argument: h_new < ct1.num_cosets from wf.
         }
     } else {
-        // G₂ symbol: vdw_act_g2_symbol
-        // The result h comes from coset_mul(ct1, h, phi(b_part))
-        // where b_part < ct2.num_cosets, so phi(b_part) < ct1.num_cosets
-        // and coset_mul preserves bounds.
-        assert(vdw_act_symbol(ct1, ct2, st1, st2, phi, n1, s, h, sylls).0 < ct1.num_cosets) by {
-            // Similarly: Z3 should verify from the spec.
-        }
+        // G₂ branch: vdw_act_g2_symbol
+        // h_new comes from coset_mul(ct1, h, phi(b_part))
+        // phi(b_part) < ct1.num_cosets by requires
+        // coset_mul traces through ct1, result < num_cosets by wf
+        // Z3 should handle with wf revealed.
     }
 }
 
@@ -1552,7 +1544,6 @@ proof fn lemma_vdw_relator_trivial(
     requires
         vdw_prerequisites(ct1, ct2, st1, st2, phi, data),
         relator_index < amalgamated_free_product(data).relators.len(),
-        h < ct1.num_cosets,
     ensures ({
         let afp = amalgamated_free_product(data);
         let r = get_relator(afp, relator_index, inverted);
