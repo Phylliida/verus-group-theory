@@ -69,10 +69,27 @@ pub open spec fn has_left_coset_word_of_len_rank(
         && same_left_coset(data, g, w) && w.len() == l && word_lex_rank(w) == r
 }
 
+/// No coset word exists below length l (named recursive, avoids lambda issues).
+pub open spec fn no_shorter_coset_word(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool
+    decreases l,
+{
+    if l == 0 { true }
+    else { !has_left_coset_word_of_len(data, g, (l - 1) as nat)
+           && no_shorter_coset_word(data, g, (l - 1) as nat) }
+}
+
+/// l is the minimum coset length: has a word AND nothing shorter.
+pub open spec fn is_min_coset_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    has_left_coset_word_of_len(data, g, l) && no_shorter_coset_word(data, g, l)
+}
+
 /// Minimum length of any valid word in g's left A-coset.
 pub open spec fn left_min_coset_len(data: AmalgamatedData, g: Word) -> nat {
-    choose|l: nat| #[trigger] has_left_coset_word_of_len(data, g, l)
-        && no_pred_below(|l2: nat| has_left_coset_word_of_len(data, g, l2), l)
+    choose|l: nat| #[trigger] is_min_coset_len(data, g, l)
 }
 
 /// Minimum lex rank at the minimum length.
@@ -668,12 +685,13 @@ proof fn lemma_left_min_coset_len_equiv_eps(data: AmalgamatedData, g: Word)
     // ε has length 0 → has_left_coset_word_of_len(data, g, 0)
     assert(has_left_coset_word_of_len(data, g, 0nat));
 
-    let pred = |l: nat| has_left_coset_word_of_len(data, g, l);
-    assert(pred(0nat));
-    assert(no_pred_below(pred, 0nat));
+    // is_min_coset_len(data, g, 0) holds: has word at 0 + no_shorter
+    assert(no_shorter_coset_word(data, g, 0nat));
+    assert(is_min_coset_len(data, g, 0nat));
 
     let l = left_min_coset_len(data, g);
-    lemma_no_pred_below_forces_zero(pred, l);
+    // l satisfies is_min_coset_len(data, g, l). has(g, 0) holds. By no_shorter_implies_ge: 0 >= l.
+    lemma_no_shorter_coset_word_implies_ge(data, g, l, 0nat);
 }
 
 proof fn lemma_left_rep_equiv_eps(data: AmalgamatedData, g: Word)
@@ -785,6 +803,26 @@ pub proof fn lemma_g1_decompose_trivial(data: AmalgamatedData, g: Word)
 
 /// The choose for left_canonical_rep is in g's coset.
 /// left_min_coset_len(g) satisfies its choose predicate.
+/// Scan for the minimum coset length, building no_shorter_coset_word.
+proof fn lemma_scan_min_coset_len(
+    data: AmalgamatedData, g: Word, current: nat, bound: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        has_left_coset_word_of_len(data, g, bound),
+        current <= bound,
+        no_shorter_coset_word(data, g, current),
+    ensures
+        exists|l: nat| current <= l && l <= bound && #[trigger] is_min_coset_len(data, g, l),
+    decreases bound - current,
+{
+    if has_left_coset_word_of_len(data, g, current) {
+        assert(is_min_coset_len(data, g, current));
+    } else {
+        lemma_scan_min_coset_len(data, g, current + 1, bound);
+    }
+}
+
 proof fn lemma_left_min_coset_len_satisfiable(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -796,14 +834,11 @@ proof fn lemma_left_min_coset_len_satisfiable(data: AmalgamatedData, g: Word)
     lemma_same_left_coset_reflexive(data, g);
     assert(has_left_coset_word_of_len(data, g, g.len() as nat));
 
-    // Use nat well-ordering to show exists|l| is_nat_min(pred, l)
-    let pred = |l: nat| has_left_coset_word_of_len(data, g, l);
-    assert(pred(g.len() as nat));
-    lemma_nat_well_ordering(pred, g.len() as nat);
-    // Now: exists|m| m <= g.len() && is_nat_min(pred, m)
-    // = exists|m| pred(m) && no_pred_below(pred, m)
-    // This is the satisfiability of left_min_coset_len's choose.
-    // So left_min_coset_len(g) satisfies: has_left_coset_word_of_len(g, l) && no_pred_below(pred, l)
+    // Scan from 0 to g.len() to find minimum with is_min_coset_len
+    assert(no_shorter_coset_word(data, g, 0nat));
+    lemma_scan_min_coset_len(data, g, 0, g.len() as nat);
+    // Now: exists l with is_min_coset_len(data, g, l)
+    // So left_min_coset_len's choose is satisfiable → result satisfies has_left_coset_word_of_len.
 }
 
 /// left_canonical_rep(g) is in g's coset and word_valid.
@@ -935,23 +970,22 @@ proof fn lemma_left_min_coset_len_identity(data: AmalgamatedData)
 {
     let e = empty_word();
     let n1 = data.p1.num_generators;
-    let pred = |l: nat| has_left_coset_word_of_len(data, e, l);
 
     // ε is in its own coset with length 0
     lemma_same_left_coset_reflexive(data, e);
     assert(word_valid(e, n1)) by { assert(e.len() == 0); }
     assert(has_left_coset_word_of_len(data, e, 0nat));
-    assert(pred(0nat));
 
-    // no_pred_below(pred, 0) is true (base case)
-    assert(no_pred_below(pred, 0nat));
+    // no_shorter_coset_word(data, ε, 0) is true (base case of recursion)
+    assert(no_shorter_coset_word(data, e, 0nat));
 
-    // So the choose predicate is satisfiable at l = 0.
-    // The choose returns some l satisfying the predicate.
+    // So is_min_coset_len(data, ε, 0) holds — the choose is satisfiable at l = 0.
+    assert(is_min_coset_len(data, e, 0nat));
+
     let l = left_min_coset_len(data, e);
-    // l satisfies: has_left_coset_word_of_len(data, e, l) && no_pred_below(pred, l)
-    // From no_pred_below(pred, l) && pred(0): l must be 0.
-    lemma_no_pred_below_forces_zero(pred, l);
+    // l satisfies is_min_coset_len(data, ε, l), which includes no_shorter_coset_word.
+    // has_left_coset_word_of_len(data, ε, 0) holds. By no_shorter_implies_ge: 0 >= l. So l == 0.
+    lemma_no_shorter_coset_word_implies_ge(data, e, l, 0nat);
 }
 
 pub proof fn lemma_left_rep_identity(data: AmalgamatedData)
@@ -2245,6 +2279,27 @@ proof fn lemma_no_pred_below_implies_ge(pred: spec_fn(nat) -> bool, m: nat, k: n
     }
 }
 
+/// If no_shorter_coset_word(g, m) and has_left_coset_word_of_len(g, k), then k >= m.
+proof fn lemma_no_shorter_coset_word_implies_ge(
+    data: AmalgamatedData, g: Word, m: nat, k: nat,
+)
+    requires
+        no_shorter_coset_word(data, g, m),
+        has_left_coset_word_of_len(data, g, k),
+    ensures
+        k >= m,
+    decreases m,
+{
+    if m == 0 {
+    } else {
+        if k == (m - 1) as nat {
+            // no_shorter_coset_word(g, m) = !has(g, m-1) && ... But has(g, k) = has(g, m-1). Contradiction.
+        } else if k < (m - 1) as nat {
+            lemma_no_shorter_coset_word_implies_ge(data, g, (m - 1) as nat, k);
+        }
+    }
+}
+
 /// Helper: if same_left_coset(g1, g2), then has_left_coset_word_of_len(g1, l) iff has_...(g2, l).
 /// Specifically: has_left_coset_word_of_len(g2, l) → has_left_coset_word_of_len(g1, l).
 proof fn lemma_coset_word_transfer(
@@ -2292,12 +2347,16 @@ proof fn lemma_left_min_len_coset_invariant(
     lemma_coset_word_transfer(data, g2, g1, l1);
     // has_left_coset_word_of_len(g2, l1) — so pred2(l1) holds
 
-    // l1 is min for pred1: no_pred_below(pred1, l1). pred1(l2) holds → l2 >= l1.
-    let pred1 = |l: nat| has_left_coset_word_of_len(data, g1, l);
-    lemma_no_pred_below_implies_ge(pred1, l1, l2);
-    // l2 is min for pred2: no_pred_below(pred2, l2). pred2(l1) holds → l1 >= l2.
-    let pred2 = |l: nat| has_left_coset_word_of_len(data, g2, l);
-    lemma_no_pred_below_implies_ge(pred2, l2, l1);
+    // The choose returned l1 satisfying is_min_coset_len(g1, l1).
+    // Since the choose is satisfiable (from above), l1 satisfies the full predicate.
+    // is_min_coset_len includes no_shorter_coset_word. These are NAMED spec fns, Z3 can extract.
+    assert(is_min_coset_len(data, g1, l1));
+    assert(no_shorter_coset_word(data, g1, l1));
+    lemma_no_shorter_coset_word_implies_ge(data, g1, l1, l2);
+
+    assert(is_min_coset_len(data, g2, l2));
+    assert(no_shorter_coset_word(data, g2, l2));
+    lemma_no_shorter_coset_word_implies_ge(data, g2, l2, l1);
     // l1 >= l2 && l2 >= l1 → l1 == l2
 }
 
