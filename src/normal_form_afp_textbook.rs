@@ -53,13 +53,22 @@ pub open spec fn left_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
             ==> !shortlex_lt(rep2, rep))
 }
 
-/// The subgroup part: a K-word h such that g ≡ concat(rep, embed_a(h)) in G₁.
+/// The subgroup part: shortlex-canonical K-word h such that g ≡ concat(rep, embed_a(h)) in G₁.
+/// Using shortlex-min ensures canonicity: equivalent g values give the same h.
 pub open spec fn left_h_part(data: AmalgamatedData, g: Word) -> Word {
+    let rep = left_canonical_rep(data, g);
+    // g * rep⁻¹ is in the subgroup. Find the shortlex-min K-word embedding to it.
     choose|h: Word|
         word_valid(h, k_size(data))
         && equiv_in_presentation(data.p1,
-            g,
-            concat(left_canonical_rep(data, g), apply_embedding(a_words(data), h)))
+            apply_embedding(a_words(data), h),
+            concat(inverse_word(rep), g))
+        && (forall|h2: Word|
+            word_valid(h2, k_size(data))
+            && equiv_in_presentation(data.p1,
+                apply_embedding(a_words(data), h2),
+                concat(inverse_word(rep), g))
+            ==> !shortlex_lt(h2, h))
 }
 
 /// Shortlex-minimum word in the right B-coset of g.
@@ -73,13 +82,20 @@ pub open spec fn right_canonical_rep(data: AmalgamatedData, g: Word) -> Word {
             ==> !shortlex_lt(rep2, rep))
 }
 
-/// The subgroup part for G₂.
+/// The subgroup part for G₂: shortlex-canonical K-word.
 pub open spec fn right_h_part(data: AmalgamatedData, g: Word) -> Word {
+    let rep = right_canonical_rep(data, g);
     choose|h: Word|
         word_valid(h, k_size(data))
         && equiv_in_presentation(data.p2,
-            g,
-            concat(right_canonical_rep(data, g), apply_embedding(b_words(data), h)))
+            apply_embedding(b_words(data), h),
+            concat(inverse_word(rep), g))
+        && (forall|h2: Word|
+            word_valid(h2, k_size(data))
+            && equiv_in_presentation(data.p2,
+                apply_embedding(b_words(data), h2),
+                concat(inverse_word(rep), g))
+            ==> !shortlex_lt(h2, h))
 }
 
 // ============================================================
@@ -421,13 +437,168 @@ pub proof fn lemma_act_word_single(
             == act_sym(data, s, h, syllables),
 {
     let w = Seq::new(1, |_i: int| s);
+    assert(w.len() == 1);
     assert(w.first() == s);
-    assert(w.drop_first() =~= empty_word()) by {
-        assert(w.drop_first().len() == 0);
+    let rest = w.drop_first();
+    assert(rest.len() == 0);
+    assert(rest =~= empty_word()) by {
+        assert(rest.len() == 0);
+        assert(empty_word().len() == 0);
     }
-    // act_word(w, h, syls) = act_word(w.drop_first(), act_sym(s, h, syls))
-    //                       = act_word(ε, act_sym(s, h, syls))
-    //                       = act_sym(s, h, syls)
+    let (mid_h, mid_syls) = act_sym(data, s, h, syllables);
+    // act_word unfolds: w.len() != 0, so:
+    //   act_word(w, h, syls) = act_word(rest, mid_h, mid_syls)
+    // rest =~= ε, so act_word(rest, ...) = (mid_h, mid_syls)
+    assert(act_word(data, rest, mid_h, mid_syls) == (mid_h, mid_syls));
+    assert(act_word(data, w, h, syllables) == (mid_h, mid_syls));
+}
+
+// ============================================================
+// Part G: Per-step well-definedness helpers
+// ============================================================
+
+/// Two AFP words produce the same action on any state.
+pub open spec fn same_action(data: AmalgamatedData, w1: Word, w2: Word) -> bool {
+    forall|h: Word, syllables: Seq<Syllable>|
+        act_word(data, w1, h, syllables) == act_word(data, w2, h, syllables)
+}
+
+// ============================================================
+// Part H: Identity state properties
+// ============================================================
+
+/// The empty word is shortlex-minimal: nothing is shortlex-smaller.
+/// (Already proved in shortlex.rs as lemma_empty_shortlex_minimal.)
+
+/// left_canonical_rep of the empty word (identity element) is the empty word.
+/// Because: ε is in ε's coset (reflexive), and ε is shortlex-minimal.
+pub proof fn lemma_left_rep_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        left_canonical_rep(data, empty_word()) =~= empty_word(),
+{
+    let n1 = data.p1.num_generators;
+    let e = empty_word();
+
+    // ε is in its own coset
+    lemma_same_left_coset_reflexive(data, e);
+
+    // ε is word_valid
+    assert(word_valid(e, n1)) by { assert(e.len() == 0); }
+
+    // Nothing is shortlex-smaller than ε
+    // So ε satisfies the choose predicate of left_canonical_rep(data, ε)
+    assert forall|rep2: Word|
+        word_valid(rep2, n1) && same_left_coset(data, e, rep2)
+        implies !shortlex_lt(rep2, e)
+    by {
+        crate::shortlex::lemma_empty_shortlex_minimal(rep2);
+    }
+
+    // ε satisfies the predicate — it IS the choose result.
+    // Uniqueness: if rep also satisfies the predicate, then
+    //   !shortlex_lt(rep, ε) and !shortlex_lt(ε, rep) [since ε is also in coset]
+    //   By totality: rep =~= ε.
+    // So choose returns ε.
+    let rep = left_canonical_rep(data, e);
+    // rep satisfies the predicate too (by choose specification)
+    // We need rep =~= ε. By contradiction: if rep ≠ ε, then rep.len() > 0,
+    // so shortlex_lt(ε, rep), contradicting "ε is not shortlex-smaller than rep".
+    // But rep's predicate says "nothing in coset is smaller than rep".
+    // ε IS in the coset. So !shortlex_lt(ε, rep).
+    // Also our assertion: !shortlex_lt(rep, ε).
+    // By totality: rep =~= ε.
+    crate::shortlex::lemma_shortlex_total(e, rep);
+}
+
+/// left_h_part of the empty word is the empty K-word.
+/// Because: left_canonical_rep(ε) = ε, so inv(rep) ++ ε = ε.
+/// embed_a(ε) = ε ≡ ε in G₁. And ε is the shortlex-min such K-word.
+pub proof fn lemma_left_h_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        left_h_part(data, empty_word()) =~= empty_word(),
+{
+    let e = empty_word();
+    let k = k_size(data);
+    let p1 = data.p1;
+    lemma_left_rep_identity(data);
+    let rep = left_canonical_rep(data, e);
+    assert(rep =~= e);
+
+    // left_h_part(ε) = choose|h| word_valid(h, k) && equiv(embed_a(h), concat(inv(rep), ε))
+    //                            && shortlex-min
+    // Since rep =~= ε: inv(rep) =~= ε, concat(inv(rep), ε) =~= ε
+    assert(inverse_word(rep) =~= e) by {
+        assert(rep =~= e);
+        assert(inverse_word(e) =~= e) by {
+            assert(inverse_word(e).len() == 0);
+        }
+    }
+    let target = concat(inverse_word(rep), e);
+    assert(target =~= e) by {
+        assert(inverse_word(rep) =~= e);
+        assert(concat(e, e) =~= e) by { assert(concat(e, e).len() == 0); }
+    }
+
+    // embed_a(ε) = apply_embedding(a_words, ε) = ε
+    assert(apply_embedding(a_words(data), e) =~= e);
+
+    // equiv(p1, embed_a(ε), target) = equiv(p1, ε, ε) = true
+    crate::presentation::lemma_equiv_refl(p1, e);
+    assert(equiv_in_presentation(p1, e, target));
+
+    // ε is word_valid for k
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+
+    // ε satisfies the choose predicate of left_h_part
+    // And ε is shortlex-min (nothing shorter)
+    assert forall|h2: Word|
+        word_valid(h2, k)
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), h2), target)
+        implies !shortlex_lt(h2, e)
+    by {
+        crate::shortlex::lemma_empty_shortlex_minimal(h2);
+    }
+
+    // By same uniqueness argument as lemma_left_rep_identity:
+    let h = left_h_part(data, e);
+    crate::shortlex::lemma_shortlex_total(e, h);
+}
+
+/// Inserting a word at a position preserves the action if the word acts trivially.
+///
+/// If act_word(middle, h, syls) == (h, syls) for all h, syls:
+///   act_word(prefix ++ middle ++ suffix, h, syls) == act_word(prefix ++ suffix, h, syls)
+///
+/// This follows from composition: split at the insertion point,
+/// the middle acts as identity, and the rest is unchanged.
+pub proof fn lemma_insert_trivial_preserves_action(
+    data: AmalgamatedData,
+    prefix: Word, middle: Word, suffix: Word,
+    h: Word, syllables: Seq<Syllable>,
+)
+    requires
+        same_action(data, middle, empty_word()),
+    ensures
+        act_word(data, concat(prefix, concat(middle, suffix)), h, syllables)
+            == act_word(data, concat(prefix, suffix), h, syllables),
+{
+    // By composition: act(prefix ++ middle ++ suffix)
+    //   = act(middle ++ suffix, act(prefix))
+    //   = act(suffix, act(middle, act(prefix)))
+    //   = act(suffix, act(prefix))  [since middle acts trivially]
+    //   = act(prefix ++ suffix)
+    lemma_act_word_concat(data, prefix, concat(middle, suffix), h, syllables);
+    let (ph, ps) = act_word(data, prefix, h, syllables);
+    lemma_act_word_concat(data, middle, suffix, ph, ps);
+    // act(middle, ph, ps) == act(ε, ph, ps) = (ph, ps)
+    // So act(middle ++ suffix, ph, ps) = act(suffix, act(middle, ph, ps)) = act(suffix, ph, ps)
+    lemma_act_word_concat(data, prefix, suffix, h, syllables);
+    // act(prefix ++ suffix) = act(suffix, ph, ps)
+    // Both sides equal act(suffix, ph, ps). QED.
 }
 
 } // verus!
