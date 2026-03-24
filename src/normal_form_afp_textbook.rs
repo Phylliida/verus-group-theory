@@ -1619,8 +1619,54 @@ proof fn lemma_left_h_part_props(
 }
 
 // ============================================================
-// Part J0: H-witness existence
+// Part J0: Embedding subgroup membership + h-witness existence
 // ============================================================
+
+/// apply_embedding(gens, h) is in the generated subgroup of gens.
+/// Proof by induction on h.len(): each symbol gives a generator or its inverse,
+/// and the subgroup is closed under concat and inverse.
+pub proof fn lemma_apply_embedding_in_subgroup(
+    p: Presentation, gens: Seq<Word>, h: Word,
+)
+    requires
+        presentation_valid(p),
+        word_valid(h, gens.len()),
+        forall|i: int| 0 <= i < gens.len()
+            ==> word_valid(#[trigger] gens[i], p.num_generators),
+    ensures
+        in_generated_subgroup(p, gens, apply_embedding(gens, h)),
+    decreases h.len(),
+{
+    if h.len() == 0 {
+        assert(apply_embedding(gens, h) =~= empty_word());
+        crate::benign::lemma_identity_in_generated_subgroup(p, gens);
+    } else {
+        let s = h.first();
+        let rest = h.drop_first();
+        let head = apply_embedding_symbol(gens, s);
+        let tail = apply_embedding(gens, rest);
+
+        // IH: tail is in subgroup
+        lemma_apply_embedding_in_subgroup(p, gens, rest);
+
+        // head is a generator or inverse of generator → in subgroup
+        match s {
+            Symbol::Gen(i) => {
+                assert(head == gens[i as int]);
+                crate::benign::lemma_generator_in_generated_subgroup(p, gens, i as int);
+            }
+            Symbol::Inv(i) => {
+                assert(head == inverse_word(gens[i as int]));
+                crate::benign::lemma_generator_in_generated_subgroup(p, gens, i as int);
+                crate::word::lemma_inverse_word_valid(gens[i as int], p.num_generators);
+                lemma_subgroup_inverse(p, gens, gens[i as int]);
+            }
+        }
+
+        // concat(head, tail) is in subgroup
+        lemma_subgroup_concat(p, gens, head, tail);
+    }
+}
 
 /// For any valid G₁-word g, there exists a K-word h with embed_a(h) ≡ target,
 /// where target = inv(rep) · g. This follows from same_left_coset(g, rep),
@@ -3282,6 +3328,17 @@ proof fn lemma_inverse_pair_g1_subcase_a(
     let embed_h_prime = apply_embedding(a_words(data), h_prime);
     let product2 = concat(inv_s_word, embed_h_prime);
 
+    // Establish word_valid for product
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    assert(word_valid(s_word, n1)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(#[trigger] s_word[k], n1) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    }
+    crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
+
     // Key: embed_a(h') ≡ inv(rep) · product = product = [s] · embed_a(h) [since rep = ε]
     lemma_h_witness_exists(data, product);
     let hw: Word = choose|hw: Word| word_valid(hw, k_size(data))
@@ -3360,10 +3417,25 @@ proof fn lemma_inverse_pair_g1_subcase_a(
     crate::word::lemma_inverse_word_valid(embed_h, n1);
 
     // Show embed_a(h) is in subgroup → canonical rep is ε
-    // embed_a(h) = apply_embedding(a_words, h) is in generated_subgroup by construction
-    crate::benign::lemma_embedding_in_subgroup(a_words(data), h, p1);
-    // same_left_coset(embed_a(h), ε) from subgroup membership
-    lemma_same_coset_equiv_eps(data, embed_h);
+    lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
+    // in_generated_subgroup(p1, a_words, embed_h) → in_left_subgroup(data, embed_h)
+    // → same_left_coset(embed_h, ε) via: inv(embed_h)·ε = inv(embed_h), in subgroup by inverse
+    // Actually, same_left_coset(embed_h, ε) = in_left_subgroup(inv(embed_h)·ε) = in_left_subgroup(inv(embed_h))
+    // which needs embed_h in subgroup → inv(embed_h) in subgroup
+    // But same_coset_equiv_eps requires g ≡ ε, which we don't have.
+    // Instead: in_left_subgroup(embed_h) means embed_h ∈ A.
+    // same_left_coset(embed_h, ε) = in_left_subgroup(concat(inv(embed_h), ε))
+    // concat(inv(embed_h), ε) =~= inv(embed_h)
+    // inv(embed_h) ∈ A by subgroup_inverse
+    lemma_subgroup_inverse(p1, a_words(data), embed_h);
+    assert(concat(inverse_word(embed_h), e) =~= inverse_word(embed_h)) by {
+        assert(concat(inverse_word(embed_h), e).len() == inverse_word(embed_h).len());
+        assert forall|k: int| 0 <= k < inverse_word(embed_h).len()
+            implies concat(inverse_word(embed_h), e)[k] == inverse_word(embed_h)[k] by {}
+    }
+    lemma_in_subgroup_equiv(p1, a_words(data),
+        inverse_word(embed_h), concat(inverse_word(embed_h), e));
+    // Now: in_left_subgroup(concat(inv(embed_h), ε)) = same_left_coset(embed_h, ε)
 
     // left_canonical_rep(embed_a(h)) =~= left_canonical_rep(ε) =~= ε
     lemma_left_rep_identity(data);
