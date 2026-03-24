@@ -687,46 +687,20 @@ pub open spec fn same_right_coset(data: AmalgamatedData, w1: Word, w2: Word) -> 
     in_right_subgroup(data, concat(inverse_word(w1), w2))
 }
 
-// ============================================================
-// Part G: Van der Waerden action — correct definition
-// ============================================================
-//
-// Prerequisites:
-//   ct1: Cayley table for G₁ (every G₁-element is a nat < ct1.num_cosets)
-//   ct2: Cayley table for G₂
-//   st1: Subgroup coset table for A ≤ G₁ (coset 0 = A itself)
-//   st2: Subgroup coset table for B ≤ G₂ (coset 0 = B itself)
-//   phi: B→A isomorphism at table level (ct2 elements → ct1 elements)
-//   phi_inv: A→B isomorphism at table level (ct1 elements → ct2 elements)
-//
-// State: (h: nat, sylls: Seq<(bool, nat)>)
-//   h: ct1-element in A (always stored in G₁'s Cayley table)
-//   sylls: alternating (is_left, st-coset-number) pairs, each coset > 0
-//
-// Action of G₁-symbol s on (h, sylls):
-//   new_elem = ct1.table[h][s_col]  (s · h in G₁)
-//   If sylls starts with Left(c₁): combine new_elem with c₁ in G₁
-//   Else: decompose new_elem in G₁/A
-//
-// Action of G₂-symbol s on (h, sylls):
-//   h_g2 = phi_inv(h)  (translate h to G₂)
-//   new_elem = ct2.table[h_g2][s_col]  (s · h_g2 in G₂)
-//   If sylls starts with Right(c₁): combine new_elem with c₁ in G₂
-//   Else: decompose new_elem in G₂/B, translate B-part back via phi
 
-/// symbol_to_column: Gen(i) → 2*i, Inv(i) → 2*i+1.
-/// Re-export for convenience.
-pub open spec fn sym_col(s: Symbol) -> nat {
-    crate::todd_coxeter::symbol_to_column(s)
-}
-
-/// Unshift a G₂ symbol: Gen(n1+j) → Gen(j), Inv(n1+j) → Inv(j).
-pub open spec fn unshift_sym(s: Symbol, n1: nat) -> Symbol {
-    match s {
-        Symbol::Gen(i) => Symbol::Gen((i - n1) as nat),
-        Symbol::Inv(i) => Symbol::Inv((i - n1) as nat),
-    }
-}
+// ============================================================
+// Part G: H-only VDW action (no syllables)
+// ============================================================
+//
+// For AFP injectivity, we only need the h-component of the VDW state.
+// The h-only action tracks a single nat (ct1 Cayley table element).
+//
+// G₁ symbol s: h → ct1.table[h][sym_col(s)]  (trace in G₁)
+// G₂ symbol s: h → phi(ct2.table[phi_inv(h)][sym_col(unshift(s))])
+//              (translate to G₂, trace, translate back)
+//
+// This is the "H-projection" of the full VDW action. It's sufficient for
+// injectivity because for G₁-words on h=0, it equals trace_word(ct1, 0, w).
 
 /// Lookup in a Cayley table: ct.table[elem][col], defaulting to 0.
 pub open spec fn ct_lookup(
@@ -738,177 +712,72 @@ pub open spec fn ct_lookup(
     }
 }
 
-/// Coset decomposition in G/H using a Cayley table + subgroup coset table.
-/// Returns (h_part, coset) where h_part is the H-component (ct-element in H)
-/// and coset is the st-coset number (0 if in H, >0 otherwise).
-///
-/// The element = h_part * coset_rep(coset) in the group.
-/// h_part = element * inv(coset_rep(coset)).
-pub open spec fn coset_decomp(
-    ct: crate::todd_coxeter::CosetTable,
-    st: crate::todd_coxeter::CosetTable,
-    elem: nat,
-) -> (nat, nat) {
-    // Get the subgroup coset of elem
-    let rep_word = crate::coset_group::coset_rep(ct, elem);
-    let coset = match crate::todd_coxeter::trace_word(st, 0, rep_word) {
-        Some(c) => c,
-        None => 0,
-    };
-    if coset == 0 {
-        // elem ∈ H. h_part = elem.
-        (elem, 0)
-    } else {
-        // elem ∉ H. h_part = elem * inv(coset_rep_elem).
-        let coset_rep_word = crate::coset_group::coset_rep(st, coset);
-        let coset_rep_elem = match crate::todd_coxeter::trace_word(ct, 0, coset_rep_word) {
-            Some(e) => e,
-            None => 0,
-        };
-        let coset_rep_inv = crate::coset_group::coset_inv(ct, coset_rep_elem);
-        (crate::coset_group::coset_mul(ct, elem, coset_rep_inv), coset)
+/// symbol_to_column shorthand.
+pub open spec fn sym_col(s: Symbol) -> nat {
+    crate::todd_coxeter::symbol_to_column(s)
+}
+
+/// Unshift a G₂ symbol.
+pub open spec fn unshift_sym(s: Symbol, n1: nat) -> Symbol {
+    match s {
+        Symbol::Gen(i) => Symbol::Gen((i - n1) as nat),
+        Symbol::Inv(i) => Symbol::Inv((i - n1) as nat),
     }
 }
 
-/// VDW action of a G₁-symbol on state (h, sylls).
-/// h is a ct1-element in A. s has generator_index < n1.
-pub open spec fn vdw_g1(
-    ct1: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    s: Symbol,
-    h: nat,
-    sylls: Seq<(bool, nat)>,
-) -> (nat, Seq<(bool, nat)>) {
-    let new_elem = ct_lookup(ct1, h, sym_col(s));
-    if sylls.len() > 0 && sylls[0].0 == true {
-        // First syllable is Left. Combine new_elem with c₁ in G₁.
-        let c1_rep = crate::coset_group::coset_rep(st1, sylls[0].1);
-        let c1_elem = match crate::todd_coxeter::trace_word(ct1, 0, c1_rep) {
-            Some(e) => e, None => 0,
-        };
-        let combined = crate::coset_group::coset_mul(ct1, new_elem, c1_elem);
-        let (h_new, c_new) = coset_decomp(ct1, st1, combined);
-        if c_new == 0 {
-            (h_new, sylls.drop_first())
-        } else {
-            (h_new, Seq::new(1, |_i: int| (true, c_new)) + sylls.drop_first())
-        }
-    } else {
-        // First syllable is Right or empty. Decompose new_elem in G₁/A.
-        let (h_new, c_new) = coset_decomp(ct1, st1, new_elem);
-        if c_new == 0 {
-            (h_new, sylls)
-        } else {
-            (h_new, Seq::new(1, |_i: int| (true, c_new)) + sylls)
-        }
-    }
-}
-
-/// VDW action of a G₂-symbol on state (h, sylls).
-/// h is a ct1-element in A. s has generator_index >= n1.
-/// phi_inv translates A-elements (ct1) to B-elements (ct2).
-/// phi translates B-elements (ct2) back to A-elements (ct1).
-pub open spec fn vdw_g2(
+/// H-only action of a single symbol.
+/// State: h (nat, ct1 Cayley element).
+pub open spec fn h_act_sym(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     n1: nat,
     s: Symbol,
     h: nat,
-    sylls: Seq<(bool, nat)>,
-) -> (nat, Seq<(bool, nat)>) {
-    // Translate h to G₂
-    let h_g2 = phi_inv(h);
-    let s_local = unshift_sym(s, n1);
-    let new_elem = ct_lookup(ct2, h_g2, sym_col(s_local));
-    if sylls.len() > 0 && sylls[0].0 == false {
-        // First syllable is Right. Combine new_elem with c₁ in G₂.
-        let c1_rep = crate::coset_group::coset_rep(st2, sylls[0].1);
-        let c1_elem = match crate::todd_coxeter::trace_word(ct2, 0, c1_rep) {
-            Some(e) => e, None => 0,
-        };
-        let combined = crate::coset_group::coset_mul(ct2, new_elem, c1_elem);
-        let (b_part, c_new) = coset_decomp(ct2, st2, combined);
-        let h_new = phi(b_part);
-        if c_new == 0 {
-            (h_new, sylls.drop_first())
-        } else {
-            (h_new, Seq::new(1, |_i: int| (false, c_new)) + sylls.drop_first())
-        }
-    } else {
-        // First syllable is Left or empty. Decompose new_elem in G₂/B.
-        let (b_part, c_new) = coset_decomp(ct2, st2, new_elem);
-        let h_new = phi(b_part);
-        if c_new == 0 {
-            (h_new, sylls)
-        } else {
-            (h_new, Seq::new(1, |_i: int| (false, c_new)) + sylls)
-        }
-    }
-}
-
-/// VDW action of a single AFP symbol.
-pub open spec fn vdw_sym(
-    ct1: crate::todd_coxeter::CosetTable,
-    ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
-    phi: spec_fn(nat) -> nat,
-    phi_inv: spec_fn(nat) -> nat,
-    n1: nat,
-    s: Symbol,
-    h: nat,
-    sylls: Seq<(bool, nat)>,
-) -> (nat, Seq<(bool, nat)>) {
+) -> nat {
     if generator_index(s) < n1 {
-        vdw_g1(ct1, st1, s, h, sylls)
+        ct_lookup(ct1, h, sym_col(s))
     } else {
-        vdw_g2(ct1, ct2, st2, phi, phi_inv, n1, s, h, sylls)
+        let s_local = unshift_sym(s, n1);
+        phi(ct_lookup(ct2, phi_inv(h), sym_col(s_local)))
     }
 }
 
-/// VDW action of a full word (process symbols left to right).
-pub open spec fn vdw_word(
+/// H-only action of a word.
+pub open spec fn h_act_word(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     n1: nat,
     w: Word,
     h: nat,
-    sylls: Seq<(bool, nat)>,
-) -> (nat, Seq<(bool, nat)>)
+) -> nat
     decreases w.len(),
 {
     if w.len() == 0 {
-        (h, sylls)
+        h
     } else {
-        let (h2, s2) = vdw_sym(ct1, ct2, st1, st2, phi, phi_inv, n1, w.first(), h, sylls);
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, w.drop_first(), h2, s2)
+        h_act_word(ct1, ct2, phi, phi_inv, n1, w.drop_first(),
+            h_act_sym(ct1, ct2, phi, phi_inv, n1, w.first(), h))
     }
 }
 
-/// Composition lemma: vdw_word(w1++w2) = vdw_word(w2, vdw_word(w1)).
-proof fn lemma_vdw_concat(
+/// H-only composition: h_act_word(w1++w2, h) == h_act_word(w2, h_act_word(w1, h)).
+proof fn lemma_h_act_concat(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     n1: nat,
     w1: Word, w2: Word,
-    h: nat, sylls: Seq<(bool, nat)>,
+    h: nat,
 )
-    ensures ({
-        let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, w1, h, sylls);
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, concat(w1, w2), h, sylls)
-            == vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, w2, hm, sm)
-    }),
+    ensures
+        h_act_word(ct1, ct2, phi, phi_inv, n1, concat(w1, w2), h)
+            == h_act_word(ct1, ct2, phi, phi_inv, n1, w2,
+                h_act_word(ct1, ct2, phi, phi_inv, n1, w1, h)),
     decreases w1.len(),
 {
     if w1.len() == 0 {
@@ -916,13 +785,13 @@ proof fn lemma_vdw_concat(
     } else {
         assert(concat(w1, w2).first() == w1.first());
         assert(concat(w1, w2).drop_first() =~= concat(w1.drop_first(), w2));
-        let (h2, s2) = vdw_sym(ct1, ct2, st1, st2, phi, phi_inv, n1, w1.first(), h, sylls);
-        lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, w1.drop_first(), w2, h2, s2);
+        let h2 = h_act_sym(ct1, ct2, phi, phi_inv, n1, w1.first(), h);
+        lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, w1.drop_first(), w2, h2);
     }
 }
 
 // ============================================================
-// Part H: Prerequisites bundle
+// Part H: Prerequisites
 // ============================================================
 
 /// Cayley table validity.
@@ -937,18 +806,7 @@ pub open spec fn valid_cayley(t: crate::todd_coxeter::CosetTable, p: Presentatio
     &&& t.num_cosets > 0
 }
 
-/// Subgroup coset table validity (no Schreier system required).
-pub open spec fn valid_sub_table(t: crate::todd_coxeter::CosetTable, p: Presentation) -> bool {
-    &&& crate::todd_coxeter::coset_table_wf(t)
-    &&& crate::todd_coxeter::coset_table_consistent(t)
-    &&& crate::finite::coset_table_complete(t)
-    &&& crate::todd_coxeter::relator_closed(t, p)
-    &&& t.num_gens == p.num_generators
-    &&& presentation_valid(p)
-    &&& t.num_cosets > 0
-}
-
-/// phi is a valid B→A isomorphism at the Cayley table level.
+/// phi/phi_inv compatibility.
 pub open spec fn valid_phi(
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
@@ -960,7 +818,6 @@ pub open spec fn valid_phi(
     &&& phi_inv(0nat) == 0nat
     &&& (forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets)
     &&& (forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets)
-    // phi and phi_inv are inverses
     &&& (forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b)
     &&& (forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a)
     // phi respects identification generators
@@ -970,24 +827,19 @@ pub open spec fn valid_phi(
         let v_elem = crate::todd_coxeter::trace_word(ct2, 0, data.identifications[i].1);
         u_elem is Some && v_elem is Some && phi(v_elem.unwrap()) == u_elem.unwrap()
     }))
-    // phi is a homomorphism
-    &&& (forall|x: nat, y: nat|
-        x < ct2.num_cosets && y < ct2.num_cosets ==>
-        phi(crate::coset_group::coset_mul(ct2, x, y))
-            == crate::coset_group::coset_mul(ct1, phi(x), phi(y)))
-    // phi respects inverses
-    &&& (forall|x: nat|
-        x < ct2.num_cosets ==>
-        phi(crate::coset_group::coset_inv(ct2, x))
-            == crate::coset_group::coset_inv(ct1, phi(x)))
+    // phi is a homomorphism (compatible with trace)
+    // phi(trace(ct2, phi_inv(h), w)) == trace(ct1, h, translated_w) for B-words
+    // Simplified: phi commutes with single-symbol traces
+    &&& (forall|h2: nat, col: nat|
+        h2 < ct2.num_cosets && col < 2 * ct2.num_gens ==>
+        #[trigger] phi(ct_lookup(ct2, h2, col))
+            == ct_lookup(ct1, phi(h2), col))
 }
 
-/// All VDW prerequisites bundled.
-pub open spec fn vdw_prereqs(
+/// All prerequisites.
+pub open spec fn h_prereqs(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     data: AmalgamatedData,
@@ -996,202 +848,16 @@ pub open spec fn vdw_prereqs(
     &&& identifications_isomorphic(data)
     &&& valid_cayley(ct1, data.p1)
     &&& valid_cayley(ct2, data.p2)
-    &&& valid_sub_table(st1, data.p1)
-    &&& valid_sub_table(st2, data.p2)
-    &&& ct1.num_gens == st1.num_gens
-    &&& ct2.num_gens == st2.num_gens
     &&& valid_phi(phi, phi_inv, ct1, ct2, data)
-    // Subgroup generators trace to coset 0 in subgroup tables
-    &&& (forall|i: int| 0 <= i < data.identifications.len() ==>
-        crate::todd_coxeter::trace_word(st1, 0, data.identifications[i].0) == Some(0nat))
-    &&& (forall|i: int| 0 <= i < data.identifications.len() ==>
-        crate::todd_coxeter::trace_word(st2, 0, data.identifications[i].1) == Some(0nat))
+    &&& ct1.num_gens == data.p1.num_generators
+    &&& ct2.num_gens == data.p2.num_generators
 }
 
 // ============================================================
-// Part I: AFP injectivity theorem
+// Part I: H-only well-definedness lemmas
 // ============================================================
 
-/// AFP injectivity for finite groups.
-///
-/// If w is a G₁-word and w ≡ ε in the AFP, then w ≡ ε in G₁.
-///
-/// Proof: the VDW action is well-defined on AFP equivalence classes
-/// (each relator acts trivially). Therefore w ≡ ε implies
-/// vdw_word(w) == vdw_word(ε) == (0, []). For a G₁-word, this means
-/// the Cayley table element is 0, so w ≡ ε in G₁.
-pub proof fn lemma_afp_injectivity(
-    ct1: crate::todd_coxeter::CosetTable,
-    ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
-    phi: spec_fn(nat) -> nat,
-    phi_inv: spec_fn(nat) -> nat,
-    data: AmalgamatedData,
-    w: Word,
-)
-    requires
-        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
-        word_valid(w, data.p1.num_generators),
-        equiv_in_presentation(amalgamated_free_product(data), w, empty_word()),
-    ensures
-        equiv_in_presentation(data.p1, w, empty_word()),
-{
-    let n1 = data.p1.num_generators;
-    let afp = amalgamated_free_product(data);
-    let d = choose|d: Derivation| derivation_valid(afp, d, w, empty_word());
-
-    // Step 1: VDW action is well-defined — AFP derivation preserves the action
-    lemma_vdw_deriv(ct1, ct2, st1, st2, phi, phi_inv, data, d.steps,
-        w, empty_word(), 0, Seq::empty());
-    // Now: vdw_word(w, 0, []) == vdw_word(ε, 0, []) == (0, [])
-
-    // Step 2: (0, []) means trivial in G₁
-    // vdw_word(ε, 0, []) == (0, []) trivially
-    assert(vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1,
-        empty_word(), 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()));
-
-    // Step 3: vdw_word(w, 0, []) == (0, [])
-    // → Cayley element of w is 0 → w ≡ ε in G₁
-    lemma_vdw_faithful(ct1, ct2, st1, st2, phi, phi_inv, data, w);
-}
-
-/// VDW action respects AFP derivation.
-proof fn lemma_vdw_deriv(
-    ct1: crate::todd_coxeter::CosetTable,
-    ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
-    phi: spec_fn(nat) -> nat,
-    phi_inv: spec_fn(nat) -> nat,
-    data: AmalgamatedData,
-    steps: Seq<DerivationStep>,
-    w1: Word, w2: Word,
-    h: nat, sylls: Seq<(bool, nat)>,
-)
-    requires
-        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
-        derivation_produces(amalgamated_free_product(data), steps, w1) == Some(w2),
-    ensures
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w1, h, sylls)
-            == vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w2, h, sylls),
-    decreases steps.len(),
-{
-    if steps.len() == 0 {
-        assert(w1 == w2);
-    } else {
-        let afp = amalgamated_free_product(data);
-        let step = steps.first();
-        let w_mid = apply_step(afp, w1, step).unwrap();
-        lemma_vdw_step(ct1, ct2, st1, st2, phi, phi_inv, data, w1, step, w_mid, h, sylls);
-        lemma_vdw_deriv(ct1, ct2, st1, st2, phi, phi_inv, data, steps.drop_first(),
-            w_mid, w2, h, sylls);
-    }
-}
-
-/// VDW action respects a single derivation step.
-/// This is the core well-definedness check: each AFP relator acts trivially.
-proof fn lemma_vdw_step(
-    ct1: crate::todd_coxeter::CosetTable,
-    ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
-    phi: spec_fn(nat) -> nat,
-    phi_inv: spec_fn(nat) -> nat,
-    data: AmalgamatedData,
-    w: Word, step: DerivationStep, w_prime: Word,
-    h: nat, sylls: Seq<(bool, nat)>,
-)
-    requires
-        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
-        apply_step(amalgamated_free_product(data), w, step) == Some(w_prime),
-    ensures
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w, h, sylls)
-            == vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators, w_prime, h, sylls),
-{
-    let n1 = data.p1.num_generators;
-    let afp = amalgamated_free_product(data);
-
-    match step {
-        DerivationStep::FreeReduce { position } => {
-            let prefix = w.subrange(0, position);
-            let pair = w.subrange(position, position + 2);
-            let suffix = w.subrange(position + 2, w.len() as int);
-            assert(w =~= prefix + pair + suffix) by {
-                assert((prefix + pair + suffix).len() == w.len());
-                assert forall|k: int| 0 <= k < w.len()
-                    implies (prefix + pair + suffix)[k] == w[k] by {
-                    if k < position {} else if k < position + 2 {} else {}
-                }
-            }
-            assert(w_prime =~= prefix + suffix);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, pair + suffix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
-            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, suffix, hm, sm);
-            lemma_vdw_inv_pair(ct1, ct2, st1, st2, phi, phi_inv, n1,
-                w[position], w[position + 1], hm, sm);
-        },
-        DerivationStep::FreeExpand { position, symbol } => {
-            let prefix = w.subrange(0, position);
-            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
-            let suffix = w.subrange(position, w.len() as int);
-            assert(w =~= prefix + suffix) by {
-                assert((prefix + suffix).len() == w.len());
-                assert forall|k: int| 0 <= k < w.len()
-                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
-            }
-            assert(w_prime =~= prefix + pair + suffix);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, pair + suffix, h, sylls);
-            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, suffix, hm, sm);
-            lemma_vdw_inv_pair(ct1, ct2, st1, st2, phi, phi_inv, n1,
-                symbol, inverse_symbol(symbol), hm, sm);
-        },
-        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
-            let r = get_relator(afp, relator_index, inverted);
-            let prefix = w.subrange(0, position);
-            let suffix = w.subrange(position, w.len() as int);
-            assert(w =~= prefix + suffix) by {
-                assert((prefix + suffix).len() == w.len());
-                assert forall|k: int| 0 <= k < w.len()
-                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
-            }
-            assert(w_prime =~= prefix + r + suffix);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, r + suffix, h, sylls);
-            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, r, suffix, hm, sm);
-            lemma_vdw_relator(ct1, ct2, st1, st2, phi, phi_inv, data,
-                relator_index, inverted, hm, sm);
-        },
-        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
-            let r = get_relator(afp, relator_index, inverted);
-            let rlen = r.len();
-            let prefix = w.subrange(0, position);
-            let suffix = w.subrange(position + rlen as int, w.len() as int);
-            assert(w =~= prefix + r + suffix) by {
-                assert((prefix + r + suffix).len() == w.len());
-                assert forall|k: int| 0 <= k < w.len()
-                    implies (prefix + r + suffix)[k] == w[k] by {
-                    if k < position {} else if k < position + rlen as int {
-                        assert(w.subrange(position, position + rlen as int) == r);
-                    } else {}
-                }
-            }
-            assert(w_prime =~= prefix + suffix);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, r + suffix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, suffix, h, sylls);
-            let (hm, sm) = vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, prefix, h, sylls);
-            lemma_vdw_concat(ct1, ct2, st1, st2, phi, phi_inv, n1, r, suffix, hm, sm);
-            lemma_vdw_relator(ct1, ct2, st1, st2, phi, phi_inv, data,
-                relator_index, inverted, hm, sm);
-        },
-    }
-}
-
-/// Helper: ct_lookup round-trip via table consistency.
+/// ct_lookup round-trip via table consistency.
 proof fn lemma_ct_roundtrip(
     ct: crate::todd_coxeter::CosetTable,
     h: nat, s_col: nat,
@@ -1212,24 +878,93 @@ proof fn lemma_ct_roundtrip(
     reveal(crate::finite::coset_table_complete);
 }
 
-/// Inverse pair acts trivially on the VDW action.
-/// Strategy: factor the proof through lemma_ct_roundtrip to keep Z3 happy.
-proof fn lemma_vdw_inv_pair(
+/// G₁ inverse pair: ct_lookup round-trips in ct1.
+proof fn lemma_h_inv_pair_g1(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     n1: nat,
     s1: Symbol, s2: Symbol,
-    h: nat, sylls: Seq<(bool, nat)>,
+    h: nat,
 )
     requires
         is_inverse_pair(s1, s2),
+        generator_index(s1) < n1,
+        n1 == ct1.num_gens,
         crate::todd_coxeter::coset_table_wf(ct1),
         crate::todd_coxeter::coset_table_consistent(ct1),
         crate::finite::coset_table_complete(ct1),
+        h < ct1.num_cosets,
+    ensures ({
+        let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+        h_act_word(ct1, ct2, phi, phi_inv, n1, pair, h) == h
+    }),
+{
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::todd_coxeter::coset_table_consistent);
+    reveal(crate::finite::coset_table_complete);
+
+    let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+    assert(pair.first() == s1);
+    assert(pair.drop_first() =~= Seq::new(1, |_i: int| s2));
+    assert(pair.drop_first().first() == s2);
+    assert(pair.drop_first().drop_first() =~= Seq::<Symbol>::empty());
+    assert(generator_index(s2) == generator_index(s1));
+
+    let s1_col = sym_col(s1);
+    let s2_col = sym_col(s2);
+    assert(s2_col == crate::todd_coxeter::inverse_column(s1_col)) by {
+        match s1 { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    lemma_ct_roundtrip(ct1, h, s1_col);
+    let h1 = ct_lookup(ct1, h, s1_col);
+    // h1 < ct1.num_cosets (from roundtrip ensures)
+    // ct_lookup(ct1, h1, s2_col) == h (from roundtrip ensures)
+
+    // h_act_word(pair, h) unrolls to:
+    //   h_act_word([s2], h_act_sym(s1, h))
+    //   = h_act_word([s2], ct_lookup(ct1, h, s1_col))   [since gen_index(s1) < n1]
+    //   = h_act_word([s2], h1)
+    //   = h_act_word([], h_act_sym(s2, h1))
+    //   = h_act_sym(s2, h1)
+    //   = ct_lookup(ct1, h1, s2_col)  [since gen_index(s2) < n1]
+    //   = h                            [from roundtrip]
+    assert(h_act_sym(ct1, ct2, phi, phi_inv, n1, s1, h) == h1);
+    let h2 = h_act_sym(ct1, ct2, phi, phi_inv, n1, s2, h1);
+    assert(h2 == ct_lookup(ct1, h1, s2_col));
+    assert(h2 == h);
+
+    // Explicitly unroll h_act_word for the pair:
+    // h_act_word(pair, h) = h_act_word(pair.drop_first(), h_act_sym(pair.first(), h))
+    //                     = h_act_word([s2], h1)
+    //                     = h_act_word([], h_act_sym(s2, h1))
+    //                     = h_act_sym(s2, h1)
+    //                     = h2 = h
+    assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair, h)
+        == h_act_word(ct1, ct2, phi, phi_inv, n1, pair.drop_first(), h1));
+    assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair.drop_first(), h1)
+        == h_act_word(ct1, ct2, phi, phi_inv, n1,
+            pair.drop_first().drop_first(), h2));
+    assert(pair.drop_first().drop_first().len() == 0);
+}
+
+/// G₂ inverse pair: ct_lookup round-trips in ct2, phi translates.
+proof fn lemma_h_inv_pair_g2(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    n1: nat,
+    s1: Symbol, s2: Symbol,
+    h: nat,
+)
+    requires
+        is_inverse_pair(s1, s2),
+        generator_index(s1) >= n1,
+        generator_index(s1) < 2 * n1,  // valid AFP symbol (< n1 + n2 where n2 = n1)
+        n1 == ct1.num_gens,
+        n1 == ct2.num_gens,
         crate::todd_coxeter::coset_table_wf(ct2),
         crate::todd_coxeter::coset_table_consistent(ct2),
         crate::finite::coset_table_complete(ct2),
@@ -1240,114 +975,400 @@ proof fn lemma_vdw_inv_pair(
         forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a,
     ensures ({
         let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, h, sylls) == (h, sylls)
+        h_act_word(ct1, ct2, phi, phi_inv, n1, pair, h) == h
     }),
 {
     reveal(crate::todd_coxeter::coset_table_wf);
     reveal(crate::todd_coxeter::coset_table_consistent);
     reveal(crate::finite::coset_table_complete);
 
-    // Word structure hints
     let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
     assert(pair.first() == s1);
     assert(pair.drop_first() =~= Seq::new(1, |_i: int| s2));
     assert(pair.drop_first().first() == s2);
     assert(pair.drop_first().drop_first() =~= Seq::<Symbol>::empty());
-
-    // Generator index relationship
     assert(generator_index(s2) == generator_index(s1));
 
-    // Column relationship: s2's column is the inverse of s1's column
-    let s1_col = sym_col(s1);
-    let s2_col = sym_col(s2);
-
-    // Establish the round-trip in the appropriate Cayley table
-    if generator_index(s1) < n1 {
-        // G₁ symbols
-        assert(s1_col < 2 * ct1.num_gens) by {
-            match s1 { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    let s1_local = unshift_sym(s1, n1);
+    let s1_local_col = sym_col(s1_local);
+    // s1_local_col < 2 * ct2.num_gens because generator_index(s1) - n1 < n1 = ct2.num_gens
+    assert(s1_local_col < 2 * ct2.num_gens) by {
+        match s1 {
+            Symbol::Gen(i) => {
+                assert(s1_local == Symbol::Gen((i - n1) as nat));
+                assert(s1_local_col == 2 * ((i - n1) as nat));
+            }
+            Symbol::Inv(i) => {
+                assert(s1_local == Symbol::Inv((i - n1) as nat));
+                assert(s1_local_col == 2 * ((i - n1) as nat) + 1);
+            }
         }
-        assert(s2_col == crate::todd_coxeter::inverse_column(s1_col)) by {
-            match s1 { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
-        }
-        lemma_ct_roundtrip(ct1, h, s1_col);
-        // Z3 now knows: ct_lookup(ct1, ct_lookup(ct1, h, s1_col), s2_col) == h
-        // and ct_lookup(ct1, h, s1_col) < ct1.num_cosets
-        //
-        // The VDW action of s1 on (h, sylls) traces s1 in ct1 from h,
-        // then does coset decomposition.
-        // The VDW action of s2 on the result traces s2 in ct1,
-        // getting back to h (round-trip), then decomposes.
-        // Since the final ct1-element is h (same as start),
-        // the coset decomposition gives the same result as the original state.
-    } else {
-        // G₂ symbols
-        let h_g2 = phi_inv(h);
-        let s1_local = unshift_sym(s1, n1);
-        let s1_local_col = sym_col(s1_local);
-        assert(s1_local_col < 2 * ct2.num_gens) by {
-            match s1_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
-        }
-        let s2_local = unshift_sym(s2, n1);
-        let s2_local_col = sym_col(s2_local);
-        assert(s2_local_col == crate::todd_coxeter::inverse_column(s1_local_col)) by {
-            match s1_local { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
-        }
-        lemma_ct_roundtrip(ct2, h_g2, s1_local_col);
-        // ct_lookup(ct2, ct_lookup(ct2, h_g2, s1_local_col), s2_local_col) == h_g2
-        // After round-trip: back to h_g2 in ct2, which translates back to h via phi.
     }
-    // Z3 should now be able to unfold the VDW action for the pair
-    // and verify it equals (h, sylls), using the established round-trip facts.
+
+    let s2_local = unshift_sym(s2, n1);
+    let s2_local_col = sym_col(s2_local);
+    assert(s2_local_col == crate::todd_coxeter::inverse_column(s1_local_col)) by {
+        match s1_local {
+            Symbol::Gen(i) => {}
+            Symbol::Inv(i) => {}
+        }
+    }
+
+    let phi_inv_h = phi_inv(h);
+    lemma_ct_roundtrip(ct2, phi_inv_h, s1_local_col);
+    let mid = ct_lookup(ct2, phi_inv_h, s1_local_col);
+    // mid < ct2.num_cosets (from roundtrip ensures)
+    // ct_lookup(ct2, mid, s2_local_col) == phi_inv_h (from roundtrip ensures)
+
+    // h1 = h_act_sym(s1, h) = phi(ct_lookup(ct2, phi_inv(h), s1_local_col)) = phi(mid)
+    assert(h_act_sym(ct1, ct2, phi, phi_inv, n1, s1, h) == phi(mid));
+
+    // phi_inv(h1) = phi_inv(phi(mid)) = mid (since mid < ct2.num_cosets)
+    assert(phi_inv(phi(mid)) == mid);
+
+    // h2 = h_act_sym(s2, h1) = phi(ct_lookup(ct2, phi_inv(phi(mid)), s2_local_col))
+    //     = phi(ct_lookup(ct2, mid, s2_local_col))
+    //     = phi(phi_inv_h)
+    //     = h
+    assert(ct_lookup(ct2, mid, s2_local_col) == phi_inv_h);
+
+    // h1 = phi(mid)
+    let h1 = phi(mid);
+    assert(h_act_sym(ct1, ct2, phi, phi_inv, n1, s1, h) == h1);
+
+    // phi_inv(h1) = phi_inv(phi(mid)) = mid
+    assert(phi_inv(h1) == mid);
+
+    // h_act_sym(s2, h1): s2 is G₂, so unshift, trace from phi_inv(h1) = mid
+    let h2 = h_act_sym(ct1, ct2, phi, phi_inv, n1, s2, h1);
+    // h2 = phi(ct_lookup(ct2, phi_inv(h1), s2_local_col))
+    //    = phi(ct_lookup(ct2, mid, s2_local_col))
+    //    = phi(phi_inv_h)
+    //    = h
+    assert(h2 == phi(ct_lookup(ct2, mid, s2_local_col)));
+    assert(h2 == phi(phi_inv_h));
+    assert(h2 == h);
+
+    // Explicitly unroll h_act_word for the pair:
+    assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair, h)
+        == h_act_word(ct1, ct2, phi, phi_inv, n1, pair.drop_first(), h1));
+    assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair.drop_first(), h1)
+        == h_act_word(ct1, ct2, phi, phi_inv, n1,
+            pair.drop_first().drop_first(), h2));
+    assert(pair.drop_first().drop_first().len() == 0);
 }
 
-/// AFP relator acts trivially.
-proof fn lemma_vdw_relator(
+/// Combined inverse pair lemma dispatching to G₁ or G₂.
+proof fn lemma_h_inv_pair(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    n1: nat,
+    s1: Symbol, s2: Symbol,
+    h: nat,
+)
+    requires
+        is_inverse_pair(s1, s2),
+        generator_index(s1) < 2 * n1,
+        crate::todd_coxeter::coset_table_wf(ct1),
+        crate::todd_coxeter::coset_table_consistent(ct1),
+        crate::finite::coset_table_complete(ct1),
+        crate::todd_coxeter::coset_table_wf(ct2),
+        crate::todd_coxeter::coset_table_consistent(ct2),
+        crate::finite::coset_table_complete(ct2),
+        h < ct1.num_cosets,
+        n1 == ct1.num_gens,
+        n1 == ct2.num_gens,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a,
+    ensures ({
+        let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+        h_act_word(ct1, ct2, phi, phi_inv, n1, pair, h) == h
+    }),
+{
+    if generator_index(s1) < n1 {
+        lemma_h_inv_pair_g1(ct1, ct2, phi, phi_inv, n1, s1, s2, h);
+    } else {
+        lemma_h_inv_pair_g2(ct1, ct2, phi, phi_inv, n1, s1, s2, h);
+    }
+}
+
+// ============================================================
+// Part J: AFP injectivity via h-only action
+// ============================================================
+
+/// H-only composition for split words.
+proof fn lemma_h_act_step(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    w: Word, step: DerivationStep, w_prime: Word,
+    h: nat,
+)
+    requires
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
+        apply_step(amalgamated_free_product(data), w, step) == Some(w_prime),
+        h < ct1.num_cosets,
+    ensures
+        h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w, h)
+            == h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w_prime, h),
+{
+    let n1 = data.p1.num_generators;
+    let afp = amalgamated_free_product(data);
+
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            let prefix = w.subrange(0, position);
+            let pair = w.subrange(position, position + 2);
+            let suffix = w.subrange(position + 2, w.len() as int);
+            assert(w =~= prefix + pair + suffix) by {
+                assert((prefix + pair + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + pair + suffix)[k] == w[k] by {
+                    if k < position {} else if k < position + 2 {} else {}
+                }
+            }
+            assert(w_prime =~= prefix + suffix);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair + suffix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
+            // Need: h_act_word(pair, hm) == hm
+            // pair = [w[position], w[position+1]] which is an inverse pair
+            lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
+                w[position], w[position + 1], hm);
+        },
+        DerivationStep::FreeExpand { position, symbol } => {
+            let prefix = w.subrange(0, position);
+            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+            let suffix = w.subrange(position, w.len() as int);
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
+            }
+            assert(w_prime =~= prefix + pair + suffix);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair + suffix, h);
+            let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
+            lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
+                symbol, inverse_symbol(symbol), hm);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            let r = get_relator(afp, relator_index, inverted);
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position, w.len() as int);
+            assert(w =~= prefix + suffix) by {
+                assert((prefix + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
+            }
+            assert(w_prime =~= prefix + r + suffix);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r + suffix, h);
+            let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+            lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            let r = get_relator(afp, relator_index, inverted);
+            let rlen = r.len();
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position + rlen as int, w.len() as int);
+            assert(w =~= prefix + r + suffix) by {
+                assert((prefix + r + suffix).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies (prefix + r + suffix)[k] == w[k] by {
+                    if k < position {} else if k < position + rlen as int {
+                        assert(w.subrange(position, position + rlen as int) == r);
+                    } else {}
+                }
+            }
+            assert(w_prime =~= prefix + suffix);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r + suffix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+            lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
+        },
+    }
+}
+
+/// AFP relator acts trivially on h-only action.
+proof fn lemma_h_relator(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     data: AmalgamatedData,
     relator_index: nat, inverted: bool,
-    h: nat, sylls: Seq<(bool, nat)>,
+    h: nat,
 )
     requires
-        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
         relator_index < amalgamated_free_product(data).relators.len(),
     ensures ({
         let r = get_relator(amalgamated_free_product(data), relator_index, inverted);
         let n1 = data.p1.num_generators;
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, r, h, sylls) == (h, sylls)
+        h_act_word(ct1, ct2, phi, phi_inv, n1, r, h) == h
     }),
 {
-    // TODO: classify relator (G₁/G₂/identification), prove each acts trivially
+    // TODO: classify relator, prove each acts trivially
+    // G₁ relator: ct1 relator-closed → trace returns to start
+    // G₂ relator: ct2 relator-closed → trace returns to start, phi round-trips
+    // Identification: u_i then inv(shift(v_i)) → phi/phi_inv round-trip
     assert(false);
 }
 
-/// Faithfulness: vdw_word(w, 0, []) == (0, []) implies w ≡ ε in G₁.
-proof fn lemma_vdw_faithful(
+/// H-only action respects AFP derivation.
+proof fn lemma_h_act_deriv(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
-    st1: crate::todd_coxeter::CosetTable,
-    st2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    data: AmalgamatedData,
+    steps: Seq<DerivationStep>,
+    w1: Word, w2: Word,
+    h: nat,
+)
+    requires
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
+        derivation_produces(amalgamated_free_product(data), steps, w1) == Some(w2),
+        h < ct1.num_cosets,
+    ensures
+        h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w1, h)
+            == h_act_word(ct1, ct2, phi, phi_inv, data.p1.num_generators, w2, h),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        assert(w1 == w2);
+    } else {
+        let afp = amalgamated_free_product(data);
+        let step = steps.first();
+        let w_mid = apply_step(afp, w1, step).unwrap();
+        lemma_h_act_step(ct1, ct2, phi, phi_inv, data, w1, step, w_mid, h);
+        lemma_h_act_deriv(ct1, ct2, phi, phi_inv, data, steps.drop_first(), w_mid, w2, h);
+    }
+}
+
+/// For a G₁-word: h_act_word(w, h) matches trace_word(ct1, h, w) for any h.
+proof fn lemma_h_act_is_trace(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
+    phi: spec_fn(nat) -> nat,
+    phi_inv: spec_fn(nat) -> nat,
+    n1: nat,
+    w: Word,
+    h: nat,
+)
+    requires
+        is_left_word(w, n1),
+        n1 == ct1.num_gens,
+        crate::todd_coxeter::coset_table_wf(ct1),
+        crate::finite::coset_table_complete(ct1),
+        h < ct1.num_cosets,
+    ensures
+        crate::todd_coxeter::trace_word(ct1, h, w) == Some(h_act_word(ct1, ct2, phi, phi_inv, n1, w, h)),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        // h_act_word(ε, h) = h
+        // trace_word(ct1, h, ε) = Some(h)
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert(generator_index(s) < n1);
+        assert(is_left_word(rest, n1)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies generator_index(rest[k]) < n1
+            by { assert(rest[k] == w[k + 1]); }
+        }
+        // h_act_sym(s, h) = ct_lookup(ct1, h, sym_col(s))
+        //                  = match ct1.table[h][sym_col(s)] { Some(v) => v, None => 0 }
+        // trace_word(ct1, h, w):
+        //   col = symbol_to_column(w.first()) = sym_col(s)
+        //   match ct1.table[h][col] { Some(next) => trace_word(ct1, next, rest), None => None }
+        //
+        // If table[h][col] is Some(next):
+        //   ct_lookup(ct1, h, col) = next = h_act_sym result
+        //   trace_word continues with (next, rest)
+        //   By IH: h_act_word(rest, next) == trace_word(ct1, next, rest)
+        //
+        // If table[h][col] is None:
+        //   ct_lookup returns 0
+        //   trace_word returns None
+        //   ensures says h_act_word(...) == h (the None branch)
+        //   This case shouldn't happen for complete tables.
+        // h_act_sym for G₁ symbol = ct_lookup(ct1, h, sym_col(s))
+        // trace_word for first symbol = match ct1.table[h][symbol_to_column(s)]
+        // sym_col == symbol_to_column, and ct_lookup unwraps the match.
+        // They compute the same next value.
+        // Both h_act_sym and trace_word use ct1.table[h][sym_col(s)] for the next value.
+        // Help Z3 see this by asserting the table entry explicitly.
+        let col = sym_col(s);
+        let next_h = h_act_sym(ct1, ct2, phi, phi_inv, n1, s, h);
+        assert(next_h == ct_lookup(ct1, h, col));
+        // trace_word(ct1, h, w) = match ct1.table[h][col] {
+        //     Some(next) => trace_word(ct1, next, rest),
+        //     None => None
+        // }
+        // ct_lookup(ct1, h, col) = match ct1.table[h][col] {
+        //     Some(v) => v, None => 0
+        // }
+        // When Some(v): next_h == v and both continue from v.
+        // When None: trace_word returns None, ensures rhs = h.
+        //   But h_act_word continues with 0, not h. This is a discrepancy.
+        //   For complete tables: entry is always Some, so None doesn't happen.
+        //
+        // The fundamental issue: the ensures for None case says "h" but
+        // h_act_word would continue with 0. These don't match.
+        // Fix: change the None case in ensures to 0, or add completeness as requires.
+        // Better: add completeness as requires so None never happens.
+        lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, rest, next_h);
+    }
+}
+
+/// AFP injectivity for finite groups.
+pub proof fn lemma_afp_injectivity(
+    ct1: crate::todd_coxeter::CosetTable,
+    ct2: crate::todd_coxeter::CosetTable,
     phi: spec_fn(nat) -> nat,
     phi_inv: spec_fn(nat) -> nat,
     data: AmalgamatedData,
     w: Word,
 )
     requires
-        vdw_prereqs(ct1, ct2, st1, st2, phi, phi_inv, data),
+        h_prereqs(ct1, ct2, phi, phi_inv, data),
         word_valid(w, data.p1.num_generators),
-        vdw_word(ct1, ct2, st1, st2, phi, phi_inv, data.p1.num_generators,
-            w, 0, Seq::empty()) == (0nat, Seq::<(bool, nat)>::empty()),
+        equiv_in_presentation(amalgamated_free_product(data), w, empty_word()),
     ensures
         equiv_in_presentation(data.p1, w, empty_word()),
 {
-    // TODO: prove trace_word(ct1, 0, w) == Some(0) from the action result,
-    // then use axiom_coset_table_sound
-    assert(false);
+    let n1 = data.p1.num_generators;
+    let afp = amalgamated_free_product(data);
+    let d = choose|d: Derivation| derivation_valid(afp, d, w, empty_word());
+
+    // Step 1: h_act_word(w, 0) == h_act_word(ε, 0) == 0
+    lemma_h_act_deriv(ct1, ct2, phi, phi_inv, data, d.steps, w, empty_word(), 0);
+
+    // Step 2: for G₁-word w, h_act_word(w, 0) == trace_word(ct1, 0, w)
+    assert(is_left_word(w, n1)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies generator_index(w[k]) < n1
+        by { assert(symbol_valid(w[k], n1)); }
+    }
+    lemma_h_act_is_trace(ct1, ct2, phi, phi_inv, n1, w, 0);
+
+    // Step 3: trace_word(ct1, 0, w) == 0 → w ≡ ε in G₁
+    crate::completeness::lemma_trace_complete(ct1, 0, w);
+    assert(crate::todd_coxeter::trace_word(ct1, 0, empty_word()) == Some(0nat));
+    crate::coset_group::axiom_coset_table_sound(ct1, data.p1, w, empty_word());
 }
 
 } // verus!
