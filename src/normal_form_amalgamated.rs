@@ -1131,7 +1131,12 @@ proof fn lemma_h_act_step(
     let n1 = data.p1.num_generators;
     let n_total = n1 + data.p2.num_generators;
     assert(n_total == 2 * n1); // from h_prereqs: p1.num_generators == p2.num_generators
+    assert(n1 == ct1.num_gens);
+    assert(n1 == ct2.num_gens);
     let afp = amalgamated_free_product(data);
+    lemma_add_relators_num_generators(
+        free_product(data.p1, data.p2), amalgamation_relators(data));
+    assert(afp.num_generators == n_total);
 
     match step {
         DerivationStep::FreeReduce { position } => {
@@ -1146,30 +1151,44 @@ proof fn lemma_h_act_step(
                 }
             }
             assert(w_prime =~= prefix + suffix);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair + suffix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
-            // Prove prefix is word_valid for the bound lemma
+
+            // Prove prerequisites
             assert(word_valid(prefix, n_total)) by {
                 assert forall|k: int| 0 <= k < prefix.len()
                     implies symbol_valid(prefix[k], n_total)
                 by { assert(prefix[k] == w[k]); }
             }
             lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
-            // generator_index < 2*n1 for inv_pair (if n1 == data.p2.num_generators)
             assert(generator_index(w[position]) < n_total) by {
                 assert(symbol_valid(w[position], n_total));
             }
-            assert(generator_index(w[position + 1]) < n_total) by {
-                assert(symbol_valid(w[position + 1], n_total));
-            }
+
+            // pair acts trivially on hm
+            let inv_pair_seq = Seq::new(1, |_i: int| w[position])
+                + Seq::new(1, |_i: int| w[position + 1]);
             lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
                 w[position], w[position + 1], hm);
+            assert(pair =~= inv_pair_seq);
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair, hm) == hm);
+
+            // Split w = (prefix+pair) + suffix (left-associated, no associativity issue)
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix + pair, suffix, h);
+            // Split prefix+pair = prefix ++ pair
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair, h);
+            // Chain: h_act_word(prefix+pair, h) = h_act_word(pair, hm) = hm
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, prefix + pair, h) == hm);
+            // So: h_act_word(w, h) = h_act_word(suffix, hm)
+
+            // Split w_prime = prefix + suffix
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            // h_act_word(w_prime, h) = h_act_word(suffix, hm)
+            return;
         },
         DerivationStep::FreeExpand { position, symbol } => {
             let prefix = w.subrange(0, position);
-            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+            let pair = Seq::new(1, |_i: int| symbol)
+                + Seq::new(1, |_i: int| inverse_symbol(symbol));
             let suffix = w.subrange(position, w.len() as int);
             assert(w =~= prefix + suffix) by {
                 assert((prefix + suffix).len() == w.len());
@@ -1177,22 +1196,37 @@ proof fn lemma_h_act_step(
                     implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
             }
             assert(w_prime =~= prefix + pair + suffix);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair + suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, pair, suffix, hm);
+
+            // Prove prerequisites
             assert(word_valid(prefix, n_total)) by {
                 assert forall|k: int| 0 <= k < prefix.len()
                     implies symbol_valid(prefix[k], n_total)
                 by { assert(prefix[k] == w[k]); }
             }
             lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
-            // symbol_valid from apply_step: AFP uses n1+n2 generators
             lemma_add_relators_num_generators(
                 free_product(data.p1, data.p2), amalgamation_relators(data));
             assert(generator_index(symbol) < n_total);
+
+            // pair acts trivially on hm
             lemma_h_inv_pair(ct1, ct2, phi, phi_inv, n1,
                 symbol, inverse_symbol(symbol), hm);
+            // pair IS already inv_pair_seq (same construction)
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, pair, hm) == hm);
+
+            // Split w_prime = (prefix+pair) + suffix (left-associated)
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix + pair, suffix, h);
+            // Split prefix+pair = prefix ++ pair
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, pair, h);
+            // Chain: h_act_word(prefix+pair, h) = h_act_word(pair, hm) = hm
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, prefix + pair, h) == hm);
+            // So: h_act_word(w_prime, h) = h_act_word(suffix, hm)
+
+            // Split w = prefix + suffix
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            // h_act_word(w, h) = h_act_word(suffix, hm)
+            return;
         },
         DerivationStep::RelatorInsert { position, relator_index, inverted } => {
             let r = get_relator(afp, relator_index, inverted);
@@ -1204,17 +1238,28 @@ proof fn lemma_h_act_step(
                     implies (prefix + suffix)[k] == w[k] by { if k < position {} else {} }
             }
             assert(w_prime =~= prefix + r + suffix);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r + suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+
             assert(word_valid(prefix, n_total)) by {
                 assert forall|k: int| 0 <= k < prefix.len()
                     implies symbol_valid(prefix[k], n_total)
                 by { assert(prefix[k] == w[k]); }
             }
             lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
+
+            // relator acts trivially
             lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, r, hm) == hm);
+
+            // Split w_prime = (prefix+r) + suffix (left-associated)
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix + r, suffix, h);
+            // Split prefix+r
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r, h);
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, prefix + r, h) == hm);
+
+            // Split w = prefix + suffix
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            return;
         },
         DerivationStep::RelatorDelete { position, relator_index, inverted } => {
             let r = get_relator(afp, relator_index, inverted);
@@ -1231,17 +1276,28 @@ proof fn lemma_h_act_step(
                 }
             }
             assert(w_prime =~= prefix + suffix);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r + suffix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
             let hm = h_act_word(ct1, ct2, phi, phi_inv, n1, prefix, h);
-            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, r, suffix, hm);
+
             assert(word_valid(prefix, n_total)) by {
                 assert forall|k: int| 0 <= k < prefix.len()
                     implies symbol_valid(prefix[k], n_total)
                 by { assert(prefix[k] == w[k]); }
             }
             lemma_h_act_bound(ct1, ct2, phi, phi_inv, data, prefix, h);
+
+            // relator acts trivially
             lemma_h_relator(ct1, ct2, phi, phi_inv, data, relator_index, inverted, hm);
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, r, hm) == hm);
+
+            // Split w = (prefix+r) + suffix (left-associated)
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix + r, suffix, h);
+            // Split prefix+r
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, r, h);
+            assert(h_act_word(ct1, ct2, phi, phi_inv, n1, prefix + r, h) == hm);
+
+            // Split w_prime = prefix + suffix
+            lemma_h_act_concat(ct1, ct2, phi, phi_inv, n1, prefix, suffix, h);
+            return;
         },
     }
 }
