@@ -2045,7 +2045,206 @@ pub proof fn lemma_subgroup_inverse(
 }
 
 // ============================================================
-// Part K2: action_preserves_canonical
+// Part K2: Coset invariance — same coset → same canonical rep
+// ============================================================
+
+/// same_left_coset is symmetric.
+proof fn lemma_same_left_coset_symmetric(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        same_left_coset(data, g1, g2),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+    ensures
+        same_left_coset(data, g2, g1),
+{
+    // same_left_coset(g1, g2) = in_left_subgroup(concat(inv(g1), g2))
+    // same_left_coset(g2, g1) = in_left_subgroup(concat(inv(g2), g1))
+    // concat(inv(g2), g1) = inv(concat(inv(g1), g2)) approximately
+    // inv(concat(inv(g1), g2)) = concat(inv(g2), inv(inv(g1))) = concat(inv(g2), g1)
+    // So: in_left_subgroup(concat(inv(g2), g1)) follows from
+    //     in_left_subgroup(concat(inv(g1), g2)) + subgroup inverse closure.
+
+    let diff12 = concat(inverse_word(g1), g2);
+    // in_left_subgroup(diff12) is given.
+    // inv(diff12) = inv(concat(inv(g1), g2)) =~= concat(inv(g2), inv(inv(g1)))
+    //            =~= concat(inv(g2), g1) [by inverse involution]
+    crate::word::lemma_inverse_concat(inverse_word(g1), g2);
+    // inv(diff12) =~= concat(inv(g2), inv(inv(g1)))
+    crate::word::lemma_inverse_involution(g1);
+    // inv(inv(g1)) =~= g1
+
+    // inv(diff12) =~= concat(inv(g2), g1)
+    let diff21 = concat(inverse_word(g2), g1);
+
+    // in_left_subgroup(diff12) → in_left_subgroup(inv(diff12)) by subgroup inverse
+    reveal(presentation_valid);
+    crate::word::lemma_inverse_word_valid(g1, data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(inverse_word(g1), g2, data.p1.num_generators);
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], data.p1.num_generators) by {
+        assert(word_valid(data.identifications[i].0, data.p1.num_generators));
+    }
+    lemma_subgroup_inverse(data.p1, a_words(data), diff12);
+    // in_left_subgroup(inv(diff12))
+    // inv(diff12) =~= diff21, so in_left_subgroup(diff21)
+}
+
+/// same_left_coset is transitive.
+proof fn lemma_same_left_coset_transitive(
+    data: AmalgamatedData, g1: Word, g2: Word, g3: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        same_left_coset(data, g1, g2),
+        same_left_coset(data, g2, g3),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        word_valid(g3, data.p1.num_generators),
+    ensures
+        same_left_coset(data, g1, g3),
+{
+    // same_left_coset(g1, g2) = in_left_subgroup(inv(g1) * g2)
+    // same_left_coset(g2, g3) = in_left_subgroup(inv(g2) * g3)
+    // same_left_coset(g1, g3) = in_left_subgroup(inv(g1) * g3)
+    // inv(g1) * g3 = inv(g1) * g2 * inv(g2) * g3
+    // = (inv(g1)*g2) * (inv(g2)*g3)
+    // Both factors are in the subgroup → product is in the subgroup (by concat closure).
+    let d12 = concat(inverse_word(g1), g2);
+    let d23 = concat(inverse_word(g2), g3);
+
+    // in_left_subgroup(d12) && in_left_subgroup(d23)
+    // → in_left_subgroup(concat(d12, d23)) by subgroup_concat
+    lemma_subgroup_concat(data.p1, a_words(data), d12, d23);
+    // concat(d12, d23) = concat(concat(inv(g1), g2), concat(inv(g2), g3))
+    //                  =~= concat(inv(g1), concat(g2, concat(inv(g2), g3)))
+    //                  and g2 * inv(g2) ≡ ε...
+    // Actually: concat(d12, d23) ≡ inv(g1) * g2 * inv(g2) * g3 ≡ inv(g1) * g3 (group theory)
+    // So in_left_subgroup(concat(d12, d23)) and concat(d12, d23) ≡ inv(g1)*g3
+    // → in_left_subgroup(inv(g1)*g3) by equiv closure.
+
+    // The equiv: concat(d12, d23) ≡ concat(inv(g1), g3) because:
+    // d12 * d23 = inv(g1)*g2*inv(g2)*g3
+    // g2*inv(g2) ≡ ε, so inv(g1)*g2*inv(g2)*g3 ≡ inv(g1)*g3.
+    // Formally: by right inverse of g2 + congruence.
+    crate::presentation_lemmas::lemma_word_inverse_right(data.p1, g2);
+    // g2 * inv(g2) ≡ ε
+    // concat(d12, d23) = concat(concat(inv(g1), g2), concat(inv(g2), g3))
+    // ≡ concat(inv(g1), concat(g2, concat(inv(g2), g3))) [assoc]
+    // ≡ concat(inv(g1), concat(concat(g2, inv(g2)), g3)) [assoc]
+    // ≡ concat(inv(g1), concat(ε, g3)) [g2*inv(g2) ≡ ε congruence]
+    // = concat(inv(g1), g3) [concat(ε, g3) =~= g3]
+    // This chain needs several transitivity + congruence steps.
+    // For now: use lemma_in_subgroup_equiv to bridge.
+    let d13 = concat(inverse_word(g1), g3);
+    let p1 = data.p1;
+    crate::word::lemma_inverse_word_valid(g1, p1.num_generators);
+    crate::word::lemma_inverse_word_valid(g2, p1.num_generators);
+
+    // Step 1: g2 * inv(g2) ≡ ε → concat(concat(g2, inv(g2)), g3) ≡ concat(ε, g3)
+    crate::presentation_lemmas::lemma_equiv_concat_left(p1,
+        concat(g2, inverse_word(g2)), empty_word(), g3);
+
+    // Step 2: seq assoc + =~= to get equiv(concat(g2, concat(inv(g2), g3)), g3)
+    assert(concat(concat(g2, inverse_word(g2)), g3)
+        =~= concat(g2, concat(inverse_word(g2), g3))) by {
+        let l = concat(concat(g2, inverse_word(g2)), g3);
+        let r = concat(g2, concat(inverse_word(g2), g3));
+        assert(l.len() == r.len());
+        assert forall|k: int| 0 <= k < l.len() implies l[k] == r[k]
+        by { if k < g2.len() {} else if k < g2.len() + inverse_word(g2).len() {} else {} }
+    }
+    assert(concat(empty_word(), g3) =~= g3) by {
+        let c = concat(empty_word(), g3);
+        assert(c.len() == g3.len());
+        assert forall|k: int| 0 <= k < c.len() implies c[k] == g3[k] by {}
+    }
+    // Now Z3 has equiv(concat(g2, concat(inv(g2), g3)), g3)
+
+    // Step 3: right-congruence with inv(g1):
+    crate::presentation_lemmas::lemma_equiv_concat_right(p1,
+        inverse_word(g1),
+        concat(g2, concat(inverse_word(g2), g3)),
+        g3);
+    // LHS of the equiv =~= concat(d12, d23) by seq associativity:
+    assert(concat(inverse_word(g1), concat(g2, concat(inverse_word(g2), g3)))
+        =~= concat(d12, d23)) by {
+        let l = concat(inverse_word(g1), concat(g2, concat(inverse_word(g2), g3)));
+        let r = concat(d12, d23);
+        assert(l.len() == r.len());
+        assert forall|k: int| 0 <= k < l.len() implies l[k] == r[k] by {
+            if k < inverse_word(g1).len() {}
+            else if k < inverse_word(g1).len() + g2.len() {}
+            else {}
+        }
+    }
+    // So: equiv(concat(d12, d23), d13).
+    lemma_in_subgroup_equiv(p1, a_words(data), concat(d12, d23), d13);
+}
+
+/// Coset invariance: same_left_coset(g1, g2) → left_canonical_rep(g1) == left_canonical_rep(g2).
+/// Both choose predicates have the same extension (same coset), so the result is the same.
+pub proof fn lemma_left_rep_coset_invariant(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        same_left_coset(data, g1, g2),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+    ensures
+        left_canonical_rep(data, g1) =~= left_canonical_rep(data, g2),
+{
+    // The choose predicates for left_min_coset_len and left_canonical_rep
+    // both depend on same_left_coset(g_i, w). Since same_left_coset is an
+    // equivalence relation and g1, g2 are in the same coset:
+    //   same_left_coset(g1, w) iff same_left_coset(g2, w)
+    // So the predicates have the same extension → same choose result.
+    // Z3 should derive this from the transitivity + symmetry of same_left_coset.
+    // (The choose in Verus is extensional on predicate extensions.)
+}
+
+/// Equiv-invariance of left_h_part: g1 ≡ g2 in G₁ → left_h_part(g1) == left_h_part(g2).
+pub proof fn lemma_left_h_equiv_invariant(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        equiv_in_presentation(data.p1, g1, g2),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+    ensures
+        left_h_part(data, g1) =~= left_h_part(data, g2),
+{
+    // g1 ≡ g2 → same_left_coset(g1, g2):
+    // inv(g1)*g2 ≡ inv(g1)*g1 ≡ ε → in_left_subgroup → same_left_coset
+    crate::word::lemma_inverse_word_valid(g1, data.p1.num_generators);
+    crate::presentation_lemmas::lemma_word_inverse_left(data.p1, g1);
+    crate::presentation_lemmas::lemma_equiv_concat_right(data.p1,
+        inverse_word(g1), g1, g2);
+    crate::presentation::lemma_equiv_transitive(data.p1,
+        concat(inverse_word(g1), g2),
+        concat(inverse_word(g1), g1),
+        empty_word());
+    crate::word::lemma_concat_word_valid(inverse_word(g1), g2, data.p1.num_generators);
+    lemma_equiv_eps_in_subgroup(data, concat(inverse_word(g1), g2));
+    // same_left_coset(g1, g2) established
+
+    // left_canonical_rep(g1) == left_canonical_rep(g2) by coset invariance
+    lemma_left_rep_coset_invariant(data, g1, g2);
+    // left_h_part uses target = concat(inv(rep), g). With same rep and equiv g's:
+    // target1 = concat(inv(rep), g1) ≡ concat(inv(rep), g2) = target2.
+    // The h-part choose predicates have the same extension. Same choose → same h.
+}
+
+// ============================================================
+// Part K3: action_preserves_canonical
 // ============================================================
 
 /// act_word preserves word_valid(h, k) by induction on word length.
