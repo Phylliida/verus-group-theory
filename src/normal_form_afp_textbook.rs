@@ -941,6 +941,12 @@ proof fn lemma_left_h_equiv_eps(data: AmalgamatedData, g: Word)
     }
     reveal(presentation_valid);
     crate::presentation::lemma_equiv_symmetric(data.p1, g, e);
+
+    // Establish h-lex satisfiability: ε has lex rank 0
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_left_h_witness_of_len_rank(data, target, 0nat, 0nat));
+    assert(no_smaller_h_lex(data, target, 0nat, 0nat));
+    assert(is_min_h_lex(data, target, 0nat, 0nat));
 }
 
 /// If g ≡ ε in G₁, then g1_decompose_state gives the identity state.
@@ -1081,16 +1087,12 @@ pub proof fn lemma_g1_decompose_converse(
     let pred_h = |l: nat| has_left_h_witness_of_len(data, target, l);
     assert(pred_h(h_witness.len() as nat));
     lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
-    // Now left_h_min_len's choose is satisfiable.
-    // left_h_min_len(g) satisfies: has_left_h_witness_of_len(target, l) && no_pred_below
-    // In particular: has_left_h_witness_of_len(target, left_h_min_len(g))
-    // = exists|h| word_valid(h, k) && h.len() == left_h_min_len(g) && equiv(embed_a(h), target)
 
-    // This existential is the left_h_part choose predicate → satisfiable.
-    // left_h_part(g) satisfies: equiv(embed_a(left_h_part(g)), target)
-    // With left_h_part(g) = ε: equiv(embed_a(ε), target) = equiv(ε, target) = equiv(ε, g)
+    // Establish h-lex satisfiability for the three-step choose
+    lemma_left_h_min_lex_satisfiable(data, g, h_witness);
 
-    // Now derive equiv(g, ε) by symmetry
+    // Three-step choose satisfiable → left_h_part(g) satisfies its predicate.
+    // left_h_part(g) = ε → equiv(embed_a(ε), target) = equiv(ε, g)
     assert(word_valid(empty_word(), data.p1.num_generators)) by {
         assert(empty_word().len() == 0);
     }
@@ -1235,8 +1237,6 @@ pub proof fn lemma_left_h_identity(data: AmalgamatedData)
     let l = left_h_min_len(data, e);
     assert(l == 0);
 
-    // left_h_part(ε) = choose|h| word_valid(h, k) && h.len() == 0 && equiv(embed_a(h), target)
-    // target = concat(inv(rep), ε) with rep = ε, so target =~= ε
     let rep = left_canonical_rep(data, e);
     let target = concat(inverse_word(rep), e);
 
@@ -1246,6 +1246,13 @@ pub proof fn lemma_left_h_identity(data: AmalgamatedData)
     assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
     assert(target =~= e) by { assert(concat(e, e).len() == 0); }
     crate::presentation::lemma_equiv_refl(p1, e);
+
+    // Establish h-lex satisfiability: ε has lex rank 0
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_left_h_witness_of_len_rank(data, target, 0nat, 0nat));
+    assert(no_smaller_h_lex(data, target, 0nat, 0nat));
+    assert(is_min_h_lex(data, target, 0nat, 0nat));
+    // left_h_min_lex's choose is satisfiable → three-step choose satisfiable
 
     // The choose is satisfiable → result h satisfies: h.len() == 0
     let h = left_h_part(data, e);
@@ -1508,6 +1515,65 @@ proof fn lemma_action_preserves_canonical(
 // Part I2: Choose property extraction
 // ============================================================
 
+/// Scan from current to bound to find minimum h-witness lex rank at length l.
+proof fn lemma_scan_min_h_lex(
+    data: AmalgamatedData, target: Word, l: nat, current: nat, bound: nat,
+)
+    requires
+        has_left_h_witness_of_len_rank(data, target, l, bound),
+        current <= bound,
+        no_smaller_h_lex(data, target, l, current),
+    ensures
+        exists|r: nat| current <= r && r <= bound
+            && #[trigger] is_min_h_lex(data, target, l, r),
+    decreases bound - current,
+{
+    if has_left_h_witness_of_len_rank(data, target, l, current) {
+        assert(is_min_h_lex(data, target, l, current));
+    } else {
+        lemma_scan_min_h_lex(data, target, l, current + 1, bound);
+    }
+}
+
+/// Establish h-lex satisfiability from a K-word witness.
+/// After calling, left_h_min_lex's choose is satisfiable,
+/// and the three-step left_h_part choose is satisfiable.
+proof fn lemma_left_h_min_lex_satisfiable(
+    data: AmalgamatedData, g: Word, h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(inverse_word(left_canonical_rep(data, g)), g)),
+    ensures ({
+        let rep = left_canonical_rep(data, g);
+        let target = concat(inverse_word(rep), g);
+        let l = left_h_min_len(data, g);
+        is_min_h_lex(data, target, l, left_h_min_lex(data, g))
+    }),
+{
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+
+    // Establish left_h_min_len satisfiability
+    assert(has_left_h_witness_of_len(data, target, h_witness.len() as nat));
+    let pred_h = |l: nat| has_left_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+
+    let l = left_h_min_len(data, g);
+    // l satisfies: has_left_h_witness_of_len(target, l) → extract witness at length l
+    let w: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), w), target);
+    let wr = word_lex_rank_base(w, h_lex_base(data));
+    assert(has_left_h_witness_of_len_rank(data, target, l, wr));
+    assert(no_smaller_h_lex(data, target, l, 0nat));
+    lemma_scan_min_h_lex(data, target, l, 0, wr);
+}
+
 /// Extract the key property of left_h_part: embed_a(h) ≡ concat(inv(rep), g) in G₁.
 /// Requires a witness K-word to prove the choose is satisfiable.
 proof fn lemma_left_h_part_props(
@@ -1543,9 +1609,11 @@ proof fn lemma_left_h_part_props(
     assert(pred_h(h_witness.len() as nat));
     lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
 
-    // left_h_min_len satisfies its predicate → has_left_h_witness_of_len(target, min_len)
-    // This existential provides a witness for left_h_part's choose.
-    // So left_h_part's choose is satisfiable → result has the properties.
+    // Establish h-lex satisfiability for the three-step choose
+    lemma_left_h_min_lex_satisfiable(data, g, h_witness);
+
+    // left_h_min_len + left_h_min_lex satisfiable → left_h_part's choose is satisfiable
+    // → result has the properties.
 }
 
 // ============================================================
