@@ -236,12 +236,57 @@ pub open spec fn left_h_min_len(data: AmalgamatedData, g: Word) -> nat {
         && no_pred_below(|l2: nat| has_left_h_witness_of_len(data, target, l2), l)
 }
 
-/// The subgroup part: min-length K-word h such that embed_a(h) ≡ inv(rep) * g.
+/// The lex base for K-words: 2*k + 1 ensures injectivity.
+pub open spec fn h_lex_base(data: AmalgamatedData) -> nat {
+    2 * k_size(data) + 1
+}
+
+/// Does a K-word of length l and lex rank r exist that embeds to the target?
+pub open spec fn has_left_h_witness_of_len_rank(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool {
+    exists|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
+        && equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h), target)
+}
+
+/// No h-witness exists at length l with lex rank below r (named recursive).
+pub open spec fn no_smaller_h_lex(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool
+    decreases r,
+{
+    if r == 0 { true }
+    else { !has_left_h_witness_of_len_rank(data, target, l, (r - 1) as nat)
+           && no_smaller_h_lex(data, target, l, (r - 1) as nat) }
+}
+
+/// r is the minimum h-witness lex rank at length l.
+pub open spec fn is_min_h_lex(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool {
+    has_left_h_witness_of_len_rank(data, target, l, r)
+    && no_smaller_h_lex(data, target, l, r)
+}
+
+/// Minimum lex rank among K-words of minimum length.
+pub open spec fn left_h_min_lex(data: AmalgamatedData, g: Word) -> nat {
+    let rep = left_canonical_rep(data, g);
+    let target = concat(inverse_word(rep), g);
+    let l = left_h_min_len(data, g);
+    choose|r: nat| #[trigger] is_min_h_lex(data, target, l, r)
+}
+
+/// The subgroup part: canonical (min-length, min-lex) K-word h such that embed_a(h) ≡ inv(rep) * g.
+/// Three-step choose enables h-part invariance under G₁-equivalence.
 pub open spec fn left_h_part(data: AmalgamatedData, g: Word) -> Word {
     let rep = left_canonical_rep(data, g);
     let target = concat(inverse_word(rep), g);
     let l = left_h_min_len(data, g);
+    let r = left_h_min_lex(data, g);
     choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
         && equiv_in_presentation(data.p1,
             apply_embedding(a_words(data), h), target)
 }
