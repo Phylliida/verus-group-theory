@@ -204,9 +204,13 @@ pub proof fn lemma_tower_afp_data_valid(data: HNNData, k: nat)
             match a_i[j] {
                 Symbol::Gen(idx) => {
                     assert(u_i[j] == Symbol::Gen((idx + k * ng) as nat));
+                    assert(idx + k * ng < (k + 1) * ng) by (nonlinear_arith)
+                        requires idx < ng;
                 }
                 Symbol::Inv(idx) => {
                     assert(u_i[j] == Symbol::Inv((idx + k * ng) as nat));
+                    assert(idx + k * ng < (k + 1) * ng) by (nonlinear_arith)
+                        requires idx < ng;
                 }
             }
         }
