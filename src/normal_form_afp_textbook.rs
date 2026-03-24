@@ -2224,9 +2224,48 @@ proof fn lemma_same_left_coset_transitive(
     lemma_in_subgroup_equiv(p1, a_words(data), concat(d12, d23), d13);
 }
 
+/// If no_pred_below(pred, m) and pred(k), then k >= m.
+/// Contrapositive: if k < m, then !pred(k) (from no_pred_below).
+proof fn lemma_no_pred_below_implies_ge(pred: spec_fn(nat) -> bool, m: nat, k: nat)
+    requires
+        no_pred_below(pred, m),
+        pred(k),
+    ensures
+        k >= m,
+    decreases m,
+{
+    if m == 0 {
+    } else {
+        if k == (m - 1) as nat {
+            // no_pred_below(pred, m) = !pred(m-1) && ... But pred(k) = pred(m-1). Contradiction.
+        } else if k < (m - 1) as nat {
+            // no_pred_below(pred, m) = !pred(m-1) && no_pred_below(pred, m-1)
+            lemma_no_pred_below_implies_ge(pred, (m - 1) as nat, k);
+        }
+    }
+}
+
+/// Helper: if same_left_coset(g1, g2), then has_left_coset_word_of_len(g1, l) iff has_...(g2, l).
+/// Specifically: has_left_coset_word_of_len(g2, l) → has_left_coset_word_of_len(g1, l).
+proof fn lemma_coset_word_transfer(
+    data: AmalgamatedData, g1: Word, g2: Word, l: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        same_left_coset(data, g1, g2),
+        presentation_valid(data.p1),
+        word_valid(g1, data.p1.num_generators),
+        word_valid(g2, data.p1.num_generators),
+        has_left_coset_word_of_len(data, g2, l),
+    ensures
+        has_left_coset_word_of_len(data, g1, l),
+{
+    let w: Word = choose|w: Word| word_valid(w, data.p1.num_generators)
+        && same_left_coset(data, g2, w) && w.len() == l;
+    lemma_same_left_coset_transitive(data, g1, g2, w);
+}
+
 /// Min-length coset invariance: same coset → same min length.
-/// Uses no_pred_below uniqueness: l1 is the min for pred1, l2 is the min for pred2.
-/// Same coset → pred1 and pred2 have the same extension → l1 == l2.
 proof fn lemma_left_min_len_coset_invariant(
     data: AmalgamatedData, g1: Word, g2: Word,
 )
@@ -2239,55 +2278,27 @@ proof fn lemma_left_min_len_coset_invariant(
     ensures
         left_min_coset_len(data, g1) == left_min_coset_len(data, g2),
 {
-    // l1 satisfies: has_left_coset_word_of_len(g1, l1) && no_pred_below(pred1, l1)
-    // l2 satisfies: has_left_coset_word_of_len(g2, l2) && no_pred_below(pred2, l2)
-
-    // Need satisfiability for both (so choose results satisfy predicates):
-    lemma_same_left_coset_reflexive(data, g1);
-    assert(has_left_coset_word_of_len(data, g1, g1.len() as nat));
-    let pred1 = |l: nat| has_left_coset_word_of_len(data, g1, l);
-    lemma_nat_well_ordering(pred1, g1.len() as nat);
-
-    lemma_same_left_coset_reflexive(data, g2);
-    assert(has_left_coset_word_of_len(data, g2, g2.len() as nat));
-    let pred2 = |l: nat| has_left_coset_word_of_len(data, g2, l);
-    lemma_nat_well_ordering(pred2, g2.len() as nat);
-
     let l1 = left_min_coset_len(data, g1);
     let l2 = left_min_coset_len(data, g2);
 
-    // l1 ≤ l2: pred1(l2) holds (same coset extension), so l1 ≤ l2 by no_pred_below(pred1, l1).
-    // Show: has_left_coset_word_of_len(g1, l2) from has_left_coset_word_of_len(g2, l2).
-    // Any word w in g2's coset is also in g1's coset (by transitivity).
-    // So: pred1(l2) holds. If l2 < l1: contradicts no_pred_below(pred1, l1). So l1 ≤ l2.
+    // Satisfiability: both chooses are satisfiable
+    lemma_left_min_coset_len_satisfiable(data, g1);
+    lemma_left_min_coset_len_satisfiable(data, g2);
 
-    // Symmetrically: l2 ≤ l1. So l1 == l2.
-
-    // For l1 > l2: no_pred_below(pred1, l1) means !pred1(l2). But pred2(l2) holds,
-    // and same coset → pred1(l2) iff pred2(l2). So pred1(l2) holds. Contradiction with l2 < l1.
-
-    // l1 ≤ l2:
-    // Show: has_left_coset_word_of_len(g1, l2) — any coset member of g2 is also of g1
-    // From has_left_coset_word_of_len(g2, l2): exists w with same_left_coset(g2, w).
-    // By same_left_coset symmetry on (g1, g2) + transitivity: same_left_coset(g1, w).
+    // Transfer: coset word at l2 for g2 → also for g1 (and vice versa)
+    lemma_coset_word_transfer(data, g1, g2, l2);
+    // has_left_coset_word_of_len(g1, l2) — so pred1(l2) holds
     lemma_same_left_coset_symmetric(data, g1, g2);
-    // Now: same_left_coset(g2, g1)
-    // For the specific witness w: same_left_coset(g2, w) + same_left_coset(g2, g1)
-    // By symmetry of (g2, g1): same_left_coset(g1, g2).
-    // By transitivity(g1, g2, w): same_left_coset(g1, w).
-    // But we can't directly invoke transitivity on the existentially-bound w.
-    // Instead: assert the property holds.
-    assert(has_left_coset_word_of_len(data, g1, l2));
-    // Z3 should derive: from has_left_coset_word_of_len(g2, l2) = exists|w| ...,
-    // pick that w, apply transitivity to get same_left_coset(g1, w), hence the existential.
+    lemma_coset_word_transfer(data, g2, g1, l1);
+    // has_left_coset_word_of_len(g2, l1) — so pred2(l1) holds
 
-    // Similarly: has_left_coset_word_of_len(g2, l1)
-    assert(has_left_coset_word_of_len(data, g2, l1));
-
-    // Now: pred1(l2) holds and pred2(l1) holds.
-    // If l1 > l2: no_pred_below(pred1, l1) + pred1(l2) with l2 < l1 → contradiction.
-    // If l2 > l1: no_pred_below(pred2, l2) + pred2(l1) with l1 < l2 → contradiction.
-    // So l1 == l2.
+    // l1 is min for pred1: no_pred_below(pred1, l1). pred1(l2) holds → l2 >= l1.
+    let pred1 = |l: nat| has_left_coset_word_of_len(data, g1, l);
+    lemma_no_pred_below_implies_ge(pred1, l1, l2);
+    // l2 is min for pred2: no_pred_below(pred2, l2). pred2(l1) holds → l1 >= l2.
+    let pred2 = |l: nat| has_left_coset_word_of_len(data, g2, l);
+    lemma_no_pred_below_implies_ge(pred2, l2, l1);
+    // l1 >= l2 && l2 >= l1 → l1 == l2
 }
 
 /// Coset invariance: same_left_coset(g1, g2) → left_canonical_rep(g1) =~= left_canonical_rep(g2).
