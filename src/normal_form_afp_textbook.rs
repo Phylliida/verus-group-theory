@@ -4357,9 +4357,6 @@ proof fn lemma_inv_step_rep_nonzero(
         // And concat(product·inv(rep'), rep') ≡ product → product ∈ A
         lemma_subgroup_concat(p1, a_words(data),
             concat(product, inverse_word(rep_prime)), rep_prime);
-        crate::presentation_lemmas::lemma_word_inverse_right(p1, rep_prime);
-        crate::presentation_lemmas::lemma_equiv_concat_left(
-            p1, concat(inverse_word(rep_prime), rep_prime), empty_word(), empty_word());
 
         // concat(concat(product, inv(rep')), rep') ≡ product (assoc + inv cancellation)
         assert(concat(concat(product, inverse_word(rep_prime)), rep_prime) =~=
@@ -4492,13 +4489,13 @@ proof fn lemma_inverse_pair_g1_subcase_b(
     let full_product2 = concat(product_inv, rep_prime);
     assert(full_product2 == concat(concat(inv_s_word, embed_h_prime), rep_prime));
 
+    // Prove rep_inv ≠ ε (product_inv not in subgroup)
+    lemma_inv_step_rep_nonzero(data, s, h);
+
     // Use the merge helper to establish act_left_sym result
     assert(generator_index(inv_s) == generator_index(s)) by {
         match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
     }
-    // The inverse step: act_left_sym(inv_s, h_prime, new_syls)
-    // rep_inv ≠ ε (we need this), first syl left, merged_rep = ε → merge absorbed
-    // Use lemma_act_left_sym_merge_absorbed to get explicit result
     lemma_act_left_sym_merge_absorbed(data, inv_s, h_prime, new_syls);
     // act_left_sym(inv_s, h', new_syls) = (a_rcoset_h(full_product2), new_syls.drop_first()) = (h, syls)
 }
