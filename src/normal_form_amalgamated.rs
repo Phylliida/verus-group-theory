@@ -6,6 +6,7 @@ use crate::presentation_lemmas::*;
 use crate::free_product::*;
 use crate::amalgamated_free_product::*;
 use crate::quotient::*;
+use crate::reduction::*;
 use crate::normal_form_free_product::*;
 use crate::benign::*;
 
@@ -1085,8 +1086,8 @@ proof fn lemma_two_step_excursion(
                     assert forall|k: int| 0 <= k < w_mid.len()
                         implies generator_index(w_mid[k]) < n1
                     by {
-                        let pair = Seq::new(1, |_| s1)
-                            + Seq::new(1, |_| inverse_symbol(s1));
+                        let pair = Seq::new(1, |_i: int| s1)
+                            + Seq::new(1, |_i: int| inverse_symbol(s1));
                         assert(w_mid =~= w1.subrange(0, p1) + pair
                             + w1.subrange(p1, w1.len() as int));
                         if k < p1 { assert(w_mid[k] == w1[k]); }
@@ -1178,8 +1179,8 @@ proof fn lemma_two_step_excursion(
                     assert(p2 == p1);
                     assert(w2 =~= w1) by {
                         assert(w2 =~= reduce_at(w_mid, p1));
-                        let pair = Seq::new(1, |_| s1)
-                            + Seq::new(1, |_| inverse_symbol(s1));
+                        let pair = Seq::new(1, |_i: int| s1)
+                            + Seq::new(1, |_i: int| inverse_symbol(s1));
                         assert(w_mid =~= w1.subrange(0, p1) + pair
                             + w1.subrange(p1, w1.len() as int));
                     }
