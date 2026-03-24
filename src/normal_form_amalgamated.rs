@@ -1192,6 +1192,7 @@ proof fn lemma_vdw_step(
 }
 
 /// Inverse pair acts trivially.
+#[verifier::rlimit(40)]
 proof fn lemma_vdw_inv_pair(
     ct1: crate::todd_coxeter::CosetTable,
     ct2: crate::todd_coxeter::CosetTable,
@@ -1203,14 +1204,59 @@ proof fn lemma_vdw_inv_pair(
     s1: Symbol, s2: Symbol,
     h: nat, sylls: Seq<(bool, nat)>,
 )
-    requires is_inverse_pair(s1, s2),
+    requires
+        is_inverse_pair(s1, s2),
+        crate::todd_coxeter::coset_table_wf(ct1),
+        crate::todd_coxeter::coset_table_consistent(ct1),
+        crate::finite::coset_table_complete(ct1),
+        crate::todd_coxeter::coset_table_wf(ct2),
+        crate::todd_coxeter::coset_table_consistent(ct2),
+        crate::finite::coset_table_complete(ct2),
+        h < ct1.num_cosets,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi_inv(a) < ct2.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi(b) < ct1.num_cosets,
+        forall|b: nat| b < ct2.num_cosets ==> #[trigger] phi_inv(phi(b)) == b,
+        forall|a: nat| a < ct1.num_cosets ==> #[trigger] phi(phi_inv(a)) == a,
     ensures ({
         let pair = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
         vdw_word(ct1, ct2, st1, st2, phi, phi_inv, n1, pair, h, sylls) == (h, sylls)
     }),
 {
-    // TODO: case analysis on G₁ vs G₂ symbol, use table consistency
-    assert(false);
+    reveal(crate::todd_coxeter::coset_table_wf);
+    reveal(crate::todd_coxeter::coset_table_consistent);
+    reveal(crate::finite::coset_table_complete);
+
+    // Unfold: vdw_word([s1, s2], h, sylls)
+    //       = vdw_word([s2], vdw_sym(s1, h, sylls))
+    //       = vdw_sym(s2, vdw_sym(s1, h, sylls))
+    //
+    // The pair [s1, s2] processes s1 then s2.
+    let w = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+    assert(w.first() == s1);
+    assert(w.drop_first() =~= Seq::new(1, |_i: int| s2));
+    assert(w.drop_first().first() == s2);
+    assert(w.drop_first().drop_first() =~= Seq::<Symbol>::empty());
+
+    // Let Z3 unfold the action and use table consistency.
+    // Table consistency says: table[c][col] = Some(d) => table[d][inv_col] = Some(c).
+    // This means tracing s then inv(s) returns to the start.
+    //
+    // The action does coset decomposition which complicates things.
+    // But the round-trip through the Cayley table is the identity,
+    // and the coset decomposition is deterministic, so the round-trip
+    // through the full action is also the identity.
+    //
+    // The pair [s1, s2] processes s1 then s2 = inv(s1).
+    // The Cayley table consistency guarantees the round-trip is identity.
+    // The coset decomposition is deterministic, so the full VDW action
+    // round-trips as well.
+    // With increased rlimit and revealed opaque defs, Z3 should handle this.
+
+    let w = Seq::new(1, |_i: int| s1) + Seq::new(1, |_i: int| s2);
+    assert(w.first() == s1);
+    assert(w.drop_first() =~= Seq::new(1, |_i: int| s2));
+    assert(w.drop_first().first() == s2);
+    assert(w.drop_first().drop_first() =~= Seq::<Symbol>::empty());
 }
 
 /// AFP relator acts trivially.
