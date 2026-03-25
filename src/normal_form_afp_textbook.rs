@@ -5269,6 +5269,46 @@ proof fn lemma_a_rcoset_h_from_equiv(
     lemma_left_h_part_equiv_invariant(data, concat(g, inverse_word(c)), embed_h, hw1, hw2);
 }
 
+/// Right cancellation: concat(concat(a, b), inv(b)) ≡ a.
+proof fn lemma_right_cancel(p: Presentation, a: Word, b: Word)
+    requires
+        presentation_valid(p),
+        word_valid(a, p.num_generators),
+        word_valid(b, p.num_generators),
+    ensures
+        equiv_in_presentation(p, concat(concat(a, b), inverse_word(b)), a),
+{
+    crate::word::lemma_inverse_word_valid(b, p.num_generators);
+    crate::presentation_lemmas::lemma_word_inverse_right(p, b);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p, a,
+        concat(b, inverse_word(b)), empty_word());
+    assert(concat(a, empty_word()) =~= a) by {
+        assert(concat(a, empty_word()).len() == a.len());
+        assert forall|k: int| 0 <= k < a.len()
+            implies concat(a, empty_word())[k] == a[k] by {}
+    }
+    // assoc: concat(concat(a, b), inv(b)) =~= concat(a, concat(b, inv(b)))
+    assert(concat(concat(a, b), inverse_word(b)) =~=
+           concat(a, concat(b, inverse_word(b)))) by {
+        let lhs = concat(concat(a, b), inverse_word(b));
+        let rhs = concat(a, concat(b, inverse_word(b)));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < a.len() as int {} else {
+                let j = k - a.len() as int;
+                if j < b.len() as int {} else {}
+            }
+        }
+    }
+    crate::word::lemma_concat_word_valid(a, b, p.num_generators);
+    crate::word::lemma_concat_word_valid(concat(a, b), inverse_word(b), p.num_generators);
+    crate::presentation::lemma_equiv_refl(p, concat(concat(a, b), inverse_word(b)));
+    crate::presentation::lemma_equiv_transitive(p,
+        concat(a, concat(b, inverse_word(b))),
+        concat(a, empty_word()),
+        a);
+}
+
 /// Idempotency: a_rcoset_rep(a_rcoset_rep(g)) =~= a_rcoset_rep(g).
 proof fn lemma_a_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
     requires
@@ -5470,6 +5510,8 @@ proof fn lemma_c2_rep_zero_branch(
         concat(product_inv, concat(merged_rep, inverse_word(merged_rep))),
         concat(product_inv, empty_word()),
         product_inv);
+    crate::presentation::lemma_equiv_symmetric(p1,
+        concat(full_inv, inverse_word(merged_rep)), product_inv);
     lemma_in_subgroup_equiv(p1, a_words(data), product_inv,
         concat(full_inv, inverse_word(merged_rep)));
 
@@ -5497,11 +5539,14 @@ proof fn lemma_c2_rep_zero_branch(
             }
         }
     }
-    crate::presentation::lemma_equiv_refl(p1, concat(concat(embed_h, c1), inverse_word(c1)));
+    crate::word::lemma_concat_word_valid(embed_h, concat(c1, inverse_word(c1)), n1);
+    crate::presentation::lemma_equiv_refl(p1, concat(embed_h, concat(c1, inverse_word(c1))));
     crate::presentation::lemma_equiv_transitive(p1,
         concat(embed_h, concat(c1, inverse_word(c1))),
         concat(embed_h, empty_word()),
         embed_h);
+    crate::presentation::lemma_equiv_symmetric(p1,
+        concat(concat(embed_h, c1), inverse_word(c1)), embed_h);
     lemma_in_subgroup_equiv(p1, a_words(data), embed_h,
         concat(concat(embed_h, c1), inverse_word(c1)));
 
