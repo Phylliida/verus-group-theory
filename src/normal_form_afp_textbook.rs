@@ -463,6 +463,107 @@ pub open spec fn a_rcoset_h(data: AmalgamatedData, g: Word) -> Word {
 }
 
 // ============================================================
+// Part B1d: RIGHT cosets of B in G₂ (textbook convention, mirrors A-cosets)
+// ============================================================
+
+/// Two G₂-words in same RIGHT B-coset: w₁·w₂⁻¹ ∈ B.
+pub open spec fn same_b_rcoset(data: AmalgamatedData, w1: Word, w2: Word) -> bool {
+    in_right_subgroup(data, concat(w1, inverse_word(w2)))
+}
+
+pub open spec fn has_b_rcoset_word_of_len(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p2.num_generators)
+        && same_b_rcoset(data, g, w) && w.len() == l
+}
+
+pub open spec fn no_shorter_b_rcoset_word(
+    data: AmalgamatedData, g: Word, l: nat,
+) -> bool
+    decreases l,
+{
+    if l == 0 { true }
+    else { !has_b_rcoset_word_of_len(data, g, (l - 1) as nat)
+           && no_shorter_b_rcoset_word(data, g, (l - 1) as nat) }
+}
+
+pub open spec fn is_min_b_rcoset_len(data: AmalgamatedData, g: Word, l: nat) -> bool {
+    has_b_rcoset_word_of_len(data, g, l) && no_shorter_b_rcoset_word(data, g, l)
+}
+
+pub open spec fn b_rcoset_min_len(data: AmalgamatedData, g: Word) -> nat {
+    choose|l: nat| #[trigger] is_min_b_rcoset_len(data, g, l)
+}
+
+pub open spec fn has_b_rcoset_word_of_len_rank(
+    data: AmalgamatedData, g: Word, l: nat, r: nat,
+) -> bool {
+    exists|w: Word| word_valid(w, data.p2.num_generators)
+        && same_b_rcoset(data, g, w) && w.len() == l
+        && word_lex_rank_base(w, 2 * data.p2.num_generators + 1) == r
+}
+
+pub open spec fn no_smaller_b_rcoset_lex(
+    data: AmalgamatedData, g: Word, l: nat, r: nat,
+) -> bool
+    decreases r,
+{
+    if r == 0 { true }
+    else { !has_b_rcoset_word_of_len_rank(data, g, l, (r - 1) as nat)
+           && no_smaller_b_rcoset_lex(data, g, l, (r - 1) as nat) }
+}
+
+pub open spec fn is_min_b_rcoset_lex(data: AmalgamatedData, g: Word, l: nat, r: nat) -> bool {
+    has_b_rcoset_word_of_len_rank(data, g, l, r)
+    && no_smaller_b_rcoset_lex(data, g, l, r)
+}
+
+pub open spec fn b_rcoset_min_lex(data: AmalgamatedData, g: Word) -> nat {
+    let l = b_rcoset_min_len(data, g);
+    choose|r: nat| #[trigger] is_min_b_rcoset_lex(data, g, l, r)
+}
+
+/// Canonical right B-coset representative (textbook: c in g = h·c for G₂).
+pub open spec fn b_rcoset_rep(data: AmalgamatedData, g: Word) -> Word {
+    let l = b_rcoset_min_len(data, g);
+    let r = b_rcoset_min_lex(data, g);
+    choose|rep: Word|
+        word_valid(rep, data.p2.num_generators)
+        && same_b_rcoset(data, g, rep)
+        && rep.len() == l
+        && word_lex_rank_base(rep, 2 * data.p2.num_generators + 1) == r
+}
+
+/// Right B-coset h-part: target = g · inv(rep).
+/// Uses shared h-witness infrastructure (has_right_h_witness_of_len).
+pub open spec fn b_rcoset_h_min_len(data: AmalgamatedData, g: Word) -> nat {
+    let rep = b_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    choose|l: nat| #[trigger] has_right_h_witness_of_len(data, target, l)
+        && no_pred_below(|l2: nat| has_right_h_witness_of_len(data, target, l2), l)
+}
+
+pub open spec fn b_rcoset_h_min_lex(data: AmalgamatedData, g: Word) -> nat {
+    let rep = b_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    let l = b_rcoset_h_min_len(data, g);
+    choose|r: nat| #[trigger] is_min_h_lex(data, target, l, r)
+}
+
+/// The textbook h-part for G₂: canonical K-word h such that embed_b(h) ≡ g · c⁻¹.
+pub open spec fn b_rcoset_h(data: AmalgamatedData, g: Word) -> Word {
+    let rep = b_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    let l = b_rcoset_h_min_len(data, g);
+    let r = b_rcoset_h_min_lex(data, g);
+    choose|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
+        && equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h), target)
+}
+
+// ============================================================
 // Part B2: Well-ordering and transversal existence
 // ============================================================
 
@@ -631,7 +732,8 @@ pub open spec fn act_left_sym(
     }
 }
 
-/// Apply a single G₂ symbol to the state. Symmetric to left.
+/// Apply a single G₂ symbol to the state (textbook, RIGHT B-coset decomposition).
+/// Mirrors act_left_sym with b_rcoset_h/b_rcoset_rep instead of a_rcoset_h/a_rcoset_rep.
 pub open spec fn act_right_sym(
     data: AmalgamatedData,
     s: Symbol,  // a G₂ symbol (local, already unshifted)
@@ -639,18 +741,18 @@ pub open spec fn act_right_sym(
     syllables: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let product = concat(Seq::new(1, |_i: int| s), apply_embedding(b_words(data), h));
-    let new_h = right_h_part(data, product);
-    let new_rep = right_canonical_rep(data, product);
+    let new_h = b_rcoset_h(data, product);
+    let new_rep = b_rcoset_rep(data, product);
 
     if new_rep =~= empty_word() {
         (new_h, syllables)
     } else if syllables.len() == 0 || syllables.first().is_left {
         (new_h, Seq::new(1, |_i: int| Syllable { is_left: false, rep: new_rep }) + syllables)
     } else {
-        // Merge (textbook): compute g·h·u₁ and decompose once.
+        // Merge (textbook): compute g·h·u₁ and decompose once with RIGHT B-cosets.
         let full_product = concat(product, syllables.first().rep);
-        let combined_h = right_h_part(data, full_product);
-        let merged_rep = right_canonical_rep(data, full_product);
+        let combined_h = b_rcoset_h(data, full_product);
+        let merged_rep = b_rcoset_rep(data, full_product);
 
         if merged_rep =~= empty_word() {
             (combined_h, syllables.drop_first())
@@ -1501,6 +1603,12 @@ pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Sy
         0 <= j < syls.len() && syls[j].is_left ==> (
         word_valid(syls[j].rep, data.p1.num_generators)
         && a_rcoset_rep(data, syls[j].rep) =~= syls[j].rep
+        && !(syls[j].rep =~= empty_word())))
+    // Right syllable reps: canonical, word_valid, non-identity (mirrors left)
+    && (forall|j: int| #![trigger syls[j]]
+        0 <= j < syls.len() && !syls[j].is_left ==> (
+        word_valid(syls[j].rep, data.p2.num_generators)
+        && b_rcoset_rep(data, syls[j].rep) =~= syls[j].rep
         && !(syls[j].rep =~= empty_word())))
     // Alternating: adjacent syllables from different factors (textbook reduced sequence)
     && (forall|j: int| #![trigger syls[j]]
