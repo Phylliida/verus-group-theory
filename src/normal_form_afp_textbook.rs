@@ -1868,6 +1868,181 @@ proof fn lemma_action_preserves_canonical(
 }
 
 // ============================================================
+// Part I1b: One-shot action and relator triviality
+// ============================================================
+
+/// One-shot G₁ action: apply a full G₁ word g to syllables via a single coset decomposition.
+/// This is act_left_sym generalized from a single symbol to a full word product.
+/// The key property: this depends only on the G₁-equivalence class of g.
+pub open spec fn g1_one_shot_action(
+    data: AmalgamatedData,
+    g: Word,       // full G₁ product (e.g., concat(w, embed_a(h)))
+    syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let rep = a_rcoset_rep(data, g);
+    let h_new = a_rcoset_h(data, g);
+
+    if rep =~= empty_word() {
+        (h_new, syls)
+    } else if syls.len() == 0 || !syls.first().is_left {
+        (h_new, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
+    } else {
+        let full = concat(g, syls.first().rep);
+        let merged_rep = a_rcoset_rep(data, full);
+        let merged_h = a_rcoset_h(data, full);
+        if merged_rep =~= empty_word() {
+            (merged_h, syls.drop_first())
+        } else {
+            (merged_h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep })
+                + syls.drop_first())
+        }
+    }
+}
+
+/// One-shot on embed_a(h) returns (h, syls) for canonical h.
+/// Because embed_a(h) is in the subgroup when h is A-canonical.
+proof fn lemma_one_shot_identity(
+    data: AmalgamatedData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        is_canonical_state(data, h, syls),
+    ensures
+        g1_one_shot_action(data, apply_embedding(a_words(data), h), syls) == (h, syls),
+{
+    let embed_h = apply_embedding(a_words(data), h);
+    let n1 = data.p1.num_generators;
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+
+    // embed_a(h) is in the A-subgroup → rep = ε
+    lemma_apply_embedding_in_subgroup(data.p1, a_words(data), h);
+    lemma_a_rcoset_in_subgroup(data, embed_h);
+    // a_rcoset_rep(embed_h) =~= ε
+
+    // h-part = h (from is_canonical_state: left_h_part(embed_a(h)) =~= h)
+    // a_rcoset_h involves the same choose as left_h_part (via the target)
+    // Since rep = ε, target = concat(embed_h, inv(ε)) = embed_h
+    // is_canonical_state gives: left_h_part(embed_a(h)) =~= h
+    // We need: a_rcoset_h(embed_h) =~= h
+    // This follows from the h-part equiv invariance on embed_h
+    // embed_h ≡ embed_h (reflexivity) + left_h_part =~= h (canonical)
+    crate::presentation::lemma_equiv_refl(data.p1, embed_h);
+    lemma_subgroup_rcoset_restore(data, embed_h, h);
+}
+
+/// One-shot on a subgroup element g ≡ embed_a(h) returns (h, syls) for canonical h.
+/// This is the special case needed for relator triviality:
+/// if r ≡ ε in G₁, then concat(r, embed_a(h)) ≡ embed_a(h), so the one-shot gives (h, syls).
+proof fn lemma_one_shot_subgroup_restore(
+    data: AmalgamatedData, g: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+        is_canonical_state(data, h, syls),
+        equiv_in_presentation(data.p1, g, apply_embedding(a_words(data), h)),
+    ensures
+        g1_one_shot_action(data, g, syls) == (h, syls),
+{
+    let embed_h = apply_embedding(a_words(data), h);
+    let n1 = data.p1.num_generators;
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+
+    // g ≡ embed_a(h) ∈ A-subgroup → a_rcoset_rep(g) =~= ε
+    lemma_apply_embedding_in_subgroup(data.p1, a_words(data), h);
+    crate::presentation::lemma_equiv_symmetric(data.p1, g, embed_h);
+    lemma_in_subgroup_equiv(data.p1, a_words(data), embed_h, g);
+    lemma_a_rcoset_in_subgroup(data, g);
+
+    // a_rcoset_h(g) =~= h (by subgroup_rcoset_restore)
+    lemma_subgroup_rcoset_restore(data, g, h);
+}
+
+/// Prepend-cancel: peeling off coset rep c from product p and prepending as syllable
+/// gives the same one-shot result.
+/// one_shot(p·c⁻¹, [Syl(left, c)] + syls) = one_shot(p, syls)
+/// Key: the merge with the prepended syllable reconstructs the full product p.
+proof fn lemma_one_shot_prepend_cancel(
+    data: AmalgamatedData, p: Word, c: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(p, data.p1.num_generators),
+        word_valid(c, data.p1.num_generators),
+        !(c =~= empty_word()),
+        a_rcoset_rep(data, c) =~= c,
+        !(a_rcoset_rep(data, concat(p, inverse_word(c))) =~= empty_word()),
+        // Original syls has first syl right or empty (from the prepend case branching)
+        syls.len() == 0 || !syls.first().is_left,
+    ensures
+        g1_one_shot_action(data, concat(p, inverse_word(c)),
+            Seq::new(1, |_i: int| Syllable { is_left: true, rep: c }) + syls)
+            == g1_one_shot_action(data, p, syls),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let q = concat(p, inverse_word(c));
+    let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: c }) + syls;
+    reveal(presentation_valid);
+
+    assert(new_syls.first().is_left);
+    assert(new_syls.first().rep == c);
+    assert(new_syls.drop_first() =~= syls);
+
+    // concat(q, c) = concat(p·c⁻¹, c) ≡ p via left inverse cancellation
+    crate::word::lemma_inverse_word_valid(c, n1);
+    crate::word::lemma_concat_word_valid(p, inverse_word(c), n1);
+    crate::word::lemma_concat_word_valid(q, c, n1);
+
+    // Associativity: concat(q, c) =~= concat(p, concat(inv(c), c))
+    assert(concat(q, c) =~= concat(p, concat(inverse_word(c), c))) by {
+        let lhs = concat(q, c);
+        let rhs = concat(p, concat(inverse_word(c), c));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < p.len() as int {} else {
+                let j = k - p.len() as int;
+                if j < inverse_word(c).len() as int {} else {}
+            }
+        }
+    }
+    // inv(c) · c ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_left(p1, c);
+    // concat(p, concat(inv(c), c)) ≡ concat(p, ε) =~= p
+    crate::presentation_lemmas::lemma_equiv_concat_right(p1, p, concat(inverse_word(c), c), empty_word());
+    assert(concat(p, empty_word()) =~= p) by {
+        assert(concat(p, empty_word()).len() == p.len());
+        assert forall|k: int| 0 <= k < p.len() implies concat(p, empty_word())[k] == p[k] by {}
+    }
+    crate::word::lemma_concat_word_valid(inverse_word(c), c, n1);
+    crate::word::lemma_concat_word_valid(p, concat(inverse_word(c), c), n1);
+    // concat(p, ε) =~= p → equiv via equiv_refl
+    crate::presentation::lemma_equiv_refl(p1, concat(p, empty_word()));
+    // Now chain: concat(p, inv(c)·c) ≡ concat(p, ε) ≡ p (=~= gives ≡ automatically)
+    // Since concat(q, c) =~= concat(p, inv(c)·c), Z3 derives equiv(concat(q, c), p).
+
+    // Coset invariance: concat(q, c) ≡ p → same coset → same rep, same h-part
+    lemma_same_a_rcoset_from_equiv(data, concat(q, c), p);
+    lemma_a_rcoset_rep_invariant(data, concat(q, c), p);
+
+    // No merge sub-case needed: syls.first() is RIGHT or syls is empty (precondition).
+    // So one_shot(p, syls) never enters the merge case — only subgroup or prepend.
+}
+
+// ============================================================
 // Part I2: Choose property extraction
 // ============================================================
 
@@ -7575,6 +7750,7 @@ proof fn lemma_g2_c1_complete_inverse_step(
 }
 
 /// G₂ subcase C1: merge absorbed (merged_rep = ε).
+#[verifier::rlimit(40)]
 proof fn lemma_inverse_pair_g2_subcase_c1(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
