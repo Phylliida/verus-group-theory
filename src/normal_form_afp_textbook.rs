@@ -535,8 +535,55 @@ pub open spec fn b_rcoset_rep(data: AmalgamatedData, g: Word) -> Word {
         && word_lex_rank_base(rep, 2 * data.p2.num_generators + 1) == r
 }
 
+/// G₂ h-witness with lex rank (uses p2/b_words instead of p1/a_words).
+pub open spec fn has_right_h_witness_of_len_rank(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool {
+    exists|h: Word| word_valid(h, k_size(data)) && h.len() == l
+        && word_lex_rank_base(h, h_lex_base(data)) == r
+        && equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h), target)
+}
+
+/// No G₂ h-witness at length l with lex rank below r.
+pub open spec fn no_smaller_h_lex_g2(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool
+    decreases r,
+{
+    if r == 0 { true }
+    else { !has_right_h_witness_of_len_rank(data, target, l, (r - 1) as nat)
+           && no_smaller_h_lex_g2(data, target, l, (r - 1) as nat) }
+}
+
+pub open spec fn is_min_h_lex_g2(
+    data: AmalgamatedData, target: Word, l: nat, r: nat,
+) -> bool {
+    has_right_h_witness_of_len_rank(data, target, l, r)
+    && no_smaller_h_lex_g2(data, target, l, r)
+}
+
+/// Scan for min G₂ h-lex rank.
+proof fn lemma_scan_min_h_lex_g2(
+    data: AmalgamatedData, target: Word, l: nat, current: nat, bound: nat,
+)
+    requires
+        has_right_h_witness_of_len_rank(data, target, l, bound),
+        current <= bound,
+        no_smaller_h_lex_g2(data, target, l, current),
+    ensures
+        exists|r: nat| current <= r && r <= bound
+            && #[trigger] is_min_h_lex_g2(data, target, l, r),
+    decreases bound - current,
+{
+    if has_right_h_witness_of_len_rank(data, target, l, current) {
+        assert(is_min_h_lex_g2(data, target, l, current));
+    } else {
+        lemma_scan_min_h_lex_g2(data, target, l, current + 1, bound);
+    }
+}
+
 /// Right B-coset h-part: target = g · inv(rep).
-/// Uses shared h-witness infrastructure (has_right_h_witness_of_len).
 pub open spec fn b_rcoset_h_min_len(data: AmalgamatedData, g: Word) -> nat {
     let rep = b_rcoset_rep(data, g);
     let target = concat(g, inverse_word(rep));
@@ -548,7 +595,7 @@ pub open spec fn b_rcoset_h_min_lex(data: AmalgamatedData, g: Word) -> nat {
     let rep = b_rcoset_rep(data, g);
     let target = concat(g, inverse_word(rep));
     let l = b_rcoset_h_min_len(data, g);
-    choose|r: nat| #[trigger] is_min_h_lex(data, target, l, r)
+    choose|r: nat| #[trigger] is_min_h_lex_g2(data, target, l, r)
 }
 
 /// The textbook h-part for G₂: canonical K-word h such that embed_b(h) ≡ g · c⁻¹.
@@ -6264,6 +6311,228 @@ proof fn lemma_b_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
     lemma_b_rcoset_rep_props(data, g);
     lemma_same_b_rcoset_symmetric(data, g, rep);
     lemma_b_rcoset_rep_invariant(data, rep, g);
+}
+
+// ============================================================
+// Part Q: G₂ inverse pair helpers (mirrors Part M/O for G₁)
+// ============================================================
+
+/// embed_b(h) is in the B-generated subgroup (mirrors lemma_apply_embedding_in_subgroup).
+pub proof fn lemma_apply_embedding_in_subgroup_g2(
+    p: Presentation, gens: Seq<Word>, h: Word,
+)
+    requires
+        presentation_valid(p),
+        word_valid(h, gens.len()),
+        forall|i: int| 0 <= i < gens.len()
+            ==> word_valid(#[trigger] gens[i], p.num_generators),
+    ensures
+        in_generated_subgroup(p, gens, apply_embedding(gens, h)),
+    decreases h.len(),
+{
+    if h.len() == 0 {
+        assert(apply_embedding(gens, h) =~= empty_word());
+        crate::benign::lemma_identity_in_generated_subgroup(p, gens);
+    } else {
+        let s = h.first();
+        let rest = h.drop_first();
+        let head = apply_embedding_symbol(gens, s);
+        let tail = apply_embedding(gens, rest);
+        lemma_apply_embedding_in_subgroup_g2(p, gens, rest);
+        match s {
+            Symbol::Gen(i) => {
+                crate::benign::lemma_generator_in_generated_subgroup(p, gens, i as int);
+            }
+            Symbol::Inv(i) => {
+                crate::benign::lemma_generator_in_generated_subgroup(p, gens, i as int);
+                crate::word::lemma_inverse_word_valid(gens[i as int], p.num_generators);
+                lemma_subgroup_inverse(p, gens, gens[i as int]);
+            }
+        }
+        lemma_subgroup_concat(p, gens, head, tail);
+    }
+}
+
+/// Right B-coset decomposition identity: embed_b(h)·rep ≡ g (textbook g = h·c for G₂).
+proof fn lemma_b_rcoset_decomposition(
+    data: AmalgamatedData, g: Word, h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness),
+            concat(g, inverse_word(b_rcoset_rep(data, g)))),
+    ensures
+        equiv_in_presentation(data.p2,
+            concat(apply_embedding(b_words(data), b_rcoset_h(data, g)),
+                   b_rcoset_rep(data, g)),
+            g),
+        word_valid(b_rcoset_h(data, g), k_size(data)),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let rep = b_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+
+    // h-part satisfiability: reuse the h-witness pattern
+    assert(has_right_h_witness_of_len(data, target, h_witness.len() as nat));
+    let pred_h = |l: nat| has_right_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+    // h-lex satisfiability
+    let l = b_rcoset_h_min_len(data, g);
+    let w: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), w), target);
+    let wr = word_lex_rank_base(w, h_lex_base(data));
+    assert(has_right_h_witness_of_len_rank(data, target, l, wr));
+    assert(no_smaller_h_lex_g2(data, target, l, 0nat));
+    lemma_scan_min_h_lex_g2(data, target, l, 0, wr);
+
+    let h = b_rcoset_h(data, g);
+    let embed_h = apply_embedding(b_words(data), h);
+    lemma_b_rcoset_rep_props(data, g);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+
+    // embed_b(h)·rep ≡ target·rep = (g·inv(rep))·rep ≡ g
+    crate::presentation_lemmas::lemma_equiv_concat_left(p2, embed_h, target, rep);
+    crate::word::lemma_inverse_word_valid(rep, n2);
+    assert(concat(concat(g, inverse_word(rep)), rep) =~=
+           concat(g, concat(inverse_word(rep), rep))) by {
+        let lhs = concat(concat(g, inverse_word(rep)), rep);
+        let rhs = concat(g, concat(inverse_word(rep), rep));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < g.len() as int {} else {
+                let j = k - g.len() as int;
+                if j < inverse_word(rep).len() as int {} else {}
+            }
+        }
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p2, rep);
+    crate::word::lemma_concat_word_valid(g, concat(inverse_word(rep), rep), n2);
+    crate::presentation::lemma_equiv_refl(p2, concat(g, concat(inverse_word(rep), rep)));
+    crate::presentation_lemmas::lemma_equiv_concat_right(p2, g,
+        concat(inverse_word(rep), rep), empty_word());
+    assert(concat(g, empty_word()) =~= g) by {
+        assert(concat(g, empty_word()).len() == g.len());
+        assert forall|k: int| 0 <= k < g.len()
+            implies concat(g, empty_word())[k] == g[k] by {}
+    }
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(embed_h, rep),
+        concat(g, concat(inverse_word(rep), rep)),
+        g);
+}
+
+/// Free reduction for G₂: [inv(s)]·[s]·w ≡ w in G₂.
+proof fn lemma_inv_s_s_cancel_g2(
+    data: AmalgamatedData, s: Symbol, w: Word,
+)
+    requires
+        presentation_valid(data.p2),
+        word_valid(w, data.p2.num_generators),
+        generator_index(s) < data.p2.num_generators,
+    ensures
+        equiv_in_presentation(data.p2,
+            concat(Seq::new(1, |_i: int| inverse_symbol(s)),
+                   concat(Seq::new(1, |_i: int| s), w)),
+            w),
+{
+    lemma_inv_s_s_cancel(data.p2, s, w);
+}
+
+/// G₂ general helper: [inv(s)]·embed_b(b_rcoset_h(product))·b_rcoset_rep(product) ≡ embed_b(h)
+/// where product = [s]·embed_b(h). Works for all subcases.
+proof fn lemma_inv_s_rcoset_product_equiv_g2(
+    data: AmalgamatedData, s: Symbol, h: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(h, k_size(data)),
+        generator_index(s) < data.p2.num_generators,
+    ensures ({
+        let embed_h = apply_embedding(b_words(data), h);
+        let product = concat(Seq::new(1, |_i: int| s), embed_h);
+        let h_prime = b_rcoset_h(data, product);
+        let embed_h_prime = apply_embedding(b_words(data), h_prime);
+        let rep_prime = b_rcoset_rep(data, product);
+        let full = concat(concat(Seq::new(1, |_i: int| inverse_symbol(s)), embed_h_prime), rep_prime);
+        &&& equiv_in_presentation(data.p2, full, embed_h)
+        &&& word_valid(h_prime, k_size(data))
+    }),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let s_word = Seq::new(1, |_i: int| s);
+    let inv_s_word = Seq::new(1, |_i: int| inverse_symbol(s));
+    let embed_h = apply_embedding(b_words(data), h);
+    let product = concat(s_word, embed_h);
+    let rep_prime = b_rcoset_rep(data, product);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+    assert(word_valid(s_word, n2)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(#[trigger] s_word[k], n2) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    }
+    crate::word::lemma_concat_word_valid(s_word, embed_h, n2);
+
+    // h-witness from subgroup structure
+    lemma_b_rcoset_rep_props(data, product);
+    crate::word::lemma_inverse_word_valid(rep_prime, n2);
+    crate::word::lemma_concat_word_valid(product, inverse_word(rep_prime), n2);
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(product, inverse_word(rep_prime)));
+    let hw_r: Word = choose|hw: Word| word_valid(hw, b_words(data).len())
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(product, inverse_word(rep_prime)));
+    assert(b_words(data).len() == k_size(data));
+
+    // embed_b(h')·rep' ≡ product
+    lemma_b_rcoset_decomposition(data, product, hw_r);
+    let h_prime = b_rcoset_h(data, product);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_prime, n2);
+    let embed_h_prime = apply_embedding(b_words(data), h_prime);
+
+    // [inv(s)]·(embed_b(h')·rep') ≡ [inv(s)]·product
+    crate::presentation_lemmas::lemma_equiv_concat_right(
+        p2, inv_s_word, concat(embed_h_prime, rep_prime), product);
+
+    // Associativity
+    let full = concat(concat(inv_s_word, embed_h_prime), rep_prime);
+    assert(full =~= concat(inv_s_word, concat(embed_h_prime, rep_prime))) by {
+        let lhs = full;
+        let rhs = concat(inv_s_word, concat(embed_h_prime, rep_prime));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < inv_s_word.len() as int {} else {
+                let j = k - inv_s_word.len() as int;
+                if j < embed_h_prime.len() as int {} else {}
+            }
+        }
+    }
+
+    // [inv(s)]·[s]·embed_h ≡ embed_h
+    crate::word::lemma_concat_word_valid(embed_h_prime, rep_prime, n2);
+    lemma_inv_s_s_cancel(p2, s, embed_h);
+    assert(concat(inv_s_word, product) =~= concat(inv_s_word, concat(s_word, embed_h)));
+
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(inv_s_word, concat(embed_h_prime, rep_prime)),
+        concat(inv_s_word, concat(s_word, embed_h)),
+        embed_h);
+    return;
 }
 
 } // verus!
