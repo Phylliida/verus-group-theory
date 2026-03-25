@@ -5443,7 +5443,6 @@ proof fn lemma_c2_rep_zero_branch(
     let embed_ch = apply_embedding(a_words(data), combined_h);
     let product_inv = concat(inv_s_word, embed_ch);
     let full_inv = concat(product_inv, merged_rep);
-    let e = empty_word();
     reveal(presentation_valid);
 
     assert forall|i: int| 0 <= i < a_words(data).len()
@@ -5451,214 +5450,44 @@ proof fn lemma_c2_rep_zero_branch(
     by { assert(word_valid(data.identifications[i].0, n1)); }
     crate::benign::lemma_apply_embedding_valid(a_words(data), combined_h, n1);
     crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
-    assert(word_valid(inv_s_word, n1)) by {
-        assert forall|k: int| 0 <= k < inv_s_word.len()
-            implies symbol_valid(#[trigger] inv_s_word[k], n1) by {
-                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
-            }
-    }
+    crate::word::lemma_inverse_word_valid(merged_rep, n1);
+    crate::word::lemma_inverse_word_valid(c1, n1);
     crate::word::lemma_concat_word_valid(inv_s_word, embed_ch, n1);
     crate::word::lemma_concat_word_valid(product_inv, merged_rep, n1);
     crate::word::lemma_concat_word_valid(embed_h, c1, n1);
 
-    // product_inv ∈ A → same_a_rcoset(full_inv, merged_rep)
-    // (left mult by A doesn't change right coset)
+    // Step 1: full_inv·inv(merged_rep) ≡ product_inv ∈ A → same_a_rcoset(full_inv, merged_rep)
+    lemma_right_cancel(p1, product_inv, merged_rep);
     lemma_a_rcoset_rep_props(data, product_inv);
     crate::presentation::lemma_equiv_refl(p1, product_inv);
     lemma_in_subgroup_equiv(p1, a_words(data),
         concat(product_inv, inverse_word(a_rcoset_rep(data, product_inv))), product_inv);
-    // product_inv ∈ A
-    // concat(product_inv, merged_rep)·inv(merged_rep) = product_inv ∈ A
-    // So same_a_rcoset(full_inv, merged_rep)
-    crate::word::lemma_inverse_word_valid(merged_rep, n1);
     crate::word::lemma_concat_word_valid(full_inv, inverse_word(merged_rep), n1);
-    lemma_four_part_cancel(p1, empty_word(), product_inv, merged_rep);
-    // concat(concat(ε, inv(product_inv)), concat(product_inv, merged_rep)) ≡ concat(ε, merged_rep) = merged_rep
-    // Hmm, that's not quite right. Let me use a different approach.
-    // same_a_rcoset(full_inv, merged_rep) = in_left_subgroup(full_inv · inv(merged_rep))
-    // full_inv · inv(merged_rep) = product_inv · merged_rep · inv(merged_rep) ≡ product_inv
-    // And product_inv ∈ A.
-    crate::presentation_lemmas::lemma_word_inverse_right(p1, merged_rep);
-    crate::presentation_lemmas::lemma_equiv_concat_left(p1,
-        concat(merged_rep, inverse_word(merged_rep)), empty_word(), empty_word());
-    // concat(product_inv, concat(merged_rep, inv(merged_rep))) ≡ concat(product_inv, ε) =~= product_inv
-    crate::presentation_lemmas::lemma_equiv_concat_right(p1, product_inv,
-        concat(merged_rep, inverse_word(merged_rep)), empty_word());
-    assert(concat(product_inv, empty_word()) =~= product_inv) by {
-        assert(concat(product_inv, empty_word()).len() == product_inv.len());
-        assert forall|k: int| 0 <= k < product_inv.len()
-            implies concat(product_inv, empty_word())[k] == product_inv[k] by {}
-    }
-    // concat(full_inv, inv(merged_rep)) =~= concat(product_inv, concat(merged_rep, inv(merged_rep)))
-    assert(concat(full_inv, inverse_word(merged_rep)) =~=
-           concat(product_inv, concat(merged_rep, inverse_word(merged_rep)))) by {
-        let lhs = concat(concat(product_inv, merged_rep), inverse_word(merged_rep));
-        let rhs = concat(product_inv, concat(merged_rep, inverse_word(merged_rep)));
-        assert(lhs.len() == rhs.len());
-        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
-            if k < product_inv.len() as int {} else {
-                let j = k - product_inv.len() as int;
-                if j < merged_rep.len() as int {} else {}
-            }
-        }
-    }
-    // Chain: full_inv·inv(merged_rep) ≡ product_inv ∈ A → same_a_rcoset(full_inv, merged_rep)
-    crate::presentation::lemma_equiv_transitive(p1,
-        concat(product_inv, concat(merged_rep, inverse_word(merged_rep))),
-        concat(product_inv, empty_word()),
-        product_inv);
     crate::presentation::lemma_equiv_symmetric(p1,
         concat(full_inv, inverse_word(merged_rep)), product_inv);
     lemma_in_subgroup_equiv(p1, a_words(data), product_inv,
         concat(full_inv, inverse_word(merged_rep)));
 
-    // Similarly: embed_a(h) ∈ A → same_a_rcoset(embed_h·c₁, c₁)
-    lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
-    crate::word::lemma_inverse_word_valid(c1, n1);
-    crate::word::lemma_concat_word_valid(concat(embed_h, c1), inverse_word(c1), n1);
-    crate::presentation_lemmas::lemma_word_inverse_right(p1, c1);
-    crate::presentation_lemmas::lemma_equiv_concat_right(p1, embed_h,
-        concat(c1, inverse_word(c1)), empty_word());
-    assert(concat(embed_h, empty_word()) =~= embed_h) by {
-        assert(concat(embed_h, empty_word()).len() == embed_h.len());
-        assert forall|k: int| 0 <= k < embed_h.len()
-            implies concat(embed_h, empty_word())[k] == embed_h[k] by {}
-    }
-    assert(concat(concat(embed_h, c1), inverse_word(c1)) =~=
-           concat(embed_h, concat(c1, inverse_word(c1)))) by {
-        let lhs = concat(concat(embed_h, c1), inverse_word(c1));
-        let rhs = concat(embed_h, concat(c1, inverse_word(c1)));
-        assert(lhs.len() == rhs.len());
-        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
-            if k < embed_h.len() as int {} else {
-                let j = k - embed_h.len() as int;
-                if j < c1.len() as int {} else {}
-            }
-        }
-    }
-    crate::word::lemma_concat_word_valid(embed_h, concat(c1, inverse_word(c1)), n1);
-    crate::presentation::lemma_equiv_refl(p1, concat(embed_h, concat(c1, inverse_word(c1))));
-    crate::presentation::lemma_equiv_transitive(p1,
-        concat(embed_h, concat(c1, inverse_word(c1))),
-        concat(embed_h, empty_word()),
-        embed_h);
-    crate::presentation::lemma_equiv_symmetric(p1,
-        concat(concat(embed_h, c1), inverse_word(c1)), embed_h);
-    lemma_in_subgroup_equiv(p1, a_words(data), embed_h,
-        concat(concat(embed_h, c1), inverse_word(c1)));
-
-    // full_inv ≡ embed_h·c₁ → same_a_rcoset(full_inv, embed_h·c₁)
+    // Step 2: a_rcoset_rep(merged_rep) =~= c₁ via invariant chain
     lemma_same_a_rcoset_from_equiv(data, full_inv, concat(embed_h, c1));
-
-    // Transitivity: same_a_rcoset(merged_rep, c₁)
-    // same_a_rcoset(full_inv, merged_rep) [from above] symmetric → same_a_rcoset(merged_rep, full_inv)
     lemma_same_a_rcoset_symmetric(data, full_inv, merged_rep);
-    // same_a_rcoset(merged_rep, full_inv) + same_a_rcoset(full_inv, embed_h·c₁) → same_a_rcoset(merged_rep, embed_h·c₁)
-    // Need transitivity: same_a_rcoset(a,b) + same_a_rcoset(b,c) → same_a_rcoset(a,c)
-    // Actually I just need: same_a_rcoset(merged_rep, c₁). Use rep_invariant chain.
-    lemma_a_rcoset_rep_invariant(data, full_inv, merged_rep);
-    lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
-    // a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) =~= a_rcoset_rep(embed_h·c₁) =~= c₁
-    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
-    // merged_rep =~= a_rcoset_rep(merged_rep) ← need idempotency
-
-    // Idempotency: a_rcoset_rep(merged_rep) =~= merged_rep
-    // merged_rep = a_rcoset_rep(full_product) → same_a_rcoset(full_product, merged_rep)
-    // → same_a_rcoset(merged_rep, full_product) → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_product) = merged_rep
-    // But we don't have full_product here. Use a simpler argument:
-    // same_a_rcoset(merged_rep, merged_rep) (reflexive)
-    // a_rcoset_rep(merged_rep) = canonical rep of merged_rep's coset
-    // But merged_rep IS a_rcoset_rep of something → it's a canonical rep
-    // For canonical reps: same_a_rcoset(merged_rep, merged_rep) and merged_rep has the right len/lex properties
-    // Actually just assert and see if Z3 can derive it
-    lemma_a_rcoset_rep_satisfiable(data, merged_rep);
-    lemma_a_rcoset_rep_props(data, merged_rep);
-    // same_a_rcoset(merged_rep, a_rcoset_rep(merged_rep))
-    // Since a_rcoset_rep is canonical for merged_rep's coset, and merged_rep is also in that coset
-    // with the same len/lex properties... actually this requires more work.
-    // Let me just use: a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) [from invariant above]
-    // and a_rcoset_rep(full_inv) =~= c₁ [from decompose above]
-    // So a_rcoset_rep(merged_rep) =~= c₁.
-    // And we want merged_rep =~= c₁. This needs merged_rep =~= a_rcoset_rep(merged_rep).
-    // Hmm...
-
-    // Alternative simpler approach: use word_lex_rank_base_injective directly
-    // a_rcoset_rep(merged_rep) has same len and lex as merged_rep (from rep_props for merged_rep)
-    // and also same len and lex as c₁ (from invariant chain)
-    // By lex_rank_injectivity: merged_rep =~= c₁. Let's try.
-
-    // Actually, the chain is:
-    // a_rcoset_rep_invariant(full_inv, merged_rep): a_rcoset_rep(full_inv) =~= a_rcoset_rep(merged_rep)
-    // But wait, we need same_a_rcoset(full_inv, merged_rep) for this, which we established.
-    // WRONG direction: we have same_a_rcoset(merged_rep, full_inv) from symmetric.
-    // lemma_a_rcoset_rep_invariant(data, merged_rep, full_inv) → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv)
-    // a_rcoset_rep(full_inv) =~= a_rcoset_rep(embed_h·c₁) =~= c₁
-    // So a_rcoset_rep(merged_rep) =~= c₁
-
-    // merged_rep = a_rcoset_rep(full_product) by definition
-    // a_rcoset_rep(merged_rep): applies rep again to the rep
-    // Since same_a_rcoset(merged_rep, full_inv) (established):
     lemma_a_rcoset_rep_invariant(data, merged_rep, full_inv);
+    lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
+    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
     // a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) =~= c₁
+    // With idempotency precondition: merged_rep =~= a_rcoset_rep(merged_rep) =~= c₁
 
-    // Need: merged_rep =~= c₁.
-    // merged_rep and a_rcoset_rep(merged_rep) are BOTH canonical reps for merged_rep's coset.
-    // By uniqueness (three-step choose): they must be equal.
-    // Proof: same_a_rcoset(merged_rep, a_rcoset_rep(merged_rep)) from rep_props
-    // → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(a_rcoset_rep(merged_rep)) [by invariant, need symmetric]
-    // This is circular. Let me use the direct approach:
-    // merged_rep and c₁ are in the same coset (from our chain).
-    // Both are canonical (merged_rep = a_rcoset_rep(something), c₁ = a_rcoset_rep(c₁)).
-    // Canonical reps in the same coset are =~= (by rep_invariant).
-    // same_a_rcoset(merged_rep, c₁) (from transitivity of the chain)
-    // → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(c₁) =~= c₁
-    // But we need merged_rep =~= c₁, not a_rcoset_rep(merged_rep) =~= c₁.
-    // Hmm, merged_rep is the OUTPUT of a_rcoset_rep, so it should BE a canonical rep.
-    // The key property: for canonical reps in the same coset, they're equal.
-    // If same_a_rcoset(merged_rep, c₁) and both are canonical (a_rcoset_rep of themselves):
-    // a_rcoset_rep(merged_rep) =~= a_rcoset_rep(c₁) [by invariant]
-    // a_rcoset_rep(c₁) =~= c₁ [given]
-    // If a_rcoset_rep(merged_rep) =~= merged_rep: then merged_rep =~= c₁.
-    // Otherwise... we can't conclude.
-
-    // To show a_rcoset_rep(merged_rep) =~= merged_rep:
-    // merged_rep ∈ {canonical reps} since it's the output of a_rcoset_rep.
-    // a_rcoset_rep(a_rcoset_rep(g)) =~= a_rcoset_rep(g) for any g (idempotency).
-    // Proof of idempotency: let rep = a_rcoset_rep(g). same_a_rcoset(g, rep) [from props].
-    // same_a_rcoset(rep, g) [symmetric]. a_rcoset_rep_invariant(rep, g) → a_rcoset_rep(rep) =~= a_rcoset_rep(g) = rep.
-    // But we need same_a_rcoset(rep, g), which needs word_valid(rep, n1) [from props] and word_valid(g, n1).
-    // And for invariant, we need word_valid for both + amalgamated_data_valid + presentation_valid + same_a_rcoset.
-
-    // OK let me just prove merged_rep =~= c₁ by this chain.
-    // First establish same_a_rcoset(merged_rep, c₁) from the chain.
-
-    // Actually, I realize: I already have:
-    // a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) [from invariant(merged_rep, full_inv)]
-    // a_rcoset_rep(full_inv) =~= c₁ [from invariant(full_inv, embed_h·c₁) + decompose]
-    // So a_rcoset_rep(merged_rep) =~= c₁.
-
-    // And: same_a_rcoset(merged_rep, a_rcoset_rep(merged_rep)) [from a_rcoset_rep_props]
-    // → same_a_rcoset(merged_rep, c₁) [since a_rcoset_rep(merged_rep) =~= c₁, and =~= means same word]
-
-    // Then: a_rcoset_rep_invariant(merged_rep, c₁) → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(c₁) = c₁
-
-    // But I still need merged_rep =~= c₁, not a_rcoset_rep(merged_rep) =~= c₁.
-
-    // For idempotency: a_rcoset_rep(merged_rep) =~= merged_rep
-    // Proof: same_a_rcoset(full_product, merged_rep) [from a_rcoset_rep_props(full_product)]
-    // → symmetric → same_a_rcoset(merged_rep, full_product)
-    // → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_product) = merged_rep [by invariant]
-    // This requires full_product! But we don't have it in the helper. Let me add it as a precondition.
-
-    // Actually, let me just add "a_rcoset_rep(merged_rep) =~= merged_rep" as a precondition.
-    // In the caller (C2 proof), merged_rep = a_rcoset_rep(full_product), so this is easy to establish.
-
-    // For now, let me skip the merged_rep =~= c₁ conclusion and just establish the equiv.
-    // product_inv ≡ embed_a(h): from full_inv ≡ embed_h·c₁ and merged_rep =~= c₁ (once established)
-    // Hmm, still need merged_rep =~= c₁.
-
-    // Let me just add the idempotency as a precondition for now.
+    // Step 3: product_inv ≡ embed_a(h) via right cancellation
+    crate::presentation_lemmas::lemma_equiv_concat_left(p1, full_inv, concat(embed_h, c1), inverse_word(c1));
+    lemma_right_cancel(p1, product_inv, c1);
+    lemma_right_cancel(p1, embed_h, c1);
+    crate::presentation::lemma_equiv_transitive(p1,
+        product_inv, concat(concat(product_inv, c1), inverse_word(c1)),
+        concat(concat(embed_h, c1), inverse_word(c1)));
+    crate::presentation::lemma_equiv_transitive(p1,
+        product_inv, concat(concat(embed_h, c1), inverse_word(c1)), embed_h);
 }
+
 
 proof fn lemma_inverse_pair_g1_subcase_c2(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
