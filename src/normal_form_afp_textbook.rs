@@ -5406,10 +5406,7 @@ proof fn lemma_c2_inverse_merge_step(
 /// Forward: merge [s]·embed_a(h)·c₁ → (combined_h, merged_syls).
 /// Inverse: [inv(s)]·embed_a(combined_h)·merged_rep ≡ embed_a(h)·c₁ → decompose → (h, c₁, rest).
 ///
-/// Sub-subcase C2: merged_rep ≠ ε → [Syl(left, merged_rep)] + rest.
-/// Inverse enters merge again, produces embed_a(h)·c₁, decomposes as (h, c₁).
-/// Helper: in C2's rep_inv = ε branch, show merged_rep =~= c₁ and product_inv ≡ embed_a(h).
-/// Then act_left_sym gives (h, new_syls) = (h, syls) since new_syls =~= syls.
+/// C2 rep_inv=ε branch: show merged_rep =~= c₁ and product_inv ≡ embed_a(h).
 proof fn lemma_c2_rep_zero_branch(
     data: AmalgamatedData, s: Symbol, h: Word, c1: Word,
     combined_h: Word, merged_rep: Word,
@@ -5425,10 +5422,9 @@ proof fn lemma_c2_rep_zero_branch(
         left_h_part(data, apply_embedding(a_words(data), h)) =~= h,
         a_rcoset_rep(data, c1) =~= c1,
         !(merged_rep =~= empty_word()),
-        // product_inv ∈ A (rep_inv = ε)
+        a_rcoset_rep(data, merged_rep) =~= merged_rep, // idempotency (caller provides)
         a_rcoset_rep(data, concat(Seq::new(1, |_i: int| inverse_symbol(s)),
-            apply_embedding(a_words(data), combined_h))) =~= empty_word(),
-        // The merge equiv
+            apply_embedding(a_words(data), combined_h))) =~= empty_word(), // product_inv ∈ A
         equiv_in_presentation(data.p1,
             concat(concat(Seq::new(1, |_i: int| inverse_symbol(s)),
                 apply_embedding(a_words(data), combined_h)), merged_rep),
@@ -5447,6 +5443,7 @@ proof fn lemma_c2_rep_zero_branch(
     let embed_ch = apply_embedding(a_words(data), combined_h);
     let product_inv = concat(inv_s_word, embed_ch);
     let full_inv = concat(product_inv, merged_rep);
+    let e = empty_word();
     reveal(presentation_valid);
 
     assert forall|i: int| 0 <= i < a_words(data).len()
