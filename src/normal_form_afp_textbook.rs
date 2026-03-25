@@ -3127,6 +3127,850 @@ proof fn lemma_g2_one_shot_subgroup_restore(
     lemma_subgroup_rcoset_restore_g2(data, g, h);
 }
 
+/// B-coset h-part min-len equiv for GENERAL reps (mirrors A-coset version).
+proof fn lemma_b_rcoset_h_min_len_equiv_general(
+    data: AmalgamatedData, g1: Word, g2: Word,
+    h_witness1: Word, h_witness2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g1, data.p2.num_generators),
+        word_valid(g2, data.p2.num_generators),
+        equiv_in_presentation(data.p2, g1, g2),
+        b_rcoset_rep(data, g1) =~= b_rcoset_rep(data, g2),
+        word_valid(h_witness1, k_size(data)),
+        word_valid(h_witness2, k_size(data)),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness1),
+            concat(g1, inverse_word(b_rcoset_rep(data, g1)))),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness2),
+            concat(g2, inverse_word(b_rcoset_rep(data, g2)))),
+    ensures
+        b_rcoset_h_min_len(data, g1) == b_rcoset_h_min_len(data, g2),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let rep1 = b_rcoset_rep(data, g1);
+    let target1 = concat(g1, inverse_word(rep1));
+    let target2 = concat(g2, inverse_word(b_rcoset_rep(data, g2)));
+    reveal(presentation_valid);
+
+    lemma_b_rcoset_rep_props(data, g1);
+    lemma_b_rcoset_rep_props(data, g2);
+    crate::word::lemma_inverse_word_valid(rep1, n2);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(rep1), n2);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(b_rcoset_rep(data, g2)), n2);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p2, g1, g2, inverse_word(rep1));
+
+    let l1 = b_rcoset_h_min_len(data, g1);
+    let l2 = b_rcoset_h_min_len(data, g2);
+
+    assert(has_right_h_witness_of_len(data, target1, h_witness1.len() as nat));
+    assert(has_right_h_witness_of_len(data, target2, h_witness2.len() as nat));
+    let pred1 = |l: nat| has_right_h_witness_of_len(data, target1, l);
+    let pred2 = |l: nat| has_right_h_witness_of_len(data, target2, l);
+    lemma_nat_well_ordering(pred1, h_witness1.len() as nat);
+    lemma_nat_well_ordering(pred2, h_witness2.len() as nat);
+
+    assert(has_right_h_witness_of_len(data, target1, l1));
+    lemma_h_witness_transfer_g2(data, target1, target2, l1);
+    crate::presentation::lemma_equiv_symmetric(p2, target1, target2);
+    lemma_h_witness_transfer_g2(data, target2, target1, l2);
+    lemma_no_pred_below_implies_ge(pred2, l2, l1);
+    lemma_no_pred_below_implies_ge(pred1, l1, l2);
+}
+
+/// B-coset h-part equiv invariant for GENERAL reps (mirrors A-coset version).
+#[verifier::rlimit(60)]
+proof fn lemma_b_rcoset_h_equiv_invariant_general(
+    data: AmalgamatedData, g1: Word, g2: Word,
+    h_witness1: Word, h_witness2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g1, data.p2.num_generators),
+        word_valid(g2, data.p2.num_generators),
+        equiv_in_presentation(data.p2, g1, g2),
+        b_rcoset_rep(data, g1) =~= b_rcoset_rep(data, g2),
+        word_valid(h_witness1, k_size(data)),
+        word_valid(h_witness2, k_size(data)),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness1),
+            concat(g1, inverse_word(b_rcoset_rep(data, g1)))),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness2),
+            concat(g2, inverse_word(b_rcoset_rep(data, g2)))),
+    ensures
+        b_rcoset_h(data, g1) =~= b_rcoset_h(data, g2),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let target1 = concat(g1, inverse_word(b_rcoset_rep(data, g1)));
+    let target2 = concat(g2, inverse_word(b_rcoset_rep(data, g2)));
+    reveal(presentation_valid);
+
+    lemma_b_rcoset_h_min_len_equiv_general(data, g1, g2, h_witness1, h_witness2);
+    let l = b_rcoset_h_min_len(data, g1);
+
+    lemma_b_rcoset_rep_props(data, g1);
+    lemma_b_rcoset_rep_props(data, g2);
+    crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, g1), n2);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(b_rcoset_rep(data, g1)), n2);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(b_rcoset_rep(data, g2)), n2);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p2, g1, g2,
+        inverse_word(b_rcoset_rep(data, g1)));
+
+    // Establish h-witness satisfiability for min-len
+    assert(has_right_h_witness_of_len(data, target1, h_witness1.len() as nat));
+    assert(has_right_h_witness_of_len(data, target2, h_witness2.len() as nat));
+    let pred1 = |l: nat| has_right_h_witness_of_len(data, target1, l);
+    let pred2 = |l: nat| has_right_h_witness_of_len(data, target2, l);
+    lemma_nat_well_ordering(pred1, h_witness1.len() as nat);
+    lemma_nat_well_ordering(pred2, h_witness2.len() as nat);
+    assert(has_right_h_witness_of_len(data, target1, l));
+    assert(has_right_h_witness_of_len(data, target2, l));
+
+    // Lex scan
+    let w1: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), w), target1);
+    let w2: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), w), target2);
+    let wr1 = word_lex_rank_base(w1, h_lex_base(data));
+    let wr2 = word_lex_rank_base(w2, h_lex_base(data));
+    assert(has_right_h_witness_of_len_rank(data, target1, l, wr1));
+    assert(has_right_h_witness_of_len_rank(data, target2, l, wr2));
+    assert(no_smaller_h_lex_g2(data, target1, l, 0nat));
+    assert(no_smaller_h_lex_g2(data, target2, l, 0nat));
+    lemma_scan_min_h_lex_g2(data, target1, l, 0, wr1);
+    lemma_scan_min_h_lex_g2(data, target2, l, 0, wr2);
+
+    let rw1 = b_rcoset_h(data, g1);
+    let rw2 = b_rcoset_h(data, g2);
+    let r1 = b_rcoset_h_min_lex(data, g1);
+    let r2 = b_rcoset_h_min_lex(data, g2);
+
+    crate::presentation::lemma_equiv_transitive(p2,
+        apply_embedding(b_words(data), rw1), target1, target2);
+    crate::presentation::lemma_equiv_symmetric(p2, target1, target2);
+    crate::presentation::lemma_equiv_transitive(p2,
+        apply_embedding(b_words(data), rw2), target2, target1);
+    lemma_no_smaller_h_lex_g2_implies_ge(data, target2, l, r2, r1);
+    lemma_no_smaller_h_lex_g2_implies_ge(data, target1, l, r1, r2);
+
+    let base = h_lex_base(data);
+    assert forall|k: int| 0 <= k < rw1.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rw1[k]) < base
+    by { assert(symbol_valid(rw1[k], k_size(data))); match rw1[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    assert forall|k: int| 0 <= k < rw2.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rw2[k]) < base
+    by { assert(symbol_valid(rw2[k], k_size(data))); match rw2[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    assert(base > 0) by { assert(h_lex_base(data) == 2 * k_size(data) + 1); }
+    lemma_word_lex_rank_base_injective(rw1, rw2, base);
+}
+
+/// G₂ one-shot G₂-invariance: if g ≡ g' in G₂, same one-shot result.
+#[verifier::rlimit(60)]
+proof fn lemma_g2_one_shot_g2_invariant(
+    data: AmalgamatedData, g: Word, g_prime: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+        word_valid(g_prime, data.p2.num_generators),
+        equiv_in_presentation(data.p2, g, g_prime),
+        (syls.len() > 0 && !syls.first().is_left
+            ==> word_valid(syls.first().rep, data.p2.num_generators)),
+    ensures
+        g2_one_shot_action(data, g, syls) == g2_one_shot_action(data, g_prime, syls),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    reveal(presentation_valid);
+
+    lemma_same_b_rcoset_from_equiv(data, g, g_prime);
+    lemma_b_rcoset_rep_invariant(data, g, g_prime);
+
+    lemma_b_rcoset_rep_props(data, g);
+    lemma_b_rcoset_rep_props(data, g_prime);
+    crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, g), n2);
+    crate::word::lemma_concat_word_valid(g, inverse_word(b_rcoset_rep(data, g)), n2);
+    crate::word::lemma_concat_word_valid(g_prime, inverse_word(b_rcoset_rep(data, g_prime)), n2);
+    lemma_subgroup_to_k_word(p2, b_words(data),
+        concat(g, inverse_word(b_rcoset_rep(data, g))));
+    lemma_subgroup_to_k_word(p2, b_words(data),
+        concat(g_prime, inverse_word(b_rcoset_rep(data, g_prime))));
+    assert(b_words(data).len() == k_size(data));
+    let hw1: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(g, inverse_word(b_rcoset_rep(data, g))));
+    let hw2: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(g_prime, inverse_word(b_rcoset_rep(data, g_prime))));
+    lemma_b_rcoset_h_equiv_invariant_general(data, g, g_prime, hw1, hw2);
+
+    if !(b_rcoset_rep(data, g) =~= empty_word()) && syls.len() > 0 && !syls.first().is_left {
+        let c1 = syls.first().rep;
+        crate::word::lemma_concat_word_valid(g, c1, n2);
+        crate::word::lemma_concat_word_valid(g_prime, c1, n2);
+        crate::presentation_lemmas::lemma_equiv_concat_left(p2, g, g_prime, c1);
+        lemma_same_b_rcoset_from_equiv(data, concat(g, c1), concat(g_prime, c1));
+        lemma_b_rcoset_rep_invariant(data, concat(g, c1), concat(g_prime, c1));
+        lemma_b_rcoset_rep_props(data, concat(g, c1));
+        lemma_b_rcoset_rep_props(data, concat(g_prime, c1));
+        crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, concat(g, c1)), n2);
+        crate::word::lemma_concat_word_valid(concat(g, c1),
+            inverse_word(b_rcoset_rep(data, concat(g, c1))), n2);
+        crate::word::lemma_concat_word_valid(concat(g_prime, c1),
+            inverse_word(b_rcoset_rep(data, concat(g_prime, c1))), n2);
+        lemma_subgroup_to_k_word(p2, b_words(data),
+            concat(concat(g, c1), inverse_word(b_rcoset_rep(data, concat(g, c1)))));
+        lemma_subgroup_to_k_word(p2, b_words(data),
+            concat(concat(g_prime, c1), inverse_word(b_rcoset_rep(data, concat(g_prime, c1)))));
+        let hw3: Word = choose|hw: Word| word_valid(hw, k_size(data))
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+                concat(concat(g, c1), inverse_word(b_rcoset_rep(data, concat(g, c1)))));
+        let hw4: Word = choose|hw: Word| word_valid(hw, k_size(data))
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+                concat(concat(g_prime, c1), inverse_word(b_rcoset_rep(data, concat(g_prime, c1)))));
+        lemma_b_rcoset_h_equiv_invariant_general(data, concat(g, c1), concat(g_prime, c1), hw3, hw4);
+    }
+}
+
+/// G₂ prepend-cancel: mirrors lemma_one_shot_prepend_cancel with b_rcoset.
+#[verifier::rlimit(60)]
+proof fn lemma_g2_prepend_cancel(
+    data: AmalgamatedData, p: Word, c: Word, syls: Seq<Syllable>, new_syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(p, data.p2.num_generators),
+        word_valid(c, data.p2.num_generators),
+        !(c =~= empty_word()),
+        b_rcoset_rep(data, c) =~= c,
+        !(b_rcoset_rep(data, concat(p, inverse_word(c))) =~= empty_word()),
+        syls.len() == 0 || syls.first().is_left,
+        new_syls.len() > 0,
+        !new_syls.first().is_left,
+        new_syls.first().rep == c,
+        new_syls.drop_first() =~= syls,
+    ensures
+        g2_one_shot_action(data, concat(p, inverse_word(c)), new_syls)
+            == g2_one_shot_action(data, p, syls),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let q = concat(p, inverse_word(c));
+    reveal(presentation_valid);
+
+    crate::word::lemma_inverse_word_valid(c, n2);
+    crate::word::lemma_concat_word_valid(p, inverse_word(c), n2);
+    crate::word::lemma_concat_word_valid(q, c, n2);
+    assert(concat(q, c) =~= concat(p, concat(inverse_word(c), c))) by {
+        let lhs = concat(q, c);
+        let rhs = concat(p, concat(inverse_word(c), c));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < p.len() as int {} else {
+                let j = k - p.len() as int;
+                if j < inverse_word(c).len() as int {} else {}
+            }
+        }
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p2, c);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p2, p, concat(inverse_word(c), c), empty_word());
+    assert(concat(p, empty_word()) =~= p) by {
+        assert(concat(p, empty_word()).len() == p.len());
+        assert forall|k: int| 0 <= k < p.len() implies concat(p, empty_word())[k] == p[k] by {}
+    }
+    crate::word::lemma_concat_word_valid(inverse_word(c), c, n2);
+    crate::word::lemma_concat_word_valid(p, concat(inverse_word(c), c), n2);
+    crate::presentation::lemma_equiv_refl(p2, concat(p, empty_word()));
+    // concat(q, c) ≡ p
+
+    lemma_same_b_rcoset_from_equiv(data, concat(q, c), p);
+    lemma_b_rcoset_rep_invariant(data, concat(q, c), p);
+
+    lemma_b_rcoset_rep_props(data, concat(q, c));
+    lemma_b_rcoset_rep_props(data, p);
+    crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, concat(q, c)), n2);
+    crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, p), n2);
+    crate::word::lemma_concat_word_valid(concat(q, c), inverse_word(b_rcoset_rep(data, concat(q, c))), n2);
+    crate::word::lemma_concat_word_valid(p, inverse_word(b_rcoset_rep(data, p)), n2);
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(concat(q, c), inverse_word(b_rcoset_rep(data, concat(q, c)))));
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(p, inverse_word(b_rcoset_rep(data, p))));
+    assert(b_words(data).len() == k_size(data));
+    let hw1: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(concat(q, c), inverse_word(b_rcoset_rep(data, concat(q, c)))));
+    let hw2: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(p, inverse_word(b_rcoset_rep(data, p))));
+    lemma_b_rcoset_h_equiv_invariant_general(data, concat(q, c), p, hw1, hw2);
+}
+
+/// G₂ subgroup-prepend: when q ∈ B, prepending c = one-shot of concat(q, c).
+#[verifier::rlimit(150)]
+proof fn lemma_g2_subgroup_prepend(
+    data: AmalgamatedData, q: Word, c: Word, syls: Seq<Syllable>, new_syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(q, data.p2.num_generators),
+        word_valid(c, data.p2.num_generators),
+        !(c =~= empty_word()),
+        b_rcoset_rep(data, c) =~= c,
+        b_rcoset_rep(data, q) =~= empty_word(),
+        syls.len() == 0 || syls.first().is_left,
+        new_syls.len() > 0,
+        !new_syls.first().is_left,
+        new_syls.first().rep == c,
+        new_syls.drop_first() =~= syls,
+    ensures
+        g2_one_shot_action(data, q, new_syls)
+            == g2_one_shot_action(data, concat(q, c), syls),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let p = concat(q, c);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+
+    lemma_b_rcoset_rep_props(data, q);
+    crate::presentation::lemma_equiv_refl(p2, q);
+    lemma_in_subgroup_equiv(p2, b_words(data),
+        concat(q, inverse_word(b_rcoset_rep(data, q))), q);
+    crate::word::lemma_inverse_word_valid(c, n2);
+    crate::word::lemma_concat_word_valid(q, c, n2);
+    crate::word::lemma_concat_word_valid(p, inverse_word(c), n2);
+    lemma_right_cancel(p2, q, c);
+    crate::presentation::lemma_equiv_symmetric(p2,
+        concat(concat(q, c), inverse_word(c)), q);
+    lemma_in_subgroup_equiv(p2, b_words(data), q, concat(p, inverse_word(c)));
+    lemma_b_rcoset_rep_invariant(data, p, c);
+
+    // H-part: target(q) = q. target(p) ≡ q. Same h.
+    lemma_b_rcoset_rep_props(data, p);
+    crate::word::lemma_inverse_word_valid(b_rcoset_rep(data, p), n2);
+    crate::word::lemma_concat_word_valid(p, inverse_word(b_rcoset_rep(data, p)), n2);
+    crate::word::lemma_concat_word_valid(q, inverse_word(b_rcoset_rep(data, q)), n2);
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(q, inverse_word(b_rcoset_rep(data, q))));
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(p, inverse_word(b_rcoset_rep(data, p))));
+    assert(b_words(data).len() == k_size(data));
+    let hw1: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(q, inverse_word(b_rcoset_rep(data, q))));
+    let hw2: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(p, inverse_word(b_rcoset_rep(data, p))));
+
+    let target_q = concat(q, inverse_word(b_rcoset_rep(data, q)));
+    let target_p = concat(p, inverse_word(b_rcoset_rep(data, p)));
+    assert(target_q =~= q) by {
+        assert(b_rcoset_rep(data, q) =~= empty_word());
+        assert(inverse_word(empty_word()).len() == 0);
+        assert(concat(q, inverse_word(b_rcoset_rep(data, q))).len() == q.len());
+        assert forall|k: int| 0 <= k < q.len()
+            implies concat(q, inverse_word(b_rcoset_rep(data, q)))[k] == q[k] by {}
+    }
+    crate::presentation::lemma_equiv_transitive(p2,
+        apply_embedding(b_words(data), hw2), target_p, target_q);
+
+    assert(has_right_h_witness_of_len(data, target_q, hw1.len() as nat));
+    assert(has_right_h_witness_of_len(data, target_p, hw2.len() as nat));
+    let pred_q = |l: nat| has_right_h_witness_of_len(data, target_q, l);
+    let pred_p = |l: nat| has_right_h_witness_of_len(data, target_p, l);
+    lemma_nat_well_ordering(pred_q, hw1.len() as nat);
+    lemma_nat_well_ordering(pred_p, hw2.len() as nat);
+    let l_q = b_rcoset_h_min_len(data, q);
+    let l_p = b_rcoset_h_min_len(data, p);
+    assert(has_right_h_witness_of_len(data, target_q, l_q));
+    crate::presentation::lemma_equiv_symmetric(p2, target_q, target_p);
+    lemma_h_witness_transfer_g2(data, target_q, target_p, l_q);
+    lemma_h_witness_transfer_g2(data, target_p, target_q, l_p);
+    lemma_no_pred_below_implies_ge(pred_p, l_p, l_q);
+    lemma_no_pred_below_implies_ge(pred_q, l_q, l_p);
+
+    let rw_q = b_rcoset_h(data, q);
+    let rw_p = b_rcoset_h(data, p);
+    let r_q = b_rcoset_h_min_lex(data, q);
+    let r_p = b_rcoset_h_min_lex(data, p);
+
+    assert(has_right_h_witness_of_len(data, target_q, l_q));
+    assert(has_right_h_witness_of_len(data, target_p, l_q));
+    let wq: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l_q
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), w), target_q);
+    let wp: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l_q
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), w), target_p);
+    let wrq = word_lex_rank_base(wq, h_lex_base(data));
+    let wrp = word_lex_rank_base(wp, h_lex_base(data));
+    assert(has_right_h_witness_of_len_rank(data, target_q, l_q, wrq));
+    assert(has_right_h_witness_of_len_rank(data, target_p, l_q, wrp));
+    assert(no_smaller_h_lex_g2(data, target_q, l_q, 0nat));
+    assert(no_smaller_h_lex_g2(data, target_p, l_q, 0nat));
+    lemma_scan_min_h_lex_g2(data, target_q, l_q, 0, wrq);
+    lemma_scan_min_h_lex_g2(data, target_p, l_q, 0, wrp);
+
+    crate::presentation::lemma_equiv_transitive(p2,
+        apply_embedding(b_words(data), rw_q), target_q, target_p);
+    crate::presentation::lemma_equiv_transitive(p2,
+        apply_embedding(b_words(data), rw_p), target_p, target_q);
+    lemma_no_smaller_h_lex_g2_implies_ge(data, target_p, l_q, r_p, r_q);
+    lemma_no_smaller_h_lex_g2_implies_ge(data, target_q, l_q, r_q, r_p);
+
+    let base = h_lex_base(data);
+    assert forall|k: int| 0 <= k < rw_q.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rw_q[k]) < base
+    by { assert(symbol_valid(rw_q[k], k_size(data))); match rw_q[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    assert forall|k: int| 0 <= k < rw_p.len()
+        implies crate::todd_coxeter::symbol_to_column(#[trigger] rw_p[k]) < base
+    by { assert(symbol_valid(rw_p[k], k_size(data))); match rw_p[k] { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    assert(base > 0) by { assert(h_lex_base(data) == 2 * k_size(data) + 1); }
+    lemma_word_lex_rank_base_injective(rw_q, rw_p, base);
+}
+
+/// G₂ embed equiv chain: derive concat(w, embed_b(h_s)) ≡ concat(concat(w, g_s), inv(rep_s)).
+proof fn lemma_g2_embed_hs_equiv_chain(
+    data: AmalgamatedData, w: Word, g_s: Word, h_s: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(w, data.p2.num_generators),
+        word_valid(g_s, data.p2.num_generators),
+        word_valid(h_s, k_size(data)),
+        !(b_rcoset_rep(data, g_s) =~= empty_word()),
+        b_rcoset_h(data, g_s) =~= h_s,
+    ensures ({
+        let n2 = data.p2.num_generators;
+        let rep_s = b_rcoset_rep(data, g_s);
+        let embed_hs = apply_embedding(b_words(data), h_s);
+        &&& equiv_in_presentation(data.p2, concat(w, embed_hs),
+                concat(concat(w, g_s), inverse_word(rep_s)))
+        &&& word_valid(concat(w, embed_hs), n2)
+        &&& word_valid(concat(concat(w, g_s), inverse_word(rep_s)), n2)
+    }),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let rep_s = b_rcoset_rep(data, g_s);
+    let embed_hs = apply_embedding(b_words(data), h_s);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_s, n2);
+
+    lemma_b_rcoset_rep_props(data, g_s);
+    crate::word::lemma_inverse_word_valid(rep_s, n2);
+    crate::word::lemma_concat_word_valid(g_s, inverse_word(rep_s), n2);
+    lemma_subgroup_to_k_word(p2, b_words(data), concat(g_s, inverse_word(rep_s)));
+    assert(b_words(data).len() == k_size(data));
+    let hw_s: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+            concat(g_s, inverse_word(rep_s)));
+    lemma_b_rcoset_decomposition(data, g_s, hw_s);
+
+    // embed_b(h_s) · rep_s ≡ g_s → embed_b(h_s) ≡ g_s · inv(rep_s)
+    crate::word::lemma_concat_word_valid(embed_hs, rep_s, n2);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p2,
+        concat(embed_hs, rep_s), g_s, inverse_word(rep_s));
+    crate::word::lemma_concat_word_valid(concat(embed_hs, rep_s), inverse_word(rep_s), n2);
+    crate::presentation::lemma_equiv_symmetric(p2,
+        concat(concat(embed_hs, rep_s), inverse_word(rep_s)),
+        concat(g_s, inverse_word(rep_s)));
+    lemma_right_cancel(p2, embed_hs, rep_s);
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(g_s, inverse_word(rep_s)),
+        concat(concat(embed_hs, rep_s), inverse_word(rep_s)),
+        embed_hs);
+    crate::presentation::lemma_equiv_symmetric(p2,
+        concat(g_s, inverse_word(rep_s)), embed_hs);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p2, w, embed_hs,
+        concat(g_s, inverse_word(rep_s)));
+    crate::word::lemma_concat_word_valid(w, embed_hs, n2);
+    crate::word::lemma_concat_word_valid(w, g_s, n2);
+    crate::word::lemma_concat_word_valid(concat(w, g_s), inverse_word(rep_s), n2);
+    assert(concat(w, concat(g_s, inverse_word(rep_s))) =~=
+           concat(concat(w, g_s), inverse_word(rep_s))) by {
+        let lhs = concat(w, concat(g_s, inverse_word(rep_s)));
+        let rhs = concat(concat(w, g_s), inverse_word(rep_s));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < w.len() as int {} else {
+                let j = k - w.len() as int;
+                if j < g_s.len() as int {} else {}
+            }
+        }
+    }
+}
+
+/// G₂ peeled bridge: concat(peeled, rep) ≡ w_full.
+proof fn lemma_g2_peeled_bridge(
+    data: AmalgamatedData, w_full: Word, rep: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(w_full, data.p2.num_generators),
+        word_valid(rep, data.p2.num_generators),
+    ensures
+        equiv_in_presentation(data.p2,
+            concat(concat(w_full, inverse_word(rep)), rep), w_full),
+{
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let peeled = concat(w_full, inverse_word(rep));
+    reveal(presentation_valid);
+    crate::word::lemma_inverse_word_valid(rep, n2);
+    crate::word::lemma_concat_word_valid(w_full, inverse_word(rep), n2);
+    crate::word::lemma_concat_word_valid(peeled, rep, n2);
+    assert(concat(peeled, rep) =~= concat(w_full, concat(inverse_word(rep), rep))) by {
+        let lhs = concat(peeled, rep);
+        let rhs = concat(w_full, concat(inverse_word(rep), rep));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < w_full.len() as int {} else {
+                let j = k - w_full.len() as int;
+                if j < inverse_word(rep).len() as int {} else {}
+            }
+        }
+    }
+    crate::presentation_lemmas::lemma_word_inverse_left(p2, rep);
+    crate::word::lemma_concat_word_valid(inverse_word(rep), rep, n2);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p2, w_full,
+        concat(inverse_word(rep), rep), empty_word());
+    assert(concat(w_full, empty_word()) =~= w_full) by {
+        assert(concat(w_full, empty_word()).len() == w_full.len());
+        assert forall|k: int| 0 <= k < w_full.len()
+            implies concat(w_full, empty_word())[k] == w_full[k] by {}
+    }
+    crate::presentation::lemma_equiv_refl(p2, concat(w_full, empty_word()));
+}
+
+/// G₂ step composition: one_shot(concat(w, g_s), syls) = one_shot(concat(w, embed_b(h_s)), syls_s).
+/// Handles subgroup/prepend/merge cases. Mirrors lemma_one_shot_step for G₂.
+#[verifier::rlimit(200)]
+proof fn lemma_g2_one_shot_step(
+    data: AmalgamatedData, w: Word, g_s: Word, h_s: Word,
+    syls: Seq<Syllable>, syls_s: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(w, data.p2.num_generators),
+        word_valid(g_s, data.p2.num_generators),
+        word_valid(h_s, k_size(data)),
+        g2_one_shot_action(data, g_s, syls) == (h_s, syls_s),
+        is_canonical_state(data, h_s, syls_s),
+        (syls.len() > 0 && !syls.first().is_left ==> word_valid(syls.first().rep, data.p2.num_generators)),
+        (syls.len() > 0 && !syls.first().is_left ==> b_rcoset_rep(data, syls.first().rep) =~= syls.first().rep),
+        (syls.len() > 0 && !syls.first().is_left ==> !(syls.first().rep =~= empty_word())),
+        (syls.len() > 0 && !syls.first().is_left ==>
+            (syls.drop_first().len() == 0 || syls.drop_first().first().is_left)),
+    ensures
+        g2_one_shot_action(data, concat(w, g_s), syls)
+            == g2_one_shot_action(data, concat(w, apply_embedding(b_words(data), h_s)), syls_s),
+{
+    let rep_s = b_rcoset_rep(data, g_s);
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_s, n2);
+    crate::word::lemma_concat_word_valid(w, g_s, n2);
+    crate::word::lemma_concat_word_valid(w, apply_embedding(b_words(data), h_s), n2);
+
+    if rep_s =~= empty_word() {
+        // Case 1 (subgroup): embed_b(h_s) ≡ g_s → g2_invariant
+        lemma_b_rcoset_rep_props(data, g_s);
+        crate::word::lemma_inverse_word_valid(rep_s, n2);
+        crate::word::lemma_concat_word_valid(g_s, inverse_word(rep_s), n2);
+        lemma_subgroup_to_k_word(p2, b_words(data), concat(g_s, inverse_word(rep_s)));
+        assert(b_words(data).len() == k_size(data));
+        let hw_s: Word = choose|hw: Word| word_valid(hw, k_size(data))
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+                concat(g_s, inverse_word(rep_s)));
+        lemma_b_rcoset_decomposition(data, g_s, hw_s);
+        crate::presentation_lemmas::lemma_equiv_concat_right(p2, w,
+            apply_embedding(b_words(data), h_s), g_s);
+        crate::presentation::lemma_equiv_symmetric(p2,
+            concat(w, apply_embedding(b_words(data), h_s)), concat(w, g_s));
+        lemma_g2_one_shot_g2_invariant(data,
+            concat(w, apply_embedding(b_words(data), h_s)), concat(w, g_s), syls_s);
+        return;
+    }
+
+    // rep_s ≠ ε. Need b_rcoset_h(g_s) =~= h_s for the equiv chain.
+    // This follows from the precondition g2_one_shot_action(g_s, syls) == (h_s, syls_s)
+    // and the fact that in the prepend branch, h_s = b_rcoset_h(g_s).
+    // In the merge branch, h_s = b_rcoset_h(full). Either way, the chain needs h_s.
+    // For prepend: b_rcoset_h(g_s) is the h-component.
+    // For merge: b_rcoset_h(concat(g_s, c1)) is the h-component.
+    // The embed_hs_equiv_chain only works for the prepend case where h_s = b_rcoset_h(g_s).
+    // For the merge case, we need a different equiv chain.
+    // Let me dispatch based on whether we're in prepend or merge.
+    if syls.len() == 0 || syls.first().is_left {
+        // Prepend case: h_s = b_rcoset_h(g_s)
+        lemma_g2_embed_hs_equiv_chain(data, w, g_s, h_s);
+    }
+    lemma_b_rcoset_rep_idempotent(data, g_s);
+    lemma_b_rcoset_rep_props(data, g_s);
+    crate::word::lemma_inverse_word_valid(rep_s, n2);
+    crate::word::lemma_concat_word_valid(concat(w, g_s), inverse_word(rep_s), n2);
+    let peeled = concat(concat(w, g_s), inverse_word(rep_s));
+
+    if syls.len() == 0 || syls.first().is_left {
+        // Case 2 (prepend): syls_s = [Syl(false, rep_s)] + syls
+        assert(!syls_s.first().is_left);
+        assert(word_valid(rep_s, n2));
+        lemma_g2_one_shot_g2_invariant(data,
+            concat(w, apply_embedding(b_words(data), h_s)), peeled, syls_s);
+        if b_rcoset_rep(data, peeled) =~= empty_word() {
+            lemma_g2_subgroup_prepend(data, peeled, rep_s, syls, syls_s);
+            // Bridge: concat(peeled, rep_s) ≡ concat(w, g_s)
+            crate::word::lemma_concat_word_valid(peeled, rep_s, n2);
+            lemma_g2_peeled_bridge(data, concat(w, g_s), rep_s);
+            lemma_g2_one_shot_g2_invariant(data, concat(peeled, rep_s), concat(w, g_s), syls);
+        } else {
+            lemma_g2_prepend_cancel(data, concat(w, g_s), rep_s, syls, syls_s);
+        }
+        return;
+    } else {
+        // Case 3 (merge): first syl is right, !is_left
+        let c1 = syls.first().rep;
+        let full = concat(g_s, c1);
+        crate::word::lemma_concat_word_valid(g_s, c1, n2);
+        crate::word::lemma_concat_word_valid(w, full, n2);
+
+        lemma_b_rcoset_rep_props(data, full);
+        let merged_rep = b_rcoset_rep(data, full);
+        crate::word::lemma_inverse_word_valid(merged_rep, n2);
+        crate::word::lemma_concat_word_valid(full, inverse_word(merged_rep), n2);
+        lemma_subgroup_to_k_word(p2, b_words(data), concat(full, inverse_word(merged_rep)));
+        assert(b_words(data).len() == k_size(data));
+        let hw_f: Word = choose|hw: Word| word_valid(hw, k_size(data))
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw),
+                concat(full, inverse_word(merged_rep)));
+        lemma_b_rcoset_decomposition(data, full, hw_f);
+
+        assert(concat(concat(w, g_s), c1) =~= concat(w, full)) by {
+            let lhs = concat(concat(w, g_s), c1);
+            let rhs = concat(w, full);
+            assert(lhs.len() == rhs.len());
+            assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+                if k < w.len() as int {} else {
+                    let j = k - w.len() as int;
+                    if j < g_s.len() as int {} else {}
+                }
+            }
+        }
+
+        let embed_hs = apply_embedding(b_words(data), h_s);
+
+        if merged_rep =~= empty_word() {
+            // Merge absorbed
+            crate::presentation_lemmas::lemma_equiv_concat_right(p2, w, embed_hs, full);
+            crate::presentation::lemma_equiv_symmetric(p2, concat(w, embed_hs), concat(w, full));
+            lemma_g2_one_shot_g2_invariant(data, concat(w, embed_hs), concat(w, full), syls_s);
+            if b_rcoset_rep(data, concat(w, g_s)) =~= empty_word() {
+                lemma_g2_subgroup_prepend(data, concat(w, g_s), c1, syls.drop_first(), syls);
+            }
+        } else {
+            // Merge replaced: embed_hs · merged_rep ≡ full → embed_hs ≡ full · inv(mr)
+            crate::word::lemma_concat_word_valid(full, inverse_word(merged_rep), n2);
+            crate::word::lemma_concat_word_valid(embed_hs, merged_rep, n2);
+            crate::presentation_lemmas::lemma_equiv_concat_left(p2,
+                concat(embed_hs, merged_rep), full, inverse_word(merged_rep));
+            crate::word::lemma_concat_word_valid(concat(embed_hs, merged_rep), inverse_word(merged_rep), n2);
+            crate::presentation::lemma_equiv_symmetric(p2,
+                concat(concat(embed_hs, merged_rep), inverse_word(merged_rep)),
+                concat(full, inverse_word(merged_rep)));
+            lemma_right_cancel(p2, embed_hs, merged_rep);
+            crate::presentation::lemma_equiv_transitive(p2,
+                concat(full, inverse_word(merged_rep)),
+                concat(concat(embed_hs, merged_rep), inverse_word(merged_rep)),
+                embed_hs);
+            crate::presentation::lemma_equiv_symmetric(p2,
+                concat(full, inverse_word(merged_rep)), embed_hs);
+            // Now: embed_hs ≡ concat(full, inv(mr))
+            crate::presentation_lemmas::lemma_equiv_concat_right(p2, w, embed_hs,
+                concat(full, inverse_word(merged_rep)));
+            assert(concat(w, concat(full, inverse_word(merged_rep))) =~=
+                   concat(concat(w, full), inverse_word(merged_rep))) by {
+                let lhs = concat(w, concat(full, inverse_word(merged_rep)));
+                let rhs = concat(concat(w, full), inverse_word(merged_rep));
+                assert(lhs.len() == rhs.len());
+                assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+                    if k < w.len() as int {} else {
+                        let j = k - w.len() as int;
+                        if j < full.len() as int {} else {}
+                    }
+                }
+            }
+            lemma_b_rcoset_rep_idempotent(data, full);
+            crate::word::lemma_concat_word_valid(concat(w, full), inverse_word(merged_rep), n2);
+            let peeled_mr = concat(concat(w, full), inverse_word(merged_rep));
+            lemma_g2_one_shot_g2_invariant(data, concat(w, embed_hs), peeled_mr, syls_s);
+            if b_rcoset_rep(data, concat(w, g_s)) =~= empty_word() {
+                lemma_g2_subgroup_prepend(data, concat(w, g_s), c1, syls.drop_first(), syls);
+            }
+            if b_rcoset_rep(data, peeled_mr) =~= empty_word() {
+                lemma_g2_subgroup_prepend(data, peeled_mr, merged_rep, syls.drop_first(), syls_s);
+                crate::word::lemma_concat_word_valid(peeled_mr, merged_rep, n2);
+                lemma_g2_peeled_bridge(data, concat(w, full), merged_rep);
+                lemma_g2_one_shot_g2_invariant(data, concat(peeled_mr, merged_rep), concat(w, full), syls.drop_first());
+            } else {
+                lemma_g2_prepend_cancel(data, concat(w, full), merged_rep, syls.drop_first(), syls_s);
+            }
+        }
+    }
+}
+
+/// G₂ act_word = one-shot: for G₂-local word w, act_word(shift(w), h, syls) = g2_one_shot(concat(w, embed_b(h)), syls).
+#[verifier::rlimit(100)]
+proof fn lemma_act_word_eq_g2_one_shot(
+    data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        is_canonical_state(data, h, syls),
+        word_valid(w, data.p2.num_generators),
+        action_preserves_canonical(data),
+    ensures
+        act_word(data, shift_word(w, data.p1.num_generators), h, syls)
+            == g2_one_shot_action(data,
+                concat(w, apply_embedding(b_words(data), h)), syls),
+    decreases w.len(),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let p2 = data.p2;
+    let w_shifted = shift_word(w, n1);
+    let embed_h = apply_embedding(b_words(data), h);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+
+    if w.len() == 0 {
+        assert(w_shifted =~= empty_word()) by {
+            assert(w_shifted.len() == 0);
+        }
+        assert(concat(w, embed_h) =~= embed_h) by {
+            assert(w.len() == 0);
+            assert(concat(w, embed_h).len() == embed_h.len());
+            assert forall|k: int| 0 <= k < embed_h.len()
+                implies concat(w, embed_h)[k] == embed_h[k] by {}
+        }
+        crate::presentation::lemma_equiv_refl(data.p2, embed_h);
+        lemma_g2_one_shot_subgroup_restore(data, embed_h, h, syls);
+        return;
+    }
+
+    let s = w.last();
+    let w_prime = w.drop_last();
+    let s_shifted = crate::free_product::shift_symbol(s, n1);
+    let s_word_shifted = Seq::new(1, |_i: int| s_shifted);
+
+    assert(w_shifted =~= concat(shift_word(w_prime, n1), s_word_shifted)) by {
+        let lhs = w_shifted;
+        let rhs = concat(shift_word(w_prime, n1), s_word_shifted);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < w_prime.len() as int {} else {}
+        }
+    }
+
+    let (h_s, syls_s) = act_sym(data, s_shifted, h, syls);
+    lemma_act_word_single(data, s_shifted, h, syls);
+    assert(is_canonical_state(data, h_s, syls_s)) by {
+        assert(is_canonical_state(data,
+            act_word(data, s_word_shifted, h, syls).0,
+            act_word(data, s_word_shifted, h, syls).1));
+    }
+
+    assert(word_valid(w_prime, n2)) by {
+        assert forall|k: int| 0 <= k < w_prime.len()
+            implies symbol_valid(#[trigger] w_prime[k], n2) by {
+                assert(w_prime[k] == w[k]);
+            }
+    }
+
+    lemma_act_word_concat(data, shift_word(w_prime, n1), s_word_shifted, h, syls);
+    lemma_act_word_eq_g2_one_shot(data, w_prime, h_s, syls_s);
+
+    // Connect: one_shot(concat(w', embed_b(h_s)), syls_s) = one_shot(concat(w, embed_b(h)), syls)
+    let g_s = concat(Seq::new(1, |_i: int| s), embed_h);
+    assert(concat(w, embed_h) =~= concat(w_prime, g_s)) by {
+        let lhs = concat(w, embed_h);
+        let rhs = concat(w_prime, g_s);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < w_prime.len() as int {} else if k == w_prime.len() as int {} else {
+                let j = k - w_prime.len() as int - 1;
+            }
+        }
+    }
+
+    // Step composition
+    crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s), embed_h, n2);
+    lemma_g2_one_shot_step(data, w_prime, g_s, h_s, syls, syls_s);
+}
+
+/// G₂ relator triviality: if w ≡ ε in G₂, act_word(shift(w), h, syls) = (h, syls).
+pub proof fn lemma_g2_relator_acts_trivially(
+    data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        is_canonical_state(data, h, syls),
+        word_valid(w, data.p2.num_generators),
+        equiv_in_presentation(data.p2, w, empty_word()),
+        action_preserves_canonical(data),
+    ensures
+        act_word(data, shift_word(w, data.p1.num_generators), h, syls) == (h, syls),
+{
+    let n2 = data.p2.num_generators;
+    let embed_h = apply_embedding(b_words(data), h);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+
+    lemma_act_word_eq_g2_one_shot(data, w, h, syls);
+
+    crate::word::lemma_concat_word_valid(w, embed_h, n2);
+    crate::presentation_lemmas::lemma_equiv_concat_left(data.p2, w, empty_word(), embed_h);
+    assert(concat(empty_word(), embed_h) =~= embed_h) by {
+        assert(concat(empty_word(), embed_h).len() == embed_h.len());
+        assert forall|k: int| 0 <= k < embed_h.len()
+            implies concat(empty_word(), embed_h)[k] == embed_h[k] by {}
+    }
+
+    lemma_g2_one_shot_subgroup_restore(data, concat(w, embed_h), h, syls);
+}
+
 // ============================================================
 // Part I2: Choose property extraction
 // ============================================================
