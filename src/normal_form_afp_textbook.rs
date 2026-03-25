@@ -5171,6 +5171,101 @@ proof fn lemma_act_left_sym_merge_replaced(
     // merged_rep ≠ ε → replace first syllable
 }
 
+/// H-part through equivalence: if g ≡ embed_a(h)·c where c is canonical rep,
+/// then a_rcoset_h(g) =~= h (when h is canonical).
+/// Uses: target = g·inv(c) ≡ embed_a(h) → subgroup h-part invariance.
+proof fn lemma_a_rcoset_h_from_equiv(
+    data: AmalgamatedData, g: Word, h: Word, c: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h, k_size(data)),
+        word_valid(c, data.p1.num_generators),
+        equiv_in_presentation(data.p1, g, concat(apply_embedding(a_words(data), h), c)),
+        left_h_part(data, apply_embedding(a_words(data), h)) =~= h,
+        a_rcoset_rep(data, c) =~= c,
+        a_rcoset_rep(data, g) =~= c,
+    ensures
+        a_rcoset_h(data, g) =~= h,
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let embed_h = apply_embedding(a_words(data), h);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    crate::word::lemma_inverse_word_valid(c, n1);
+
+    // target_g = g·inv(a_rcoset_rep(g)) = g·inv(c)
+    // target_ehc = (embed_h·c)·inv(c) ≡ embed_h (by word_inverse_right + assoc)
+    // g ≡ embed_h·c → g·inv(c) ≡ (embed_h·c)·inv(c) ≡ embed_h
+
+    // So target_g ≡ embed_h. Both in subgroup (embed_h ∈ A).
+    // By in_subgroup_both_reps_eps: both left reps = ε.
+    // By left_h_part_equiv_invariant on the targets:
+    // left_h_part(target_g) =~= left_h_part(embed_h) =~= h.
+    // Since a_rcoset_rep(g) =~= c and left_canonical_rep(target_g) = ε:
+    // a_rcoset_h(g) = left_h_part(target_g) (same target, same choose).
+
+    // target_g ≡ embed_h:
+    crate::word::lemma_concat_word_valid(g, inverse_word(c), n1);
+    crate::word::lemma_concat_word_valid(embed_h, c, n1);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p1, g, concat(embed_h, c), inverse_word(c));
+    // g·inv(c) ≡ (embed_h·c)·inv(c) by equiv_concat_right
+    // (embed_h·c)·inv(c) ≡ embed_h by four_part_cancel(embed_h, c, ε)... no, by word_inverse_right
+    crate::presentation_lemmas::lemma_word_inverse_right(p1, c);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p1, embed_h,
+        concat(c, inverse_word(c)), empty_word());
+    assert(concat(embed_h, empty_word()) =~= embed_h) by {
+        assert(concat(embed_h, empty_word()).len() == embed_h.len());
+        assert forall|k: int| 0 <= k < embed_h.len()
+            implies concat(embed_h, empty_word())[k] == embed_h[k] by {}
+    }
+    // (embed_h·c)·inv(c) =~= embed_h·(c·inv(c)) ≡ embed_h·ε =~= embed_h
+    assert(concat(concat(embed_h, c), inverse_word(c)) =~=
+           concat(embed_h, concat(c, inverse_word(c)))) by {
+        let lhs = concat(concat(embed_h, c), inverse_word(c));
+        let rhs = concat(embed_h, concat(c, inverse_word(c)));
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < embed_h.len() as int {} else {
+                let j = k - embed_h.len() as int;
+                if j < c.len() as int {} else {}
+            }
+        }
+    }
+    crate::presentation::lemma_equiv_transitive(p1,
+        concat(concat(embed_h, c), inverse_word(c)),
+        concat(embed_h, concat(c, inverse_word(c))),
+        embed_h);
+    crate::presentation::lemma_equiv_transitive(p1,
+        concat(g, inverse_word(c)), concat(concat(embed_h, c), inverse_word(c)), embed_h);
+
+    // Both targets ∈ subgroup → both reps = ε → left_h_part invariance applies
+    lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
+    crate::presentation::lemma_equiv_symmetric(p1, concat(g, inverse_word(c)), embed_h);
+    lemma_in_subgroup_equiv(p1, a_words(data), embed_h, concat(g, inverse_word(c)));
+    lemma_in_subgroup_both_reps_eps(data, concat(g, inverse_word(c)));
+    lemma_in_subgroup_both_reps_eps(data, embed_h);
+
+    // left_h_part invariance: left_h_part(target_g) =~= left_h_part(embed_h) =~= h
+    lemma_h_witness_exists(data, concat(g, inverse_word(c)));
+    lemma_h_witness_exists(data, embed_h);
+    let hw1: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+            concat(inverse_word(left_canonical_rep(data, concat(g, inverse_word(c)))),
+                   concat(g, inverse_word(c))));
+    let hw2: Word = choose|hw: Word| word_valid(hw, k_size(data))
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), hw),
+            concat(inverse_word(left_canonical_rep(data, embed_h)), embed_h));
+    lemma_left_h_part_equiv_invariant(data, concat(g, inverse_word(c)), embed_h, hw1, hw2);
+}
+
 /// Helper: the inverse step for C2 — directly establishes act_left_sym via merge_replaced.
 /// Requires rep_inv ≠ ε as a precondition (caller provides via case split).
 proof fn lemma_c2_inverse_merge_step(
@@ -5233,9 +5328,14 @@ proof fn lemma_c2_inverse_merge_step(
     lemma_same_a_rcoset_from_equiv(data, full_inv, concat(embed_h, c1));
     lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
 
-    // merge_replaced: rep_inv ≠ ε, first syl left, merged_rep ≠ ε
+    // Explicitly connect merge_replaced preconditions to local variables
     assert(new_syls.first().is_left);
     assert(new_syls.first().rep == merged_rep);
+    assert(!(a_rcoset_rep(data, full_inv) =~= empty_word()));
+    // full_inv = concat(product, first_rep) in merge_replaced's terms
+    assert(full_inv == concat(concat(Seq::new(1, |_i: int| inv_s), apply_embedding(a_words(data), combined_h)), new_syls.first().rep));
+
+    // merge_replaced: rep_inv ≠ ε, first syl left, merged_rep ≠ ε
     lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
 }
 
