@@ -2236,7 +2236,7 @@ proof fn lemma_one_shot_prepend_cancel(
 /// Subgroup-prepend: when q ∈ A (rep = ε), prepending c as syllable = one-shot of concat(q, c).
 /// Handles the subgroup sub-case that prepend-cancel doesn't cover.
 /// one_shot(q, [Syl(left, c)] + syls) = one_shot(concat(q, c), syls)
-#[verifier::rlimit(60)]
+#[verifier::rlimit(120)]
 proof fn lemma_one_shot_subgroup_prepend(
     data: AmalgamatedData, q: Word, c: Word, syls: Seq<Syllable>, new_syls: Seq<Syllable>,
 )
@@ -2680,7 +2680,7 @@ proof fn lemma_peeled_concat_bridge(
 }
 
 /// Step merge replaced sub-case: merged_rep ≠ ε → uses prepend cancel.
-#[verifier::rlimit(80)]
+#[verifier::rlimit(100)]
 proof fn lemma_one_shot_step_merge_replaced(
     data: AmalgamatedData, w: Word, g_s: Word, h_s: Word,
     syls: Seq<Syllable>, syls_s: Seq<Syllable>,
@@ -2751,9 +2751,21 @@ proof fn lemma_one_shot_step_merge_replaced(
     crate::word::lemma_concat_word_valid(concat(w, full), inverse_word(merged_rep), n1);
     let peeled_mr = concat(concat(w, full), inverse_word(merged_rep));
     lemma_one_shot_g1_invariant(data, concat(w, embed_hs), peeled_mr, syls_s);
+    // Help Z3: the merge product concat(concat(w, g_s), c1) =~= concat(w, full)
+    assert(concat(concat(w, g_s), c1) =~= concat(w, full)) by {
+        let lhs = concat(concat(w, g_s), c1);
+        let rhs = concat(w, full);
+        assert(lhs.len() == rhs.len());
+        assert forall|k: int| 0 <= k < lhs.len() implies lhs[k] == rhs[k] by {
+            if k < w.len() as int {} else {
+                let j = k - w.len() as int;
+                if j < g_s.len() as int {} else {}
+            }
+        }
+    }
+
     // Sub-split: concat(w, g_s) could be in subgroup
     if a_rcoset_rep(data, concat(w, g_s)) =~= empty_word() {
-        // concat(w, g_s) ∈ A → use subgroup_prepend for the LHS
         lemma_one_shot_subgroup_prepend(data, concat(w, g_s), c1, syls.drop_first(), syls);
     }
 
@@ -3045,6 +3057,74 @@ pub proof fn lemma_g1_relator_acts_trivially(
 
     // one_shot(embed_a(h), syls) = (h, syls)
     lemma_one_shot_subgroup_restore(data, concat(w, embed_h), h, syls);
+}
+
+// ============================================================
+// Part I1c: G₂ one-shot action and relator triviality
+// Mirrors G₁ approach with b_rcoset instead of a_rcoset.
+// ============================================================
+
+/// One-shot G₂ action: mirrors g1_one_shot_action with b_rcoset.
+/// Syllable prepend/merge uses is_left=false (right syllables) instead of true.
+pub open spec fn g2_one_shot_action(
+    data: AmalgamatedData,
+    g: Word,       // full G₂-local product (e.g., concat(w_local, embed_b(h)))
+    syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let rep = b_rcoset_rep(data, g);
+    let h_new = b_rcoset_h(data, g);
+
+    if rep =~= empty_word() {
+        (h_new, syls)
+    } else if syls.len() == 0 || syls.first().is_left {
+        (h_new, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
+    } else {
+        let full = concat(g, syls.first().rep);
+        let merged_rep = b_rcoset_rep(data, full);
+        let merged_h = b_rcoset_h(data, full);
+        if merged_rep =~= empty_word() {
+            (merged_h, syls.drop_first())
+        } else {
+            (merged_h, Seq::new(1, |_i: int| Syllable { is_left: false, rep: merged_rep })
+                + syls.drop_first())
+        }
+    }
+}
+
+/// G₂ one-shot on g ≡ embed_b(h) returns (h, syls) for canonical h.
+proof fn lemma_g2_one_shot_subgroup_restore(
+    data: AmalgamatedData, g: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+        is_canonical_state(data, h, syls),
+        equiv_in_presentation(data.p2, g, apply_embedding(b_words(data), h)),
+    ensures
+        g2_one_shot_action(data, g, syls) == (h, syls),
+{
+    let embed_h = apply_embedding(b_words(data), h);
+    let n2 = data.p2.num_generators;
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+
+    // g ≡ embed_b(h) ∈ B-subgroup → b_rcoset_rep(g) = ε
+    lemma_apply_embedding_in_subgroup_g2(data.p2, b_words(data), h);
+    crate::presentation::lemma_equiv_symmetric(data.p2, g, embed_h);
+    lemma_in_subgroup_equiv(data.p2, b_words(data), embed_h, g);
+    lemma_b_rcoset_in_subgroup(data, g);
+
+    // b_rcoset_h(g) =~= h
+    assert(is_canonical_state(data, h, Seq::<Syllable>::empty())) by {
+        assert(Seq::<Syllable>::empty().len() == 0int);
+    }
+    crate::presentation::lemma_equiv_symmetric(data.p2, g, embed_h);
+    lemma_subgroup_rcoset_restore_g2(data, g, h);
 }
 
 // ============================================================
