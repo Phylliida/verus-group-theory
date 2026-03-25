@@ -7117,12 +7117,22 @@ proof fn lemma_inverse_pair_g2_subcase_a(
     lemma_inv_s_rcoset_product_equiv_g2(data, s, h);
     // [inv(s)]·embed_b(h')·ε ≡ embed_b(h) (since rep = ε)
 
-    // embed_b(h) in B-subgroup → product2 ≡ embed_b(h) → subgroup restore
-    lemma_subgroup_rcoset_restore_g2(data,
-        concat(concat(Seq::new(1, |_i: int| inverse_symbol(s)),
-            apply_embedding(b_words(data), h_prime)),
-            b_rcoset_rep(data, product)),
-        h);
+    // product2 = [inv(s)]·embed_b(h')·rep where rep = ε → product2 =~= [inv(s)]·embed_b(h')
+    // From the helper: concat(concat([inv(s)], embed_b(h')), rep) ≡ embed_b(h)
+    // Since rep =~= ε: this reduces to [inv(s)]·embed_b(h') ≡ embed_b(h)
+    let inv_s_local = inverse_symbol(s);
+    let inv_s_local_word = Seq::new(1, |_i: int| inv_s_local);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_prime, n2);
+    let product2 = concat(inv_s_local_word, apply_embedding(b_words(data), h_prime));
+    assert(word_valid(inv_s_local_word, n2)) by {
+        assert forall|k: int| 0 <= k < inv_s_local_word.len()
+            implies symbol_valid(#[trigger] inv_s_local_word[k], n2) by {
+                match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+            }
+    }
+    crate::word::lemma_concat_word_valid(inv_s_local_word, apply_embedding(b_words(data), h_prime), n2);
+    // subgroup restore
+    lemma_subgroup_rcoset_restore_g2(data, product2, h);
 }
 
 /// Complete G₂ inverse pair triviality.
