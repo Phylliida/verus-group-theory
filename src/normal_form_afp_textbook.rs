@@ -1502,6 +1502,9 @@ pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Sy
         word_valid(syls[j].rep, data.p1.num_generators)
         && a_rcoset_rep(data, syls[j].rep) =~= syls[j].rep
         && !(syls[j].rep =~= empty_word())))
+    // Alternating: adjacent syllables from different factors (textbook reduced sequence)
+    && (forall|j: int| #![trigger syls[j]]
+        0 <= j < syls.len() - 1 ==> syls[j].is_left != syls[j + 1].is_left)
 }
 
 /// The action of a single symbol preserves canonical state (h is word_valid for k).
@@ -5619,6 +5622,162 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
     assert(new_syls.first().is_left);
     assert(new_syls.first().rep == merged_rep);
     lemma_c2_inverse_merge_step(data, s, h, c1, combined_h, merged_rep, syls.drop_first());
+}
+
+/// Subcase C1: merge with merged_rep = ε (full product in subgroup).
+/// Forward: merge absorbs → (combined_h, syls.drop_first()).
+/// Inverse: product_inv ≡ embed_a(h)·c₁, rep_inv = c₁ ≠ ε → PREPEND c₁ → (h, syls).
+/// Alternating ensures the inverse step prepends (not merges again).
+proof fn lemma_inverse_pair_g1_subcase_c1(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        is_canonical_state(data, h, syls),
+        generator_index(s) < data.p1.num_generators,
+        !(a_rcoset_rep(data,
+            concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h)))
+            =~= empty_word()),
+        syls.len() > 0,
+        syls.first().is_left,
+        // Sub-subcase: merged_rep = ε (absorbed)
+        ({
+            let product = concat(Seq::new(1, |_i: int| s), apply_embedding(a_words(data), h));
+            let full_product = concat(product, syls.first().rep);
+            a_rcoset_rep(data, full_product) =~= empty_word()
+        }),
+    ensures
+        act_word(data, inverse_pair_word(s), h, syls) == (h, syls),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    let e = empty_word();
+    let s_word = Seq::new(1, |_i: int| s);
+    let inv_s = inverse_symbol(s);
+    let inv_s_word = Seq::new(1, |_i: int| inv_s);
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(s_word, embed_h);
+    let c1 = syls.first().rep;
+    let full_product = concat(product, c1);
+    let combined_h = a_rcoset_h(data, full_product);
+    reveal(presentation_valid);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    assert(word_valid(s_word, n1)) by {
+        assert forall|k: int| 0 <= k < s_word.len()
+            implies symbol_valid(#[trigger] s_word[k], n1) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    }
+    crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
+    assert(word_valid(c1, n1));
+    assert(!(c1 =~= e));
+    crate::word::lemma_concat_word_valid(product, c1, n1);
+
+    // Split and compose
+    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+        assert(inverse_pair_word(s).len() == 2);
+        assert(concat(s_word, inv_s_word).len() == 2);
+        assert forall|k: int| 0 <= k < 2
+            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+    }
+    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_single(data, s, h, syls);
+
+    // Forward: merge absorbed → state = (combined_h, syls.drop_first())
+    lemma_act_left_sym_merge_absorbed(data, s, h, syls);
+    let rest = syls.drop_first();
+    lemma_act_word_single(data, inv_s, combined_h, rest);
+
+    // [inv(s)]·embed_a(combined_h)·ε ≡ embed_a(h)·c₁
+    lemma_inv_s_rcoset_merge_equiv(data, s, h, c1);
+
+    // product_inv ≡ embed_a(h)·c₁ (since merged_rep = ε: concat(product_inv, ε) =~= product_inv)
+    let embed_ch = apply_embedding(a_words(data), combined_h);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), combined_h, n1);
+    let product_inv = concat(inv_s_word, embed_ch);
+
+    // Decompose embed_a(h)·c₁: rep = c₁, h-part = h
+    assert(a_rcoset_rep(data, c1) =~= c1);
+    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
+
+    // rep_inv =~= c₁ ≠ ε (from equiv invariance)
+    assert(word_valid(inv_s_word, n1)) by {
+        assert forall|k: int| 0 <= k < inv_s_word.len()
+            implies symbol_valid(#[trigger] inv_s_word[k], n1) by { match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} } }
+    }
+    crate::word::lemma_concat_word_valid(inv_s_word, embed_ch, n1);
+    crate::word::lemma_concat_word_valid(embed_h, c1, n1);
+    lemma_same_a_rcoset_from_equiv(data, product_inv, concat(embed_h, c1));
+    lemma_a_rcoset_rep_invariant(data, product_inv, concat(embed_h, c1));
+    // a_rcoset_rep(product_inv) =~= c₁ ≠ ε
+
+    // h-part: a_rcoset_h(product_inv) =~= h
+    lemma_a_rcoset_h_from_equiv(data, product_inv, h, c1);
+
+    // generator_index for dispatch
+    assert(generator_index(inv_s) == generator_index(s)) by {
+        match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+
+    // Alternating: syls[0] is left → syls[1] (if exists) is right → rest starts with right or is empty
+    // So the inverse step PREPENDS (not merges)
+    assert(rest.len() == 0 || !rest.first().is_left) by {
+        if rest.len() > 0 {
+            // syls[0].is_left and alternating → syls[1].is_left != syls[0].is_left → !syls[1].is_left
+            assert(syls[0].is_left);
+            assert(syls[0].is_left != syls[1].is_left);
+            assert(rest.first() == syls[1]);
+        }
+    }
+
+    // Inverse step: PREPEND c₁ → (h, [Syl(left, c₁)] + rest) = (h, syls)
+    // syls = [Syl(left, c₁)] + rest
+    assert(syls =~= Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + rest) by {
+        assert(syls.len() == 1 + rest.len());
+        assert forall|k: int| 0 <= k < syls.len() implies
+            syls[k] == (Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + rest)[k]
+        by { if k == 0 {} else {} }
+    }
+}
+
+/// Complete G₁ inverse pair triviality: [s, inv(s)] acts trivially on ALL canonical states.
+/// Dispatches to subcases A, B, C1, C2 based on the action's branch conditions.
+pub proof fn lemma_inverse_pair_g1(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        is_canonical_state(data, h, syls),
+        generator_index(s) < data.p1.num_generators,
+    ensures
+        act_word(data, inverse_pair_word(s), h, syls) == (h, syls),
+{
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(Seq::new(1, |_i: int| s), embed_h);
+    let rep = a_rcoset_rep(data, product);
+
+    if rep =~= empty_word() {
+        // Subcase A: product in subgroup
+        lemma_inverse_pair_g1_subcase_a(data, s, h, syls);
+    } else if syls.len() == 0 || !syls.first().is_left {
+        // Subcase B: prepend new syllable
+        lemma_inverse_pair_g1_subcase_b(data, s, h, syls);
+    } else {
+        // Subcases C: merge with existing left syllable
+        let full_product = concat(product, syls.first().rep);
+        let merged_rep = a_rcoset_rep(data, full_product);
+        if merged_rep =~= empty_word() {
+            // C1: merge absorbed
+            lemma_inverse_pair_g1_subcase_c1(data, s, h, syls);
+        } else {
+            // C2: merge replaced
+            lemma_inverse_pair_g1_subcase_c2(data, s, h, syls);
+        }
+    }
 }
 
 } // verus!
