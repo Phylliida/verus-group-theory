@@ -5213,9 +5213,10 @@ proof fn lemma_a_rcoset_h_from_equiv(
     // a_rcoset_h(g) = left_h_part(target_g) (same target, same choose).
 
     // target_g ≡ embed_h:
+    // g ≡ embed_h·c → g·inv(c) ≡ (embed_h·c)·inv(c) by concat_left
     crate::word::lemma_concat_word_valid(g, inverse_word(c), n1);
     crate::word::lemma_concat_word_valid(embed_h, c, n1);
-    crate::presentation_lemmas::lemma_equiv_concat_right(p1, g, concat(embed_h, c), inverse_word(c));
+    crate::presentation_lemmas::lemma_equiv_concat_left(p1, g, concat(embed_h, c), inverse_word(c));
     // g·inv(c) ≡ (embed_h·c)·inv(c) by equiv_concat_right
     // (embed_h·c)·inv(c) ≡ embed_h by four_part_cancel(embed_h, c, ε)... no, by word_inverse_right
     crate::presentation_lemmas::lemma_word_inverse_right(p1, c);
@@ -5239,6 +5240,8 @@ proof fn lemma_a_rcoset_h_from_equiv(
             }
         }
     }
+    crate::word::lemma_concat_word_valid(concat(embed_h, c), inverse_word(c), n1);
+    crate::presentation::lemma_equiv_refl(p1, concat(concat(embed_h, c), inverse_word(c)));
     crate::presentation::lemma_equiv_transitive(p1,
         concat(concat(embed_h, c), inverse_word(c)),
         concat(embed_h, concat(c, inverse_word(c))),
@@ -5335,8 +5338,13 @@ proof fn lemma_c2_inverse_merge_step(
     // full_inv = concat(product, first_rep) in merge_replaced's terms
     assert(full_inv == concat(concat(Seq::new(1, |_i: int| inv_s), apply_embedding(a_words(data), combined_h)), new_syls.first().rep));
 
+    // H-part: a_rcoset_h(full_inv) =~= h (from equiv invariance)
+    lemma_a_rcoset_h_from_equiv(data, full_inv, h, c1);
+
     // merge_replaced: rep_inv ≠ ε, first syl left, merged_rep ≠ ε
     lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
+    // Result: (a_rcoset_h(full_inv), [Syl(left, a_rcoset_rep(full_inv))] + rest)
+    //       = (h, [Syl(left, c₁)] + rest)
 }
 
 /// Subcase C: G₁ inverse pair when rep' ≠ ε and first syllable IS left (merge).
@@ -5345,6 +5353,7 @@ proof fn lemma_c2_inverse_merge_step(
 ///
 /// Sub-subcase C2: merged_rep ≠ ε → [Syl(left, merged_rep)] + rest.
 /// Inverse enters merge again, produces embed_a(h)·c₁, decomposes as (h, c₁).
+#[verifier::rlimit(20)]
 proof fn lemma_inverse_pair_g1_subcase_c2(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
@@ -5450,26 +5459,27 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
     lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
     // a_rcoset_rep(full_inv) =~= a_rcoset_rep(embed_a(h)·c₁) =~= c₁ ≠ ε
 
-    // Case split on rep_inv
+    // Use the C2 inverse merge step helper
+    // It needs: combined_h word_valid + rep_inv ≠ ε
     let rep_inv = a_rcoset_rep(data, product_inv);
     if rep_inv =~= e {
-        // Impossible: result has new_syls (different first rep from syls)
         assert(new_syls.len() >= 1);
         return;
     }
-
-    // Merge case: use merge_replaced for inverse step
-    lemma_act_left_sym_merge_replaced(data, inv_s, combined_h, new_syls);
-    // Result: (a_rcoset_h(full_inv), [Syl(left, a_rcoset_rep(full_inv))] + new_syls.drop_first())
-    //       =~= (h, [Syl(left, c₁)] + syls.drop_first()) = (h, syls)
-
-    // syls reconstruction
+    // syls = [Syl(left, c₁)] + syls.drop_first() (reconstruction)
     assert(syls =~= Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first()) by {
         assert(syls.len() == 1 + syls.drop_first().len());
         assert forall|k: int| 0 <= k < syls.len() implies
             syls[k] == (Seq::new(1, |_i: int| Syllable { is_left: true, rep: c1 }) + syls.drop_first())[k]
         by { if k == 0 {} else {} }
     }
+
+    // Use the C2 inverse merge step helper
+    lemma_c2_inverse_merge_step(data, s, h, c1, combined_h, merged_rep, syls.drop_first());
+
+    // Help Z3 with act_sym → act_left_sym dispatch
+    assert(act_sym(data, s, h, syls) == act_left_sym(data, s, h, syls));
+    assert(act_sym(data, inv_s, combined_h, new_syls) == act_left_sym(data, inv_s, combined_h, new_syls));
 }
 
 } // verus!
