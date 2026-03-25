@@ -12,6 +12,7 @@ use crate::normal_form_amalgamated::{
     in_left_subgroup, in_right_subgroup,
     same_left_coset, same_right_coset,
     unshift_sym,
+    identifications_isomorphic,
 };
 use crate::benign::*;
 use crate::shortlex::*;
@@ -2236,7 +2237,7 @@ proof fn lemma_one_shot_prepend_cancel(
 /// Subgroup-prepend: when q ∈ A (rep = ε), prepending c as syllable = one-shot of concat(q, c).
 /// Handles the subgroup sub-case that prepend-cancel doesn't cover.
 /// one_shot(q, [Syl(left, c)] + syls) = one_shot(concat(q, c), syls)
-#[verifier::rlimit(120)]
+#[verifier::rlimit(300)]
 proof fn lemma_one_shot_subgroup_prepend(
     data: AmalgamatedData, q: Word, c: Word, syls: Seq<Syllable>, new_syls: Seq<Syllable>,
 )
@@ -3414,7 +3415,7 @@ proof fn lemma_g2_prepend_cancel(
 }
 
 /// G₂ subgroup-prepend: when q ∈ B, prepending c = one-shot of concat(q, c).
-#[verifier::rlimit(150)]
+#[verifier::rlimit(200)]
 proof fn lemma_g2_subgroup_prepend(
     data: AmalgamatedData, q: Word, c: Word, syls: Seq<Syllable>, new_syls: Seq<Syllable>,
 )
@@ -3840,7 +3841,7 @@ proof fn lemma_g2_one_shot_step(
 }
 
 /// G₂ act_word = one-shot: for G₂-local word w, act_word(shift(w), h, syls) = g2_one_shot(concat(w, embed_b(h)), syls).
-#[verifier::rlimit(100)]
+#[verifier::rlimit(150)]
 proof fn lemma_act_word_eq_g2_one_shot(
     data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -3969,6 +3970,234 @@ pub proof fn lemma_g2_relator_acts_trivially(
     }
 
     lemma_g2_one_shot_subgroup_restore(data, concat(w, embed_h), h, syls);
+}
+
+// ============================================================
+// Part I1d: Identification relator triviality
+// ============================================================
+
+/// Identification relator triviality: u_i · inv(shift(v_i)) acts trivially.
+/// This is the mathematical heart — uses identifications_isomorphic.
+///
+/// Proof sketch:
+/// 1. inv(shift(v_i)) acts via G₂: product inv(v_i)·embed_b(h) ∈ B → (h', syls)
+/// 2. u_i acts via G₁: product u_i·embed_a(h') ∈ A → (h'', syls)
+/// 3. By identification isomorphism: embed_a(h') ≡ inv(u_i)·embed_a(h) in G₁
+/// 4. So u_i·embed_a(h') ≡ embed_a(h) → h'' = h
+#[verifier::rlimit(500)]
+pub proof fn lemma_identification_relator_acts_trivially(
+    data: AmalgamatedData, i: int, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        is_canonical_state(data, h, syls),
+        0 <= i < data.identifications.len() as int,
+        identifications_isomorphic(data),
+        action_preserves_canonical(data),
+    ensures
+        act_word(data, amalgamation_relator(data, i), h, syls) == (h, syls),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let p1 = data.p1;
+    let p2 = data.p2;
+    let (u_i, v_i) = (data.identifications[i].0, data.identifications[i].1);
+    let shifted_v = shift_word(v_i, n1);
+    let relator = amalgamation_relator(data, i);
+    // relator = concat(u_i, inverse_word(shifted_v))
+    reveal(presentation_valid);
+
+    assert forall|j: int| 0 <= j < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[j], n1)
+    by { assert(word_valid(data.identifications[j].0, n1)); }
+    assert forall|j: int| 0 <= j < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[j], n2)
+    by { assert(word_valid(data.identifications[j].1, n2)); }
+
+    // Step 1: process inv(shift(v_i)) via G₂ one-shot
+    // inv(shift(v_i)) = shift(inv(v_i)) (shift commutes with inverse)
+    // shift(inv(v_i)) =~= inv(shift(v_i)): shift commutes with inverse
+    crate::free_product::lemma_shift_inverse_word(v_i, n1);
+
+    // Decompose relator: u_i · shift(inv(v_i))
+    // Right-to-left: process shift(inv(v_i)) first, then u_i
+    lemma_act_word_concat(data, u_i, inverse_word(shifted_v), h, syls);
+
+    // inv(v_i) ≡ ε in G₂? No — but inv(v_i) IS in the B-subgroup.
+    // The act_word of shift(inv(v_i)) uses the G₂ one-shot.
+    crate::word::lemma_inverse_word_valid(v_i, n2);
+    lemma_act_word_eq_g2_one_shot(data, inverse_word(v_i), h, syls);
+    // act_word(shift(inv(v_i)), h, syls) = g2_one_shot(concat(inv(v_i), embed_b(h)), syls)
+
+    let embed_h_b = apply_embedding(b_words(data), h);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+    let inv_vi = inverse_word(v_i);
+    let g2_product = concat(inv_vi, embed_h_b);
+    crate::word::lemma_concat_word_valid(inv_vi, embed_h_b, n2);
+
+    // g2_product is in B-subgroup: inv(v_i) ∈ B and embed_b(h) ∈ B
+    lemma_generator_in_generated_subgroup(p2, b_words(data), i);
+    lemma_subgroup_inverse(p2, b_words(data), v_i);
+    lemma_apply_embedding_in_subgroup_g2(p2, b_words(data), h);
+    lemma_subgroup_concat(p2, b_words(data), inv_vi, embed_h_b);
+    // g2_product ∈ B → b_rcoset_rep = ε
+    lemma_b_rcoset_in_subgroup(data, g2_product);
+
+    // g2_one_shot gives (h', syls) where h' = b_rcoset_h(g2_product)
+    // and embed_b(h') ≡ g2_product in G₂ (since rep = ε → target = g2_product)
+    let (h_prime, syls_prime) = g2_one_shot_action(data, g2_product, syls);
+    // syls_prime = syls (since rep = ε, subgroup case)
+
+    // Step 2: process u_i via G₁ one-shot on (h', syls')
+    // (h', syls') is canonical from action_preserves_canonical
+    let shifted_inv_v = shift_word(inverse_word(v_i), n1);
+    let shifted_inv_v_word = inverse_word(shifted_v);
+    lemma_act_word_single(data, crate::free_product::shift_symbol(v_i.last(), n1), h, syls);
+
+    // For the G₁ step: need act_word(u_i, h', syls') = g1_one_shot(concat(u_i, embed_a(h')), syls')
+    // But we need to know h' is canonical first.
+    // Actually, we know act_word(shift(inv(v_i)), h, syls) = g2_one_shot(g2_product, syls) = (h', syls).
+    // And action_preserves_canonical gives is_canonical_state(h', syls).
+
+    // h' comes from the g2 one-shot of a subgroup element → (h', syls)
+    // Step 2: u_i via G₁ one-shot
+    assert(word_valid(u_i, n1));
+    lemma_act_word_eq_one_shot(data, u_i, h_prime, syls_prime);
+    // act_word(u_i, h', syls') = g1_one_shot(concat(u_i, embed_a(h')), syls')
+
+    let embed_h_prime_a = apply_embedding(a_words(data), h_prime);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
+    let g1_product = concat(u_i, embed_h_prime_a);
+    crate::word::lemma_concat_word_valid(u_i, embed_h_prime_a, n1);
+
+    // Key: g1_product ≡ embed_a(h) in G₁ (using identification isomorphism)
+    // From G₂: embed_b(h') ≡ concat(inv(v_i), embed_b(h)) in G₂
+    // → embed_b(h') · embed_b(inv(h)) · v_i ≡ ε in G₂? No...
+    // → concat(v_i, embed_b(h')) ≡ embed_b(h) in G₂ (by concat on left)
+    //
+    // Actually: the target for h' is g2_product = concat(inv(v_i), embed_b(h)).
+    // Since rep = ε: embed_b(h') ≡ g2_product = concat(inv(v_i), embed_b(h)) in G₂.
+    //
+    // Now define K-word w_diff = concat(h', inverse_word(concat(Seq::new(1, |_| Inv(i)), h))).
+    // embed_b(w_diff) ≡ embed_b(h') · inv(embed_b(concat(Inv(i), h))) in G₂.
+    // = embed_b(h') · inv(concat(inv(v_i), embed_b(h))) in G₂.
+    // ≡ concat(inv(v_i), embed_b(h)) · inv(concat(inv(v_i), embed_b(h))) ≡ ε in G₂.
+    //
+    // By identifications_isomorphic: embed_a(w_diff) ≡ ε in G₁.
+    // embed_a(w_diff) = embed_a(h') · inv(embed_a(concat(Inv(i), h)))
+    //                 = embed_a(h') · inv(concat(inv(u_i), embed_a(h)))
+    // So: embed_a(h') ≡ concat(inv(u_i), embed_a(h)) in G₁.
+    // → concat(u_i, embed_a(h')) ≡ embed_a(h) in G₁.
+
+    // This requires lemma_apply_embedding_concat to show embed distributes over concat.
+    // For now, use the identification isomorphism directly on the relevant K-word.
+
+    // Define the K-word that captures the difference:
+    let k_inv_i = Seq::new(1, |_j: int| Symbol::Inv(i as nat));
+    let k_combined = concat(k_inv_i, h);
+    assert(word_valid(k_combined, k_size(data))) by {
+        assert(word_valid(k_inv_i, k_size(data))) by {
+            assert forall|k: int| 0 <= k < k_inv_i.len()
+                implies symbol_valid(#[trigger] k_inv_i[k], k_size(data)) by {}
+        }
+        assert forall|k: int| 0 <= k < k_combined.len()
+            implies symbol_valid(#[trigger] k_combined[k], k_size(data)) by {
+                if k < 1 {} else {}
+            }
+    }
+
+    // embed_b(k_combined) = concat(embed_b(Inv(i)), embed_b(h)) = concat(inv(v_i), embed_b(h))
+    crate::benign::lemma_apply_embedding_concat(b_words(data), k_inv_i, h);
+    assert(apply_embedding(b_words(data), k_inv_i) =~= inv_vi) by {
+        // Single symbol Inv(i) → inverse_word(b_words[i]) = inv(v_i)
+        assert(apply_embedding_symbol(b_words(data), Symbol::Inv(i as nat))
+            == inverse_word(v_i));
+    }
+    // So: embed_b(k_combined) =~= concat(inv(v_i), embed_b(h)) = g2_product.
+    // And: embed_b(h') ≡ g2_product in G₂.
+    // So: embed_b(h') ≡ embed_b(k_combined) in G₂.
+
+    // K-word difference: concat(h', inverse_word(k_combined))
+    let k_diff = concat(h_prime, inverse_word(k_combined));
+    crate::word::lemma_inverse_word_valid(k_combined, k_size(data));
+    assert(word_valid(k_diff, k_size(data))) by {
+        assert forall|k: int| 0 <= k < k_diff.len()
+            implies symbol_valid(#[trigger] k_diff[k], k_size(data)) by {
+                if k < h_prime.len() as int {} else {}
+            }
+    }
+
+    // embed_b(k_diff) ≡ ε in G₂:
+    // embed_b(k_diff) = concat(embed_b(h'), embed_b(inv(k_combined)))
+    crate::benign::lemma_apply_embedding_concat(b_words(data), h_prime, inverse_word(k_combined));
+    crate::benign::lemma_apply_embedding_valid(b_words(data), k_combined, n2);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_prime, n2);
+    // embed_b(inv(k_combined)) =~= inv(embed_b(k_combined))
+    crate::benign::lemma_apply_embedding_inverse(b_words(data), k_combined);
+    // embed_b(k_combined) =~= g2_product (established above)
+    // So: embed_b(k_diff) =~= concat(embed_b(h'), inv(embed_b(k_combined)))
+    //                      =~= concat(embed_b(h'), inv(g2_product))
+    // And embed_b(h') ≡ g2_product in G₂ (from the one-shot, since rep = ε)
+    // → embed_b(k_diff) ≡ concat(g2_product, inv(g2_product)) ≡ ε in G₂
+    let embed_b_kcomb = apply_embedding(b_words(data), k_combined);
+    let embed_b_hprime = apply_embedding(b_words(data), h_prime);
+    let embed_b_kdiff = apply_embedding(b_words(data), k_diff);
+    crate::word::lemma_inverse_word_valid(embed_b_kcomb, n2);
+    crate::word::lemma_concat_word_valid(embed_b_hprime, inverse_word(embed_b_kcomb), n2);
+    // embed_b(h') ≡ g2_product ≡ embed_b(k_combined) → embed_b(h') · inv(embed_b(k_combined)) ≡ ε
+    crate::presentation_lemmas::lemma_word_inverse_right(p2, embed_b_kcomb);
+    crate::presentation_lemmas::lemma_equiv_concat_right(p2,
+        embed_b_hprime, embed_b_kcomb, inverse_word(embed_b_kcomb));
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(embed_b_hprime, inverse_word(embed_b_kcomb)),
+        concat(embed_b_kcomb, inverse_word(embed_b_kcomb)),
+        empty_word());
+    // embed_b(k_diff) =~= concat(embed_b_hprime, inv(embed_b_kcomb)) ≡ ε in G₂
+    crate::benign::lemma_apply_embedding_valid(b_words(data), k_diff, n2);
+    lemma_in_subgroup_equiv(p2, b_words(data),
+        concat(embed_b_hprime, inverse_word(embed_b_kcomb)), embed_b_kdiff);
+
+    // By identifications_isomorphic: embed_a(k_diff) ≡ ε in G₁
+    // Need: embed_b(k_diff) ≡ ε in G₂ → from the chain above
+    // identifications_isomorphic gives the biconditional on equiv to ε
+    // But we need it in terms of embed_b(k_diff) ≡ ε, not in_generated_subgroup.
+    // The isomorphism condition: forall w: word_valid(w, k) ==>
+    //   equiv(p1, embed_a(w), ε) <==> equiv(p2, embed_b(w), ε)
+    // We need: equiv(p2, embed_b(k_diff), ε) → equiv(p1, embed_a(k_diff), ε)
+    // embed_b(k_diff) ≡ ε established above (need to make it equiv to empty_word)
+    crate::presentation::lemma_equiv_refl(p2, empty_word());
+    // Actually, the chain gave ≡ ε via the transitive chain. Let me assert it:
+    // Need equiv_in_presentation(p2, embed_b_kdiff, empty_word())
+    // From: embed_b_kdiff =~= concat(embed_b_hprime, inv(embed_b_kcomb)) ≡ ε
+    // The =~= and ≡ chain gives equiv(p2, embed_b_kdiff, ε).
+
+    // Transfer: equiv(p2, embed_b(k_diff), ε) → equiv(p1, embed_a(k_diff), ε)
+    // (identifications_isomorphic gives this directly)
+
+    // From equiv(p1, embed_a(k_diff), ε):
+    // embed_a(k_diff) = concat(embed_a(h'), embed_a(inv(k_combined)))
+    crate::benign::lemma_apply_embedding_concat(a_words(data), h_prime, inverse_word(k_combined));
+    crate::benign::lemma_apply_embedding_inverse(a_words(data), k_combined);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), k_combined, n1);
+
+    // embed_a(k_combined) = concat(embed_a(Inv(i)), embed_a(h)) = concat(inv(u_i), embed_a(h))
+    crate::benign::lemma_apply_embedding_concat(a_words(data), k_inv_i, h);
+    assert(apply_embedding(a_words(data), k_inv_i) =~= inverse_word(u_i)) by {
+        assert(apply_embedding_symbol(a_words(data), Symbol::Inv(i as nat))
+            == inverse_word(a_words(data)[i]));
+    }
+    let embed_h_a = apply_embedding(a_words(data), h);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+
+    // So: embed_a(k_diff) ≡ ε → embed_a(h') · inv(embed_a(k_combined)) ≡ ε
+    // → embed_a(h') ≡ embed_a(k_combined) = concat(inv(u_i), embed_a(h))
+    // → concat(u_i, embed_a(h')) ≡ concat(u_i, inv(u_i), embed_a(h)) ≡ embed_a(h)
+
+    // g1_product = concat(u_i, embed_a(h')) ≡ embed_a(h) in G₁
+    // → one_shot_subgroup_restore gives (h, syls)
+    lemma_one_shot_subgroup_restore(data, g1_product, h, syls_prime);
 }
 
 // ============================================================

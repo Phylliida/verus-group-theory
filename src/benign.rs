@@ -270,4 +270,36 @@ pub proof fn lemma_apply_embedding_valid(images: Seq<Word>, w: Word, n: nat)
     }
 }
 
+/// apply_embedding commutes with inverse_word.
+pub proof fn lemma_apply_embedding_inverse(images: Seq<Word>, w: Word)
+    ensures
+        apply_embedding(images, inverse_word(w))
+            =~= inverse_word(apply_embedding(images, w)),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let rest = w.drop_first();
+        lemma_apply_embedding_inverse(images, rest);
+        lemma_apply_embedding_concat(images,
+            inverse_word(rest), Seq::new(1, |_i: int| inverse_symbol(w.first())));
+    }
+}
+
+/// apply_embedding distributes over concat.
+pub proof fn lemma_apply_embedding_concat(images: Seq<Word>, w1: Word, w2: Word)
+    ensures
+        apply_embedding(images, concat(w1, w2))
+            =~= concat(apply_embedding(images, w1), apply_embedding(images, w2)),
+    decreases w1.len(),
+{
+    if w1.len() == 0 {
+        assert(concat(w1, w2) =~= w2);
+    } else {
+        let w1_rest = w1.drop_first();
+        lemma_apply_embedding_concat(images, w1_rest, w2);
+        // Z3 should unfold apply_embedding and see the mapped seqs match.
+    }
+}
+
 } // verus!
