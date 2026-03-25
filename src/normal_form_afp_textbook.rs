@@ -6164,6 +6164,35 @@ proof fn lemma_b_rcoset_word_transfer(
         concat(g2, inverse_word(w)));
 }
 
+/// Transfer with rank for B-rcosets.
+proof fn lemma_b_rcoset_word_rank_transfer(
+    data: AmalgamatedData, g1: Word, g2: Word, l: nat, r: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g1, data.p2.num_generators),
+        word_valid(g2, data.p2.num_generators),
+        same_b_rcoset(data, g1, g2),
+        has_b_rcoset_word_of_len_rank(data, g1, l, r),
+    ensures
+        has_b_rcoset_word_of_len_rank(data, g2, l, r),
+{
+    let n2 = data.p2.num_generators;
+    let w: Word = choose|w: Word| word_valid(w, n2) && same_b_rcoset(data, g1, w) && w.len() == l
+        && word_lex_rank_base(w, 2 * n2 + 1) == r;
+    lemma_same_b_rcoset_symmetric(data, g1, g2);
+    lemma_subgroup_concat(data.p2, b_words(data),
+        concat(g2, inverse_word(g1)),
+        concat(g1, inverse_word(w)));
+    crate::word::lemma_inverse_word_valid(w, n2);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(w), n2);
+    lemma_four_part_cancel(data.p2, g2, g1, inverse_word(w));
+    lemma_in_subgroup_equiv(data.p2, b_words(data),
+        concat(concat(g2, inverse_word(g1)), concat(g1, inverse_word(w))),
+        concat(g2, inverse_word(w)));
+}
+
 /// B-rcoset rep invariance: same_b_rcoset → same b_rcoset_rep.
 proof fn lemma_b_rcoset_rep_invariant(
     data: AmalgamatedData, g1: Word, g2: Word,
@@ -6201,9 +6230,9 @@ proof fn lemma_b_rcoset_rep_invariant(
     lemma_scan_b_rcoset_lex(data, g2, l, 0, wr2);
     let r1 = b_rcoset_min_lex(data, g1);
     let r2 = b_rcoset_min_lex(data, g2);
-    // Transfer rank witnesses (same_b_rcoset transitivity gives both directions)
-    assert(has_b_rcoset_word_of_len_rank(data, g2, l, r1));
-    assert(has_b_rcoset_word_of_len_rank(data, g1, l, r2));
+    // Transfer rank witnesses via explicit helper
+    lemma_b_rcoset_word_rank_transfer(data, g1, g2, l, r1);
+    lemma_b_rcoset_word_rank_transfer(data, g2, g1, l, r2);
     lemma_no_smaller_b_rcoset_lex_implies_ge(data, g2, l, r2, r1);
     lemma_no_smaller_b_rcoset_lex_implies_ge(data, g1, l, r1, r2);
     // Lex rank injectivity
