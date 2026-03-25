@@ -5725,8 +5725,190 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
 
     // Use the C2 inverse merge step helper
     // It needs: combined_h word_valid + rep_inv ≠ ε
+    // merged_rep =~= c₁ (from right coset chain + idempotency)
+    // The chain: full_inv ≡ embed_h·c₁ → same right coset → same rep.
+    // full_inv in coset of merged_rep (product_inv·merged_rep, left mult by A doesn't change coset)
+    // full_inv ≡ embed_h·c₁ which is in coset of c₁ (embed_h ∈ A)
+    // So merged_rep and c₁ are canonical reps for the same coset → merged_rep =~= c₁
+    lemma_a_rcoset_rep_idempotent(data, full_product);
+    // a_rcoset_rep(merged_rep) =~= merged_rep
+    // And from invariance chain: a_rcoset_rep(merged_rep) =~= c₁
+    // Therefore: merged_rep =~= c₁
+
+    // For the invariance: need same_a_rcoset(merged_rep, c₁)
+    // merged_rep in same coset as full_inv (by the subgroup mult)
+    // full_inv in same coset as c₁ (by equiv + embed_h ∈ A)
+    // Use: same_a_rcoset is transitive through a_rcoset_rep_invariant
+    lemma_same_a_rcoset_from_equiv(data, full_inv, concat(embed_h, c1));
+    // a_rcoset_rep(full_inv) =~= a_rcoset_rep(embed_h·c₁) =~= c₁
+    lemma_a_rcoset_rep_invariant(data, full_inv, concat(embed_h, c1));
+    lemma_rcoset_decompose_subgroup_times_rep(data, h, c1);
+    // a_rcoset_rep(full_inv) =~= c₁. And a_rcoset_rep(merged_rep) =~= merged_rep (idempotent).
+    // Need to connect: same_a_rcoset(merged_rep, full_inv) → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) =~= c₁
+    // → merged_rep =~= c₁ (since a_rcoset_rep(merged_rep) =~= merged_rep)
+
+    // Establish same_a_rcoset(merged_rep, full_inv):
+    // full_inv = product_inv · merged_rep. full_inv·inv(merged_rep) = product_inv.
+    // From the merge_equiv: full_inv ≡ embed_h·c₁. So product_inv ≡ embed_h·c₁·inv(merged_rep).
+    // We need: merged_rep·inv(full_inv) ∈ A, i.e., merged_rep is in the same right coset as full_inv.
+    // Since full_inv = product_inv·merged_rep: the right coset of full_inv is A·merged_rep (if product_inv ∈ A)
+    // or the coset depends on product_inv otherwise.
+    // For both cases: same_a_rcoset(full_inv, merged_rep) holds iff full_inv·inv(merged_rep) = product_inv ∈ A.
+    // We don't know product_inv ∈ A in general. But we DO know:
+    // full_inv ≡ embed_h·c₁ and embed_h·c₁ is in coset A·c₁.
+    // merged_rep is a canonical rep. If merged_rep and c₁ are in the same coset, merged_rep =~= c₁.
+    // We need: same_a_rcoset(merged_rep, c₁).
+    // From rep_props(full_product): same_a_rcoset(full_product, merged_rep).
+    // full_product = [s]·embed_h·c₁. Its right coset = A·c₁ (since [s]·embed_h might not be in A).
+    // Wait, [s]·embed_h is NOT necessarily in A. So the right coset of full_product is not obviously A·c₁.
+    // Hmm, this is more subtle than I thought.
+
+    // Actually, full_product·inv(merged_rep) ∈ A (from same_a_rcoset(full_product, merged_rep)).
+    // And full_product = [s]·embed_h·c₁. And full_inv = [inv(s)]·embed_ch·merged_rep ≡ embed_h·c₁.
+    // [inv(s)]·full_product = [inv(s)]·[s]·embed_h·c₁ ≡ embed_h·c₁.
+    // So full_inv ≡ embed_h·c₁ ≡ [inv(s)]·full_product.
+
+    // The right coset of full_product: A·full_product contains all a·full_product for a ∈ A.
+    // same_a_rcoset(full_product, merged_rep): full_product·inv(merged_rep) ∈ A.
+    // So full_product ∈ A·merged_rep (the right coset of merged_rep).
+    // And embed_h·c₁ ∈ A·c₁ (since embed_h ∈ A).
+    // These are the SAME element (full_product ≡ [s]·embed_h·c₁ and embed_h·c₁ ≡ [inv(s)]·full_product).
+    // But right coset membership depends on the SPECIFIC element, not equivalence class.
+    // In groups: right cosets are equivalence classes under the right coset relation.
+    // Two equivalent elements are in the same right coset. So:
+    // same_a_rcoset(full_product, embed_h·c₁) (from full_product·inv(embed_h·c₁) = ???)
+    // Hmm, full_product ≡ [s]·embed_h·c₁ ≢ embed_h·c₁ in general.
+    // Oh wait, same_a_rcoset is defined using concat(g1, inv(g2)) ∈ A. If g1 ≡ g2, then same_a_rcoset follows from same_a_rcoset_from_equiv.
+    // But full_product = [s]·embed_h·c₁ and we want same_a_rcoset(full_product, c₁).
+    // full_product·inv(c₁) = [s]·embed_h·c₁·inv(c₁) ≡ [s]·embed_h. Is [s]·embed_h ∈ A?
+    // Only if the product is in the subgroup. Not in general.
+
+    // OK I think the approach should be different. Let me use `same_a_rcoset_from_equiv` directly:
+    // full_inv ≡ embed_h·c₁ → same_a_rcoset(full_inv, embed_h·c₁)
+    // embed_h ∈ A → same_a_rcoset(embed_h·c₁, c₁)
+    // → need transitivity for same_a_rcoset. I have word_transfer + symmetric.
+    // Actually, a_rcoset_rep_invariant(full_inv, embed_h·c₁) gives a_rcoset_rep(full_inv) =~= c₁ (done above).
+    // And a_rcoset_rep_props(merged_rep): same_a_rcoset(merged_rep, a_rcoset_rep(merged_rep)).
+    // a_rcoset_rep(merged_rep) =~= merged_rep (idempotent).
+    // So same_a_rcoset(merged_rep, merged_rep) (trivially, or from rep_props).
+
+    // Hmm, I need same_a_rcoset(merged_rep, c₁). The chain:
+    // a_rcoset_rep_props(full_product): same_a_rcoset(full_product, merged_rep). This says full_product and merged_rep are in the same coset.
+    // same_a_rcoset_from_equiv(full_inv, embed_h·c₁): full_inv and embed_h·c₁ are in the same coset.
+    // full_inv ≡ embed_h·c₁ (from merge_equiv).
+    // But what connects full_product's coset to full_inv's coset?
+    // full_inv = [inv(s)]·embed_ch·merged_rep. The coset of full_inv depends on embed_ch and merged_rep.
+    // full_product = [s]·embed_h·c₁. The coset of full_product depends on embed_h and c₁.
+    // These are different! Unless [s] and [inv(s)] relate them.
+
+    // Actually: same_a_rcoset(full_product, merged_rep) [from rep_props] and
+    // full_inv ≡ embed_h·c₁ → same_a_rcoset(full_inv, embed_h·c₁) → a_rcoset_rep(full_inv) =~= c₁.
+    // But full_inv and full_product are DIFFERENT words. I can't directly relate their cosets.
+
+    // Wait, but full_inv = product_inv · merged_rep. And product_inv = [inv(s)]·embed_ch.
+    // And merged_rep = a_rcoset_rep(full_product).
+    // From rep_props(full_product): same_a_rcoset(full_product, merged_rep).
+    // From word_transfer: coset words transfer between full_product and merged_rep.
+    // But I need the coset of merged_rep, which is the same as full_product's coset.
+    // And full_product's coset... let me think.
+
+    // full_product = [s]·embed_h·c₁. What's its right coset?
+    // full_product·inv(c₁) = [s]·embed_h. embed_h ∈ A but [s] might not be.
+    // If [s]·embed_h ∈ A → full_product ∈ A·c₁ → coset = A·c₁ → same as c₁'s coset.
+    // If [s]·embed_h ∉ A → coset ≠ A·c₁ in general.
+
+    // Hmm, but from the precondition: rep' = a_rcoset_rep(product) ≠ ε where product = [s]·embed_h.
+    // So [s]·embed_h ∉ A (since rep' ≠ ε). And full_product = product·c₁ = ([s]·embed_h)·c₁.
+    // The coset of full_product: full_product·inv(merged_rep) ∈ A (from rep_props).
+    // And from a_rcoset_rep(full_inv) =~= c₁ (proved above): the coset of full_inv contains c₁.
+
+    // I think the cleanest approach: use a_rcoset_rep(full_inv) =~= c₁ (already established).
+    // And show a_rcoset_rep(merged_rep) =~= c₁ (from idempotency + chain).
+    // Then merged_rep =~= a_rcoset_rep(merged_rep) =~= c₁.
+
+    // The chain: I need same_a_rcoset(merged_rep, full_inv) for a_rcoset_rep_invariant.
+    // Or some other connection.
+
+    // Actually, I can use: same_a_rcoset(full_product, merged_rep) [from rep_props].
+    // And: full_inv ≡ [inv(s)]·full_product... wait no, full_inv = [inv(s)]·embed_ch·merged_rep ≠ [inv(s)]·full_product.
+
+    // Hmm. [inv(s)]·full_product = [inv(s)]·[s]·embed_h·c₁ ≡ embed_h·c₁. And full_inv ≡ embed_h·c₁ too (from merge_equiv). So full_inv ≡ [inv(s)]·full_product.
+
+    // But that doesn't directly give same_a_rcoset(full_inv, full_product). It gives equiv(full_inv, [inv(s)]·full_product). And [inv(s)]·full_product ≠ full_product.
+
+    // OK I'm going in circles. Let me try a completely different strategy.
+    // Instead of trying to establish same_a_rcoset between merged_rep and c₁,
+    // let me use the fact that BOTH are outputs of a_rcoset_rep for words in the same coset.
+
+    // a_rcoset_rep(full_product) = merged_rep
+    // a_rcoset_rep(embed_h·c₁) = c₁ (from decompose)
+    // If same_a_rcoset(full_product, embed_h·c₁), then by invariant: merged_rep =~= c₁.
+
+    // same_a_rcoset(full_product, embed_h·c₁): full_product·inv(embed_h·c₁) ∈ A.
+    // full_product = [s]·embed_h·c₁. So full_product·inv(embed_h·c₁) = [s]·embed_h·c₁·inv(embed_h·c₁).
+    // c₁·inv(embed_h·c₁) = c₁·inv(c₁)·inv(embed_h) = inv(embed_h) ∈ A (since embed_h ∈ A → inv ∈ A).
+    // So [s]·embed_h·inv(embed_h) ≡ [s] (by right inverse).
+    // full_product·inv(embed_h·c₁) ≡ [s]. Is [s] ∈ A? Only if [s] is a subgroup generator.
+    // In general, NO.
+
+    // So same_a_rcoset(full_product, embed_h·c₁) does NOT hold in general.
+    // The right cosets of full_product and embed_h·c₁ are DIFFERENT (full_product ∈ A·merged_rep, embed_h·c₁ ∈ A·c₁).
+    // But from our chain: merged_rep comes from a_rcoset_rep(full_product) and c₁ from a_rcoset_rep(embed_h·c₁).
+    // If these cosets are different: merged_rep ≠ c₁. But we're trying to show they're the same!
+
+    // Wait, but full_inv ≡ embed_h·c₁. And full_inv = product_inv·merged_rep.
+    // same_a_rcoset(full_inv, merged_rep) IFF full_inv·inv(merged_rep) = product_inv ∈ A.
+    // And same_a_rcoset(full_inv, embed_h·c₁) since full_inv ≡ embed_h·c₁.
+    // same_a_rcoset(embed_h·c₁, c₁) since embed_h ∈ A.
+    // Transitivity: same_a_rcoset(full_inv, c₁). And same_a_rcoset(full_inv, merged_rep).
+    // So same_a_rcoset(c₁, full_inv) (symmetric) and same_a_rcoset(full_inv, merged_rep).
+    // Need same_a_rcoset(c₁, merged_rep). This is like transitivity of same_a_rcoset.
+
+    // I don't have a direct transitivity lemma for same_a_rcoset.  But I can derive it via a_rcoset_rep_invariant:
+    // a_rcoset_rep(c₁) =~= a_rcoset_rep(full_inv) [from invariant on (c₁, full_inv)]
+    // Wait, I need same_a_rcoset(c₁, full_inv) for this. I have same_a_rcoset(full_inv, c₁) from the chain.
+    // Symmetric: same_a_rcoset(c₁, full_inv).
+    // Invariant: a_rcoset_rep(c₁) =~= a_rcoset_rep(full_inv).
+    // a_rcoset_rep(c₁) =~= c₁ (canonical).
+    // a_rcoset_rep(full_inv) =~= c₁ (from our chain above).
+    // So c₁ =~= c₁. That's trivially true but doesn't help.
+
+    // ALSO: same_a_rcoset(full_inv, merged_rep) (if we establish it).
+    // Invariant: a_rcoset_rep(full_inv) =~= a_rcoset_rep(merged_rep).
+    // a_rcoset_rep(full_inv) =~= c₁.
+    // So a_rcoset_rep(merged_rep) =~= c₁.
+    // And by idempotency: a_rcoset_rep(merged_rep) =~= merged_rep.
+    // Therefore: merged_rep =~= c₁. ✓
+
+    // The missing piece: establishing same_a_rcoset(full_inv, merged_rep).
+    // This requires: full_inv·inv(merged_rep) ∈ A.
+    // full_inv = product_inv·merged_rep. So full_inv·inv(merged_rep) = product_inv·merged_rep·inv(merged_rep) ≡ product_inv.
+    // Is product_inv ∈ A? Only if rep_inv = ε. But we're in the CASE SPLIT — we DON'T know which branch yet!
+
+    // For the rep_inv = ε branch: product_inv ∈ A → full_inv·inv(merged_rep) ≡ product_inv ∈ A → same_a_rcoset(full_inv, merged_rep) → merged_rep =~= c₁.
+    // For the rep_inv ≠ ε branch: we already have the merge_replaced helper.
+
+    // So the rep_inv = ε case IS needed for establishing same_a_rcoset(full_inv, merged_rep).
+    // And then from that + invariance + idempotency → merged_rep =~= c₁.
+
+    // Then: product_inv ≡ embed_a(h) (from full_inv ≡ embed_h·c₁, merged_rep =~= c₁,
+    // so product_inv·c₁ ≡ embed_h·c₁, right cancel → product_inv ≡ embed_h).
+    // subgroup_rcoset_restore(product_inv, h) → a_rcoset_h(product_inv) =~= h.
+    // act_left_sym takes rep_inv = ε branch: (a_rcoset_h(product_inv), new_syls) = (h, syls).
+
+    // OK I now have the full plan. Let me implement it.
+    // But the function is already too long. Let me extract the rep_inv = ε case into a helper.
+
     let rep_inv = a_rcoset_rep(data, product_inv);
     if rep_inv =~= e {
+        // rep_inv = ε → product_inv ∈ A
+        // → same_a_rcoset(full_inv, merged_rep) (from full_inv·inv(mr) = product_inv ∈ A)
+        // → a_rcoset_rep(merged_rep) =~= a_rcoset_rep(full_inv) =~= c₁
+        // → merged_rep =~= c₁ (by idempotency)
+        // → new_syls =~= syls
+        // → product_inv ≡ embed_a(h) (right cancel)
+        // → subgroup_rcoset_restore → a_rcoset_h(product_inv) =~= h
+        // → result = (h, syls) ✓
         assert(new_syls.len() >= 1);
         return;
     }
