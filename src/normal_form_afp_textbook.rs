@@ -826,6 +826,9 @@ pub open spec fn act_sym(
 }
 
 /// Apply an AFP word to the state (left-to-right, one symbol at a time).
+/// Apply an AFP word to the state (right-to-left, textbook LEFT action convention).
+/// For a left action φ: G → Perm(S), φ(g₁·g₂) = φ(g₁) ∘ φ(g₂).
+/// Processing right-to-left: last symbol first → gives φ(s₁·...·sₙ) = φ(s₁) ∘ ... ∘ φ(sₙ).
 pub open spec fn act_word(
     data: AmalgamatedData,
     w: Word,
@@ -837,8 +840,8 @@ pub open spec fn act_word(
     if w.len() == 0 {
         (h, syllables)
     } else {
-        let (new_h, new_syls) = act_sym(data, w.first(), h, syllables);
-        act_word(data, w.drop_first(), new_h, new_syls)
+        let (new_h, new_syls) = act_sym(data, w.last(), h, syllables);
+        act_word(data, w.drop_last(), new_h, new_syls)
     }
 }
 
@@ -848,6 +851,8 @@ pub open spec fn act_word(
 
 /// act_word(concat(w1, w2), h, syls) == act_word(w2, act_word(w1, h, syls)).
 /// This is the fundamental composition property.
+/// Composition: act_word(w1·w2, h, syls) = act_word(w1, act_word(w2, h, syls)).
+/// With right-to-left processing: w2 is processed first, then w1 (textbook left action).
 pub proof fn lemma_act_word_concat(
     data: AmalgamatedData,
     w1: Word, w2: Word,
@@ -856,46 +861,48 @@ pub proof fn lemma_act_word_concat(
 )
     ensures
         act_word(data, concat(w1, w2), h, syllables)
-            == act_word(data, w2,
-                act_word(data, w1, h, syllables).0,
-                act_word(data, w1, h, syllables).1),
-    decreases w1.len(),
+            == act_word(data, w1,
+                act_word(data, w2, h, syllables).0,
+                act_word(data, w2, h, syllables).1),
+    decreases w2.len(),
 {
-    if w1.len() == 0 {
-        // concat(ε, w2) = w2 and act_word(ε, h, syls) = (h, syls)
-        assert(concat(w1, w2) =~= w2) by {
-            assert(w1.len() == 0);
-            assert forall|k: int| 0 <= k < w2.len()
-                implies concat(w1, w2)[k] == w2[k] by {}
+    if w2.len() == 0 {
+        // concat(w1, ε) =~= w1 and act_word(ε, h, syls) = (h, syls)
+        assert(concat(w1, w2) =~= w1) by {
+            assert(w2.len() == 0);
+            assert(concat(w1, w2).len() == w1.len());
+            assert forall|k: int| 0 <= k < w1.len()
+                implies concat(w1, w2)[k] == w1[k] by {}
         }
     } else {
-        // concat(w1, w2) = [w1.first()] ++ concat(w1.drop_first(), w2)
-        // act_word(concat(w1, w2), h, syls):
-        //   = act_word(concat(w1, w2).drop_first(), act_sym(concat(w1, w2).first(), h, syls))
-        //   = act_word(concat(w1.drop_first(), w2), act_sym(w1.first(), h, syls))
-        assert(concat(w1, w2).first() == w1.first());
-        assert(concat(w1, w2).drop_first() =~= concat(w1.drop_first(), w2)) by {
+        // concat(w1, w2).last() == w2.last()
+        // concat(w1, w2).drop_last() =~= concat(w1, w2.drop_last())
+        assert(concat(w1, w2).last() == w2.last()) by {
             let cw = concat(w1, w2);
-            let rest = concat(w1.drop_first(), w2);
-            assert(cw.drop_first().len() == rest.len());
+            assert(cw.len() == w1.len() + w2.len());
+            assert(cw[cw.len() - 1] == w2[w2.len() - 1]);
+        }
+        assert(concat(w1, w2).drop_last() =~= concat(w1, w2.drop_last())) by {
+            let cw = concat(w1, w2);
+            let rest = concat(w1, w2.drop_last());
+            assert(cw.drop_last().len() == rest.len());
             assert forall|k: int| 0 <= k < rest.len()
-                implies cw.drop_first()[k] == rest[k]
+                implies cw.drop_last()[k] == rest[k]
             by {
-                assert(cw.drop_first()[k] == cw[k + 1]);
-                if k < w1.len() - 1 {
-                    assert(cw[k + 1] == w1[k + 1]);
-                    assert(rest[k] == w1.drop_first()[k]);
+                if k < w1.len() as int {
+                    assert(cw[k] == w1[k]);
+                    assert(rest[k] == w1[k]);
                 } else {
-                    assert(cw[k + 1] == w2[(k + 1 - w1.len() as int)]);
-                    assert(rest[k] == w2[(k - (w1.len() - 1) as int)]);
+                    assert(cw[k] == w2[(k - w1.len() as int)]);
+                    assert(rest[k] == w2.drop_last()[(k - w1.len() as int)]);
                 }
             }
         }
 
-        let (mid_h, mid_syls) = act_sym(data, w1.first(), h, syllables);
-        // IH: act_word(concat(w1.drop_first(), w2), mid_h, mid_syls)
-        //    = act_word(w2, act_word(w1.drop_first(), mid_h, mid_syls))
-        lemma_act_word_concat(data, w1.drop_first(), w2, mid_h, mid_syls);
+        let (mid_h, mid_syls) = act_sym(data, w2.last(), h, syllables);
+        // IH: act_word(concat(w1, w2.drop_last()), mid_h, mid_syls)
+        //    = act_word(w1, act_word(w2.drop_last(), mid_h, mid_syls))
+        lemma_act_word_concat(data, w1, w2.drop_last(), mid_h, mid_syls);
     }
 }
 
@@ -950,15 +957,15 @@ pub proof fn lemma_act_word_single(
 {
     let w = Seq::new(1, |_i: int| s);
     assert(w.len() == 1);
-    assert(w.first() == s);
-    let rest = w.drop_first();
+    assert(w.last() == s);
+    let rest = w.drop_last();
     assert(rest.len() == 0);
     assert(rest =~= empty_word()) by {
         assert(rest.len() == 0);
         assert(empty_word().len() == 0);
     }
     let (mid_h, mid_syls) = act_sym(data, s, h, syllables);
-    // act_word unfolds: w.len() != 0, so:
+    // act_word unfolds (right-to-left): w.len() != 0, so:
     //   act_word(w, h, syls) = act_word(rest, mid_h, mid_syls)
     // rest =~= ε, so act_word(rest, ...) = (mid_h, mid_syls)
     assert(act_word(data, rest, mid_h, mid_syls) == (mid_h, mid_syls));
@@ -1595,30 +1602,36 @@ pub proof fn lemma_insert_trivial_preserves_action(
         act_word(data, concat(prefix, concat(middle, suffix)), h, syllables)
             == act_word(data, concat(prefix, suffix), h, syllables),
 {
+    // Right-to-left: suffix processed first, then middle, then prefix.
+    // concat(prefix, middle·suffix) → act_word(prefix, act_word(middle·suffix, h, syls))
+    // middle·suffix → act_word(middle, act_word(suffix, h, syls))
+    // Since middle ≡ ε (same_action): act_word(middle, sh, ss) = act_word(ε, sh, ss) = (sh, ss)
     lemma_act_word_concat(data, prefix, concat(middle, suffix), h, syllables);
-    let (ph, ps) = act_word(data, prefix, h, syllables);
-    lemma_act_word_concat(data, middle, suffix, ph, ps);
+    let (sh, ss) = act_word(data, suffix, h, syllables);
+    lemma_act_word_concat(data, middle, suffix, h, syllables);
     lemma_act_word_concat(data, prefix, suffix, h, syllables);
 }
 
 /// Inserting a word preserves the action when the word acts trivially on the
 /// SPECIFIC intermediate state (targeted version for canonical states).
+/// Inserting a trivially-acting middle word preserves the action.
+/// With right-to-left processing: suffix processed first, then middle acts on that state.
 pub proof fn lemma_insert_trivial_at_state(
     data: AmalgamatedData,
     prefix: Word, middle: Word, suffix: Word,
     h: Word, syllables: Seq<Syllable>,
 )
     requires ({
-        let (ph, ps) = act_word(data, prefix, h, syllables);
-        act_word(data, middle, ph, ps) == (ph, ps)
+        let (sh, ss) = act_word(data, suffix, h, syllables);
+        act_word(data, middle, sh, ss) == (sh, ss)
     }),
     ensures
         act_word(data, concat(prefix, concat(middle, suffix)), h, syllables)
             == act_word(data, concat(prefix, suffix), h, syllables),
 {
     lemma_act_word_concat(data, prefix, concat(middle, suffix), h, syllables);
-    let (ph, ps) = act_word(data, prefix, h, syllables);
-    lemma_act_word_concat(data, middle, suffix, ph, ps);
+    let (sh, ss) = act_word(data, suffix, h, syllables);
+    lemma_act_word_concat(data, middle, suffix, h, syllables);
     lemma_act_word_concat(data, prefix, suffix, h, syllables);
 }
 
@@ -1627,8 +1640,11 @@ pub proof fn lemma_insert_trivial_at_state(
 // ============================================================
 
 /// The inverse pair word [s, inv(s)].
+/// The inverse pair word [inv(s), s]. With right-to-left processing, this applies s first
+/// then inv(s), giving φ(inv(s)) ∘ φ(s) = φ(inv(s)·s) = φ(ε) = identity.
+/// Note: action_well_defined quantifies over ALL symbols s, so this covers both orderings.
 pub open spec fn inverse_pair_word(s: Symbol) -> Word {
-    Seq::new(1, |_j: int| s) + Seq::new(1, |_j: int| inverse_symbol(s))
+    Seq::new(1, |_j: int| inverse_symbol(s)) + Seq::new(1, |_j: int| s)
 }
 
 /// A specific relator acts trivially on a specific state.
@@ -1732,10 +1748,13 @@ pub proof fn lemma_act_word_deriv(
         // The insertion/deletion at a position is handled by lemma_insert_trivial_preserves_action.
         // We need to match the step type and extract the position + relator/pair.
 
+        // With right-to-left processing: suffix is processed FIRST, then the middle
+        // (pair/relator), then the prefix. So the trivial-action check uses the suffix state.
         match step {
             DerivationStep::FreeReduce { position } => {
-                let s1 = w1[position];
-                let pair = inverse_pair_word(s1);
+                // w1 has [s, inv(s)] at position. inverse_pair_word(inv(s)) = [s, inv(s)].
+                let s2 = w1[(position + 1) as int];
+                let pair = inverse_pair_word(s2);
                 let prefix = w1.subrange(0, position);
                 let suffix = w1.subrange(position + 2, w1.len() as int);
                 assert(w1 =~= concat(prefix, concat(pair, suffix))) by {
@@ -1745,16 +1764,15 @@ pub proof fn lemma_act_word_deriv(
                     by { if k < position {} else if k < position + 2 {} else {} }
                 }
                 assert(w_mid =~= concat(prefix, suffix));
-                // pair acts trivially on the intermediate (canonical) state
-                let (ph, ps) = act_word(data, prefix, h, syllables);
-                // intermediate state is canonical (from action_preserves_canonical)
-                assert(is_canonical_state(data, ph, ps));
-                assert(relator_acts_trivially(data, inverse_pair_word(s1), ph, ps));
-                assert(act_word(data, pair, ph, ps) == (ph, ps));
+                let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(is_canonical_state(data, sh, ss));
+                assert(relator_acts_trivially(data, inverse_pair_word(s2), sh, ss));
+                assert(act_word(data, pair, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
             },
             DerivationStep::FreeExpand { position, symbol } => {
-                let pair = inverse_pair_word(symbol);
+                // Inserts [symbol, inv(symbol)]. inverse_pair_word(inv(symbol)) = [symbol, inv(symbol)].
+                let pair = inverse_pair_word(inverse_symbol(symbol));
                 let prefix = w1.subrange(0, position);
                 let suffix = w1.subrange(position, w1.len() as int);
                 assert(w_mid =~= concat(prefix, concat(pair, suffix)));
@@ -1764,11 +1782,10 @@ pub proof fn lemma_act_word_deriv(
                         implies w1[k] == concat(prefix, suffix)[k]
                     by { if k < position {} else {} }
                 }
-                let (ph, ps) = act_word(data, prefix, h, syllables);
-                // intermediate state is canonical (from action_preserves_canonical)
-                assert(is_canonical_state(data, ph, ps));
-                assert(relator_acts_trivially(data, inverse_pair_word(symbol), ph, ps));
-                assert(act_word(data, pair, ph, ps) == (ph, ps));
+                let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(is_canonical_state(data, sh, ss));
+                assert(relator_acts_trivially(data, inverse_pair_word(inverse_symbol(symbol)), sh, ss));
+                assert(act_word(data, pair, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
             },
             DerivationStep::RelatorInsert { position, relator_index, inverted } => {
@@ -1782,12 +1799,11 @@ pub proof fn lemma_act_word_deriv(
                         implies w1[k] == concat(prefix, suffix)[k]
                     by { if k < position {} else {} }
                 }
-                let (ph, ps) = act_word(data, prefix, h, syllables);
-                // intermediate state is canonical (from action_preserves_canonical)
-                assert(is_canonical_state(data, ph, ps));
+                let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(is_canonical_state(data, sh, ss));
                 assert(relator_acts_trivially(data,
-                    get_relator(afp, relator_index, inverted), ph, ps));
-                assert(act_word(data, r, ph, ps) == (ph, ps));
+                    get_relator(afp, relator_index, inverted), sh, ss));
+                assert(act_word(data, r, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, r, suffix, h, syllables);
             },
             DerivationStep::RelatorDelete { position, relator_index, inverted } => {
@@ -1806,12 +1822,11 @@ pub proof fn lemma_act_word_deriv(
                     }
                 }
                 assert(w_mid =~= concat(prefix, suffix));
-                let (ph, ps) = act_word(data, prefix, h, syllables);
-                // intermediate state is canonical (from action_preserves_canonical)
-                assert(is_canonical_state(data, ph, ps));
+                let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(is_canonical_state(data, sh, ss));
                 assert(relator_acts_trivially(data,
-                    get_relator(afp, relator_index, inverted), ph, ps));
-                assert(act_word(data, r, ph, ps) == (ph, ps));
+                    get_relator(afp, relator_index, inverted), sh, ss));
+                assert(act_word(data, r, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, r, suffix, h, syllables);
             },
         }
@@ -2376,13 +2391,13 @@ proof fn lemma_inverse_pair_identity_case1(
     lemma_act_sym_subgroup_identity(data, s);
 
     // Step 2: decompose via composition
-    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, e, Seq::<Syllable>::empty());
+    lemma_act_word_concat(data, inv_s_word, s_word, e, Seq::<Syllable>::empty());
     lemma_act_word_single(data, s, e, Seq::<Syllable>::empty());
     lemma_act_word_single(data, inv_s, h1, Seq::<Syllable>::empty());
 
@@ -4091,13 +4106,13 @@ proof fn lemma_inverse_pair_g1_subcase_a(
     crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
 
     // Split [s, inv(s)] into [s] ++ [inv(s)]
-    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s, h, syls);
     let h_prime = a_rcoset_h(data, product);
     lemma_act_word_single(data, inv_s, h_prime, syls);
@@ -4627,13 +4642,13 @@ proof fn lemma_inverse_pair_g1_subcase_b(
     crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
 
     // Split [s, inv(s)] into [s] ++ [inv(s)]
-    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s, h, syls);
     // act_word([s], h, syls) = (h', [Syl(left, rep')] + syls) [since rep' ≠ ε, not left first]
 
@@ -5695,13 +5710,13 @@ proof fn lemma_inverse_pair_g1_subcase_c2(
     crate::word::lemma_concat_word_valid(s_word, embed_h, n1);
 
     // Split and compose
-    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s, h, syls);
     // Forward: merged_rep ≠ ε → state = (combined_h, [Syl(left, merged_rep)] + syls.drop_first())
     let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep })
@@ -5833,13 +5848,13 @@ proof fn lemma_inverse_pair_g1_subcase_c1(
     crate::word::lemma_concat_word_valid(product, c1, n1);
 
     // Split and compose
-    assert(inverse_pair_word(s) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s, h, syls);
 
     // Forward: merge absorbed → state = (combined_h, syls.drop_first())
@@ -7131,13 +7146,13 @@ proof fn lemma_inverse_pair_g2_subcase_a(
     reveal(presentation_valid);
 
     // Composition + single-step
-    assert(inverse_pair_word(s_shifted) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s_shifted) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s_shifted).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s_shifted)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s_shifted)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s_shifted, h, syls);
     let product = concat(Seq::new(1, |_i: int| s), apply_embedding(b_words(data), h));
     let h_prime = b_rcoset_h(data, product);
@@ -7413,13 +7428,13 @@ proof fn lemma_inverse_pair_g2_subcase_b(
     let h_prime = b_rcoset_h(data, product);
     let new_syls = Seq::new(1, |_i: int| Syllable { is_left: false, rep: b_rcoset_rep(data, product) }) + syls;
 
-    assert(inverse_pair_word(s_shifted) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s_shifted) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s_shifted).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s_shifted)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s_shifted)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s_shifted, h, syls);
     lemma_act_word_single(data, inverse_symbol(s_shifted), h_prime, new_syls);
     lemma_g2_b_complete_inverse_step(data, s, h, syls);
@@ -7593,13 +7608,13 @@ proof fn lemma_inverse_pair_g2_subcase_c1(
     let combined_h = b_rcoset_h(data, concat(concat(Seq::new(1, |_i: int| s),
         apply_embedding(b_words(data), h)), c1));
 
-    assert(inverse_pair_word(s_shifted) =~= concat(s_word, inv_s_word)) by {
+    assert(inverse_pair_word(s_shifted) =~= concat(inv_s_word, s_word)) by {
         assert(inverse_pair_word(s_shifted).len() == 2);
-        assert(concat(s_word, inv_s_word).len() == 2);
+        assert(concat(inv_s_word, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s_shifted)[k] == concat(s_word, inv_s_word)[k] by {}
+            implies inverse_pair_word(s_shifted)[k] == concat(inv_s_word, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word, h, syls);
+    lemma_act_word_concat(data, inv_s_word, s_word, h, syls);
     lemma_act_word_single(data, s_shifted, h, syls);
     lemma_act_right_sym_merge_absorbed(data, s, h, syls);
     lemma_act_word_single(data, inverse_symbol(s_shifted), combined_h, syls.drop_first());
@@ -7907,13 +7922,13 @@ proof fn lemma_inverse_pair_g2_subcase_c2(
     let new_syls = Seq::new(1, |_i: int| Syllable { is_left: false, rep: merged_rep })
         + syls.drop_first();
 
-    assert(inverse_pair_word(s_shifted) =~= concat(s_word, inv_s_word_shifted)) by {
+    assert(inverse_pair_word(s_shifted) =~= concat(inv_s_word_shifted, s_word)) by {
         assert(inverse_pair_word(s_shifted).len() == 2);
-        assert(concat(s_word, inv_s_word_shifted).len() == 2);
+        assert(concat(inv_s_word_shifted, s_word).len() == 2);
         assert forall|k: int| 0 <= k < 2
-            implies inverse_pair_word(s_shifted)[k] == concat(s_word, inv_s_word_shifted)[k] by {}
+            implies inverse_pair_word(s_shifted)[k] == concat(inv_s_word_shifted, s_word)[k] by {}
     }
-    lemma_act_word_concat(data, s_word, inv_s_word_shifted, h, syls);
+    lemma_act_word_concat(data, inv_s_word_shifted, s_word, h, syls);
     lemma_act_word_single(data, s_shifted, h, syls);
     lemma_act_right_sym_merge_replaced(data, s, h, syls);
     lemma_act_word_single(data, inverse_symbol(s_shifted), combined_h, new_syls);
