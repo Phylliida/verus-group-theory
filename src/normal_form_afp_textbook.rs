@@ -5888,4 +5888,232 @@ pub proof fn lemma_inverse_pair_g1(
     }
 }
 
+// ============================================================
+// Part P: Right B-coset infrastructure (mirrors Part N for A-cosets)
+// ============================================================
+
+/// Scan for min right-B-coset length.
+proof fn lemma_scan_b_rcoset_len(
+    data: AmalgamatedData, g: Word, current: nat, bound: nat,
+)
+    requires
+        has_b_rcoset_word_of_len(data, g, bound),
+        current <= bound,
+        no_shorter_b_rcoset_word(data, g, current),
+    ensures
+        exists|l: nat| current <= l && l <= bound
+            && #[trigger] is_min_b_rcoset_len(data, g, l),
+    decreases bound - current,
+{
+    if has_b_rcoset_word_of_len(data, g, current) {
+        assert(is_min_b_rcoset_len(data, g, current));
+    } else { lemma_scan_b_rcoset_len(data, g, current + 1, bound); }
+}
+
+/// Scan for min right-B-coset lex rank.
+proof fn lemma_scan_b_rcoset_lex(
+    data: AmalgamatedData, g: Word, l: nat, current: nat, bound: nat,
+)
+    requires
+        has_b_rcoset_word_of_len_rank(data, g, l, bound),
+        current <= bound,
+        no_smaller_b_rcoset_lex(data, g, l, current),
+    ensures
+        exists|r: nat| current <= r && r <= bound
+            && #[trigger] is_min_b_rcoset_lex(data, g, l, r),
+    decreases bound - current,
+{
+    if has_b_rcoset_word_of_len_rank(data, g, l, current) {
+        assert(is_min_b_rcoset_lex(data, g, l, current));
+    } else { lemma_scan_b_rcoset_lex(data, g, l, current + 1, bound); }
+}
+
+/// Right-B-coset rep satisfiability.
+proof fn lemma_b_rcoset_rep_satisfiable(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p2.num_generators),
+    ensures
+        is_min_b_rcoset_len(data, g, b_rcoset_min_len(data, g)),
+        is_min_b_rcoset_lex(data, g, b_rcoset_min_len(data, g), b_rcoset_min_lex(data, g)),
+{
+    reveal(presentation_valid);
+    crate::word::lemma_inverse_word_valid(g, data.p2.num_generators);
+    crate::word::lemma_concat_word_valid(g, inverse_word(g), data.p2.num_generators);
+    crate::presentation_lemmas::lemma_word_inverse_right(data.p2, g);
+    crate::benign::lemma_identity_in_generated_subgroup(data.p2, b_words(data));
+    crate::presentation::lemma_equiv_symmetric(data.p2, concat(g, inverse_word(g)), empty_word());
+    lemma_in_subgroup_equiv(data.p2, b_words(data),
+        empty_word(), concat(g, inverse_word(g)));
+    assert(has_b_rcoset_word_of_len(data, g, g.len() as nat));
+    assert(no_shorter_b_rcoset_word(data, g, 0nat));
+    lemma_scan_b_rcoset_len(data, g, 0, g.len() as nat);
+    let l = b_rcoset_min_len(data, g);
+    let w: Word = choose|w: Word| word_valid(w, data.p2.num_generators)
+        && same_b_rcoset(data, g, w) && w.len() == l;
+    let wr = word_lex_rank_base(w, 2 * data.p2.num_generators + 1);
+    assert(has_b_rcoset_word_of_len_rank(data, g, l, wr));
+    assert(no_smaller_b_rcoset_lex(data, g, l, 0nat));
+    lemma_scan_b_rcoset_lex(data, g, l, 0, wr);
+}
+
+/// Extract right-B-coset rep properties.
+proof fn lemma_b_rcoset_rep_props(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p2.num_generators),
+    ensures
+        same_b_rcoset(data, g, b_rcoset_rep(data, g)),
+        word_valid(b_rcoset_rep(data, g), data.p2.num_generators),
+        b_rcoset_rep(data, g).len() == b_rcoset_min_len(data, g),
+        word_lex_rank_base(b_rcoset_rep(data, g), 2 * data.p2.num_generators + 1) == b_rcoset_min_lex(data, g),
+{
+    lemma_b_rcoset_rep_satisfiable(data, g);
+}
+
+/// No shorter → ≥ for right B-cosets.
+proof fn lemma_no_shorter_b_rcoset_word_implies_ge(
+    data: AmalgamatedData, g: Word, m: nat, k: nat,
+)
+    requires
+        no_shorter_b_rcoset_word(data, g, m),
+        has_b_rcoset_word_of_len(data, g, k),
+    ensures k >= m,
+    decreases m,
+{
+    if m == 0 {} else if k == m - 1 {} else if k < m - 1 {
+        lemma_no_shorter_b_rcoset_word_implies_ge(data, g, (m - 1) as nat, k);
+    }
+}
+
+proof fn lemma_no_shorter_b_rcoset_word_forces_zero(
+    data: AmalgamatedData, g: Word, l: nat,
+)
+    requires
+        no_shorter_b_rcoset_word(data, g, l),
+        has_b_rcoset_word_of_len(data, g, 0nat),
+    ensures l == 0,
+    decreases l,
+{
+    if l > 0 { lemma_no_shorter_b_rcoset_word_forces_zero(data, g, (l - 1) as nat); }
+}
+
+/// No smaller B-coset lex implies ≥.
+proof fn lemma_no_smaller_b_rcoset_lex_implies_ge(
+    data: AmalgamatedData, g: Word, l: nat, m: nat, k: nat,
+)
+    requires
+        no_smaller_b_rcoset_lex(data, g, l, m),
+        has_b_rcoset_word_of_len_rank(data, g, l, k),
+    ensures k >= m,
+    decreases m,
+{
+    if m == 0 {} else if k == m - 1 {} else if k < m - 1 {
+        lemma_no_smaller_b_rcoset_lex_implies_ge(data, g, l, (m - 1) as nat, k);
+    }
+}
+
+/// If g is in the B-subgroup, then b_rcoset_rep(g) =~= ε.
+proof fn lemma_b_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+        in_right_subgroup(data, g),
+    ensures
+        b_rcoset_rep(data, g) =~= empty_word(),
+{
+    let e = empty_word();
+    let n2 = data.p2.num_generators;
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(concat(g, inverse_word(e)) =~= g) by {
+        assert(concat(g, e).len() == g.len());
+        assert forall|k: int| 0 <= k < g.len()
+            implies concat(g, e)[k] == g[k] by {}
+    }
+    crate::presentation::lemma_equiv_refl(data.p2, g);
+    lemma_in_subgroup_equiv(data.p2, b_words(data), g, concat(g, inverse_word(e)));
+    assert(word_valid(e, n2)) by { assert(e.len() == 0); }
+    assert(has_b_rcoset_word_of_len(data, g, 0nat));
+    assert(no_shorter_b_rcoset_word(data, g, 0nat));
+    lemma_scan_b_rcoset_len(data, g, 0, 0);
+    let l = b_rcoset_min_len(data, g);
+    lemma_no_shorter_b_rcoset_word_forces_zero(data, g, l);
+    assert(word_lex_rank_base(e, 2 * n2 + 1) == 0nat);
+    assert(has_b_rcoset_word_of_len_rank(data, g, 0nat, 0nat));
+    assert(no_smaller_b_rcoset_lex(data, g, 0nat, 0nat));
+    lemma_scan_b_rcoset_lex(data, g, 0, 0, 0);
+}
+
+/// same_b_rcoset is symmetric.
+proof fn lemma_same_b_rcoset_symmetric(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g1, data.p2.num_generators),
+        word_valid(g2, data.p2.num_generators),
+        same_b_rcoset(data, g1, g2),
+    ensures
+        same_b_rcoset(data, g2, g1),
+{
+    let n2 = data.p2.num_generators;
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::word::lemma_inverse_word_valid(g2, n2);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g2), n2);
+    lemma_subgroup_inverse(data.p2, b_words(data), concat(g1, inverse_word(g2)));
+    crate::word::lemma_inverse_concat(g1, inverse_word(g2));
+    crate::word::lemma_inverse_involution(g2);
+    let inv_pair = inverse_word(concat(g1, inverse_word(g2)));
+    assert(inv_pair =~= concat(g2, inverse_word(g1))) by {
+        assert(inv_pair =~= concat(inverse_word(inverse_word(g2)), inverse_word(g1)));
+        assert forall|k: int| 0 <= k < concat(g2, inverse_word(g1)).len()
+            implies inv_pair[k] == concat(g2, inverse_word(g1))[k]
+        by { if k < g2.len() as int {} else {} }
+    }
+    crate::word::lemma_inverse_word_valid(g1, n2);
+    crate::word::lemma_concat_word_valid(g2, inverse_word(g1), n2);
+    crate::presentation::lemma_equiv_refl(data.p2, concat(g2, inverse_word(g1)));
+    lemma_in_subgroup_equiv(data.p2, b_words(data),
+        inv_pair, concat(g2, inverse_word(g1)));
+}
+
+/// If g1 ≡ g2 in G₂, then same_b_rcoset(g1, g2).
+proof fn lemma_same_b_rcoset_from_equiv(
+    data: AmalgamatedData, g1: Word, g2: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g1, data.p2.num_generators),
+        word_valid(g2, data.p2.num_generators),
+        equiv_in_presentation(data.p2, g1, g2),
+    ensures
+        same_b_rcoset(data, g1, g2),
+{
+    let p2 = data.p2;
+    let n2 = p2.num_generators;
+    crate::word::lemma_inverse_word_valid(g1, n2);
+    crate::word::lemma_inverse_word_valid(g2, n2);
+    crate::presentation::lemma_equiv_symmetric(p2, g1, g2);
+    lemma_equiv_inverse(p2, g2, g1);
+    crate::presentation::lemma_equiv_refl(p2, g1);
+    crate::presentation_lemmas::lemma_equiv_concat(p2,
+        g1, g1, inverse_word(g2), inverse_word(g1));
+    crate::presentation_lemmas::lemma_word_inverse_right(p2, g1);
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g1), n2);
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(g1, inverse_word(g2)),
+        concat(g1, inverse_word(g1)),
+        empty_word());
+    crate::benign::lemma_identity_in_generated_subgroup(p2, b_words(data));
+    crate::word::lemma_concat_word_valid(g1, inverse_word(g2), n2);
+    crate::presentation::lemma_equiv_symmetric(p2, concat(g1, inverse_word(g2)), empty_word());
+    lemma_in_subgroup_equiv(p2, b_words(data),
+        empty_word(), concat(g1, inverse_word(g2)));
+}
+
 } // verus!
