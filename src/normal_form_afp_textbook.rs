@@ -1702,9 +1702,9 @@ pub open spec fn action_well_defined(data: AmalgamatedData) -> bool {
     &&& (forall|i: nat, inverted: bool, h: Word, syls: Seq<Syllable>|
         i < afp.relators.len() && is_canonical_state(data, h, syls) ==>
         #[trigger] relator_acts_trivially(data, get_relator(afp, i, inverted), h, syls))
-    // Every inverse pair acts trivially on canonical states
+    // Every inverse pair of a valid AFP symbol acts trivially on canonical states
     &&& (forall|s: Symbol, h: Word, syls: Seq<Syllable>|
-        is_canonical_state(data, h, syls) ==>
+        symbol_valid(s, afp.num_generators) && is_canonical_state(data, h, syls) ==>
         #[trigger] relator_acts_trivially(data, inverse_pair_word(s), h, syls))
 }
 
@@ -1767,6 +1767,7 @@ pub proof fn lemma_act_word_deriv(
                 assert(w_mid =~= concat(prefix, suffix));
                 let (sh, ss) = act_word(data, suffix, h, syllables);
                 assert(is_canonical_state(data, sh, ss));
+                assert(symbol_valid(s2, afp.num_generators));
                 assert(relator_acts_trivially(data, inverse_pair_word(s2), sh, ss));
                 assert(act_word(data, pair, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
@@ -1785,6 +1786,7 @@ pub proof fn lemma_act_word_deriv(
                 }
                 let (sh, ss) = act_word(data, suffix, h, syllables);
                 assert(is_canonical_state(data, sh, ss));
+                assert(symbol_valid(inverse_symbol(symbol), afp.num_generators));
                 assert(relator_acts_trivially(data, inverse_pair_word(inverse_symbol(symbol)), sh, ss));
                 assert(act_word(data, pair, sh, ss) == (sh, ss));
                 lemma_insert_trivial_at_state(data, prefix, pair, suffix, h, syllables);
@@ -4331,6 +4333,262 @@ pub proof fn lemma_identification_relator_acts_trivially(
     crate::word::lemma_concat_word_valid(u_i, embed_h_prime_a, n1);
     crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
     lemma_one_shot_subgroup_restore(data, g1_product, h, syls_prime);
+}
+
+// ============================================================
+// Part I1e: Assembly — action_well_defined proof
+// ============================================================
+
+/// concat(inv(r), r) acts trivially via inverse pair decomposition.
+/// Induction: r = [s] + r_rest → concat(inv(r), r) =~= concat(inv(r_rest), concat(inv_pair(s), r_rest))
+/// → remove inv_pair(s) (trivially-acting) → concat(inv(r_rest), r_rest) → IH.
+#[verifier::rlimit(200)]
+proof fn lemma_inv_r_concat_r_trivial(
+    data: AmalgamatedData, r: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        is_canonical_state(data, h, syls),
+        action_preserves_canonical(data),
+        word_valid(r, amalgamated_free_product(data).num_generators),
+    ensures
+        act_word(data, concat(inverse_word(r), r), h, syls) == (h, syls),
+    decreases r.len(),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let fp = crate::free_product::free_product(data.p1, data.p2);
+    crate::amalgamated_free_product::lemma_add_relators_num_generators(fp,
+        crate::amalgamated_free_product::amalgamation_relators(data));
+    assert(amalgamated_free_product(data).num_generators == n1 + n2);
+
+    if r.len() == 0 {
+        assert(concat(inverse_word(r), r) =~= empty_word());
+        lemma_act_word_empty(data, h, syls);
+    } else {
+        let s = r.first();
+        let r_rest = r.drop_first();
+        let s_word = Seq::new(1, |_i: int| s);
+
+        // inv(r) =~= concat(inv(r_rest), [inv(s)]) (from lemma_inverse_concat)
+        crate::word::lemma_inverse_concat(s_word, r_rest);
+
+        // Key =~=: concat(inv(r), r) =~= concat(inv(r_rest), concat(inv_pair(s), r_rest))
+        let inv_pair = inverse_pair_word(s);
+        assert(concat(inverse_word(r), r)
+            =~= concat(inverse_word(r_rest), concat(inv_pair, r_rest)));
+
+        // The intermediate state after processing r_rest is canonical
+        let (sh, ss) = act_word(data, r_rest, h, syls);
+        lemma_action_preserves_canonical(data, r_rest, h, syls);
+
+        // inv_pair(s) acts trivially on the canonical intermediate state
+        assert(symbol_valid(s, n1 + n2));
+        assert(generator_index(s) < n1 + n2);
+        if generator_index(s) < n1 {
+            lemma_inverse_pair_g1(data, s, sh, ss);
+        } else {
+            lemma_inverse_pair_g2(data, s, sh, ss);
+        }
+
+        // Remove the inverse pair
+        lemma_insert_trivial_at_state(data,
+            inverse_word(r_rest), inv_pair, r_rest, h, syls);
+
+        // IH: concat(inv(r_rest), r_rest) acts trivially
+        assert(word_valid(r_rest, n1 + n2));
+        lemma_inv_r_concat_r_trivial(data, r_rest, h, syls);
+    }
+}
+
+/// If r acts trivially on a specific canonical state, then inv(r) acts trivially on that state too.
+/// Proof: concat(inv(r), r) acts trivially (inverse pairs).
+/// act_word(concat(inv(r), r), h, syls) = act_word(inv(r), act_word(r, h, syls)) = act_word(inv(r), (h, syls)) = (h, syls).
+proof fn lemma_trivial_action_inverse(
+    data: AmalgamatedData, r: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        is_canonical_state(data, h, syls),
+        action_preserves_canonical(data),
+        word_valid(r, amalgamated_free_product(data).num_generators),
+        act_word(data, r, h, syls) == (h, syls),
+    ensures
+        act_word(data, inverse_word(r), h, syls) == (h, syls),
+{
+    lemma_inv_r_concat_r_trivial(data, r, h, syls);
+    lemma_act_word_concat(data, inverse_word(r), r, h, syls);
+}
+
+/// The action is well-defined: all AFP relators and inverse pairs act trivially.
+pub proof fn lemma_action_well_defined_proof(
+    data: AmalgamatedData,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        action_preserves_canonical(data),
+    ensures
+        action_well_defined(data),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let afp = amalgamated_free_product(data);
+    let fp = crate::free_product::free_product(data.p1, data.p2);
+
+    // AFP relators = fp.relators + amalgamation_relators
+    crate::normal_form_amalgamated::lemma_add_relators_concat(fp, crate::amalgamated_free_product::amalgamation_relators(data));
+    // afp.relators =~= fp.relators + amalgamation_relators(data)
+
+    let fp_len = fp.relators.len();
+    let p1_len = data.p1.relators.len();
+    let p2_len = data.p2.relators.len();
+    let k = data.identifications.len();
+    reveal(presentation_valid);
+
+    // Part 1: Every AFP relator (and its inverse) acts trivially
+    assert forall|i: nat, inverted: bool, h: Word, syls: Seq<Syllable>|
+        i < afp.relators.len() && is_canonical_state(data, h, syls)
+        implies #[trigger] relator_acts_trivially(data, get_relator(afp, i, inverted), h, syls)
+    by {
+        let r = afp.relators[i as int];
+        if (i as int) < p1_len {
+            // G₁ relator: r = p1.relators[i] ≡ ε in G₁
+            assert(r == data.p1.relators[i as int]);
+            crate::presentation_lemmas::lemma_relator_is_identity(data.p1, i as int);
+            if !inverted {
+                lemma_g1_relator_acts_trivially(data, r, h, syls);
+            } else {
+                lemma_inv_equiv_eps(data, r);
+                crate::word::lemma_inverse_word_valid(r, n1);
+                lemma_g1_relator_acts_trivially(data, inverse_word(r), h, syls);
+            }
+        } else if (i as int) < p1_len + p2_len {
+            // G₂ relator: r = shift(p2.relators[i - p1_len]) ≡ ε in G₂
+            let j = (i as int) - p1_len;
+            assert(r == crate::free_product::shift_word(data.p2.relators[j], n1));
+            crate::presentation_lemmas::lemma_relator_is_identity(data.p2, j);
+            if !inverted {
+                lemma_g2_relator_acts_trivially(data, data.p2.relators[j], h, syls);
+            } else {
+                // inv(shift(r_j)) =~= shift(inv(r_j)) and inv(r_j) ≡ ε in G₂
+                crate::word::lemma_inverse_word_valid(data.p2.relators[j], n2);
+                lemma_equiv_inverse(data.p2, data.p2.relators[j], empty_word());
+                crate::free_product::lemma_shift_inverse_word(data.p2.relators[j], n1);
+                lemma_g2_relator_acts_trivially(data, inverse_word(data.p2.relators[j]), h, syls);
+            }
+        } else {
+            // Identification relator: r = amalgamation_relator(data, i - fp_len)
+            let j = (i as int) - fp_len;
+            assert(0 <= j < k);
+            // word_valid(r, n1+n2) from presentation_valid(afp)
+            crate::amalgamated_free_product::lemma_amalgamated_valid(data);
+            crate::amalgamated_free_product::lemma_add_relators_num_generators(fp,
+                crate::amalgamated_free_product::amalgamation_relators(data));
+            assert(word_valid(r, n1 + n2));
+            if !inverted {
+                lemma_identification_relator_acts_trivially(data, j, h, syls);
+            } else {
+                // Forward: r acts trivially
+                lemma_identification_relator_acts_trivially(data, j, h, syls);
+                // Inverse: inv(r) acts trivially (from forward + inverse pair decomposition)
+                lemma_trivial_action_inverse(data, r, h, syls);
+            }
+        }
+    }
+
+    // Part 2: Every inverse pair of valid AFP symbols acts trivially
+    assert forall|s: Symbol, h: Word, syls: Seq<Syllable>|
+        symbol_valid(s, afp.num_generators) && is_canonical_state(data, h, syls)
+        implies #[trigger] relator_acts_trivially(data, inverse_pair_word(s), h, syls)
+    by {
+        crate::amalgamated_free_product::lemma_add_relators_num_generators(fp,
+            crate::amalgamated_free_product::amalgamation_relators(data));
+        if generator_index(s) < n1 {
+            lemma_inverse_pair_g1(data, s, h, syls);
+        } else {
+            lemma_inverse_pair_g2(data, s, h, syls);
+        }
+    }
+}
+
+/// AFP injectivity: if w is a G₁-word and w ≡ ε in the AFP, then w ≡ ε in G₁.
+/// This is the main theorem of the textbook one-shot proof (Lyndon-Schupp Ch. IV).
+pub proof fn lemma_afp_injectivity(
+    data: AmalgamatedData,
+    w: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        action_preserves_canonical(data),
+        is_canonical_state(data, empty_word(), Seq::<Syllable>::empty()),
+        word_valid(w, data.p1.num_generators),
+        equiv_in_presentation(amalgamated_free_product(data), w, empty_word()),
+    ensures
+        equiv_in_presentation(data.p1, w, empty_word()),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let afp = amalgamated_free_product(data);
+    let h0 = empty_word();
+    let syls0 = Seq::<Syllable>::empty();
+    reveal(presentation_valid);
+
+    // Step 1: action_well_defined
+    lemma_action_well_defined_proof(data);
+
+    // Step 2: w is word_valid for AFP (weaken from n1 to n1+n2)
+    crate::amalgamated_free_product::lemma_add_relators_num_generators(
+        crate::free_product::free_product(data.p1, data.p2),
+        crate::amalgamated_free_product::amalgamation_relators(data));
+    assert(word_valid(w, (n1 + n2) as nat)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(#[trigger] w[k], (n1 + n2) as nat)
+        by {}
+    }
+
+    // Step 3: extract derivation from AFP equivalence, derive action equality
+    let steps: Seq<DerivationStep> = choose|steps: Seq<DerivationStep>|
+        #[trigger] derivation_produces(afp, steps, w) == Some(empty_word());
+    lemma_act_word_deriv(data, steps, w, empty_word(), h0, syls0);
+    // act_word(w, ε, []) = act_word(ε, ε, [])
+    lemma_act_word_empty(data, h0, syls0);
+    // act_word(w, ε, []) = (ε, [])
+
+    // Step 4: connect to G₁ one-shot
+    lemma_act_word_eq_one_shot(data, w, h0, syls0);
+    // act_word(w, ε, []) = g1_one_shot_action(concat(w, embed_a(ε)), [])
+    // embed_a(ε) = ε, concat(w, ε) =~= w
+    // g1_one_shot_action(w, []) = (ε, [])
+    // This forces a_rcoset_rep(w) =~= ε and a_rcoset_h(w) =~= ε
+
+    // Step 5: extract w ∈ A from a_rcoset_rep(w) =~= ε
+    lemma_a_rcoset_rep_props(data, w);
+    // same_a_rcoset(data, w, ε) → in_left_subgroup(data, w)
+
+    // Step 6: get K-word witness from subgroup membership
+    lemma_subgroup_to_k_word(data.p1, a_words(data), w);
+    let h_witness: Word = choose|hw: Word|
+        word_valid(hw, k_size(data))
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), hw), w);
+
+    // Step 7: feed witness to a_rcoset_h_satisfiable
+    // Precondition: equiv(embed_a(h_witness), concat(w, inv(rep)))
+    // Since rep =~= ε: concat(w, inv(ε)) =~= w, and we have equiv(embed_a(h_witness), w)
+    lemma_a_rcoset_h_satisfiable(data, w, h_witness);
+    // ensures: equiv(embed_a(a_rcoset_h(data, w)), concat(w, inv(rep))) = equiv(embed_a(ε), w) = equiv(ε, w)
+
+    // Step 8: w ≡ ε by symmetry
+    crate::presentation::lemma_equiv_symmetric(data.p1, empty_word(), w);
 }
 
 // ============================================================
