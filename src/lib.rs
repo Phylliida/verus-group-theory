@@ -137,3 +137,6 @@ pub mod tower;
 
 #[cfg(verus_keep_ghost)]
 pub mod normal_form_afp_textbook;
+
+#[cfg(verus_keep_ghost)]
+pub mod britton_via_tower;
