@@ -280,4 +280,134 @@ pub proof fn lemma_g0_embeds_in_tower(
     }
 }
 
+// ============================================================
+// Part D: Textbook tower embedding (uses one-shot AFP injectivity)
+// ============================================================
+
+/// Textbook prerequisites at tower level k:
+/// - identifications_isomorphic: the identification map is an isomorphism
+/// - action_preserves_canonical: the van der Waerden action preserves canonical states
+/// - is_canonical_state(ε, []): the identity state is canonical
+pub open spec fn tower_textbook_prereqs_at(data: HNNData, k: nat) -> bool {
+    let afp_data = tower_afp_data(data, k);
+    &&& crate::normal_form_amalgamated::identifications_isomorphic(afp_data)
+    &&& crate::normal_form_afp_textbook::action_preserves_canonical(afp_data)
+    &&& crate::normal_form_afp_textbook::is_canonical_state(
+            afp_data, empty_word(), Seq::<crate::normal_form_afp_textbook::Syllable>::empty())
+}
+
+/// Textbook prerequisites hold at all tower levels 0..n-1.
+pub open spec fn tower_textbook_chain(data: HNNData, n: nat) -> bool {
+    forall|k: nat| k < n ==> #[trigger] tower_textbook_prereqs_at(data, k)
+}
+
+/// Textbook tower embedding: G_0 embeds in tower(n) via one-shot AFP injectivity.
+/// Same structure as lemma_g0_embeds_in_tower but with simpler prerequisites.
+pub proof fn lemma_g0_embeds_in_tower_textbook(
+    data: HNNData, n: nat, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators),
+        equiv_in_presentation(tower_presentation(data, n), w, empty_word()),
+        tower_textbook_chain(data, n),
+    ensures
+        equiv_in_presentation(data.base, w, empty_word()),
+    decreases n,
+{
+    if n == 0 {
+    } else {
+        let prev = (n - 1) as nat;
+        let ng = data.base.num_generators;
+        let afp_data = tower_afp_data(data, prev);
+
+        lemma_tower_num_generators(data, prev);
+        assert(ng <= n * ng) by (nonlinear_arith) requires n >= 1;
+        lemma_word_valid_weaken(w, ng, n * ng);
+
+        lemma_tower_valid(data, prev);
+        lemma_tower_afp_data_valid(data, prev);
+
+        // Textbook AFP injectivity at level prev
+        assert(tower_textbook_prereqs_at(data, prev));
+        crate::normal_form_afp_textbook::lemma_afp_injectivity(afp_data, w);
+
+        // IH
+        assert(tower_textbook_chain(data, prev)) by {
+            assert forall|k: nat| k < prev
+                implies #[trigger] tower_textbook_prereqs_at(data, k)
+            by { assert(k < n); }
+        }
+        lemma_g0_embeds_in_tower_textbook(data, prev, w);
+    }
+}
+
+// ============================================================
+// Part E: Britton's lemma via tower (statement)
+// ============================================================
+
+/// Level at position j in an HNN word: count of Gen(n) minus count of Inv(n) in positions j+1..len-1.
+/// With right-to-left processing, this tracks the "current copy" after processing from position j.
+pub open spec fn level_at(data: HNNData, w: Word, j: int) -> int
+    decreases (w.len() - j),
+{
+    let n = data.base.num_generators;
+    if j >= w.len() {
+        0
+    } else if w[j] == Symbol::Gen(n) {
+        level_at(data, w, j + 1) + 1
+    } else if w[j] == Symbol::Inv(n) {
+        level_at(data, w, j + 1) - 1
+    } else {
+        level_at(data, w, j + 1)
+    }
+}
+
+/// Maximum level reached in a word.
+pub open spec fn max_level(data: HNNData, w: Word) -> int {
+    // The max over all positions j of level_at(data, w, j)
+    // For a base word w (no stable letters), this is 0.
+    // For words with stable letters, bounded by the number of Gen(n) occurrences.
+    0 // placeholder — will be properly defined when derivation translation is implemented
+}
+
+/// Translate a base-only HNN word (no stable letters) to its tower copy.
+/// Base word w at level 0 maps to w itself (copy 0 generators = base generators).
+pub open spec fn translate_base_word(data: HNNData, w: Word) -> Word {
+    // For base words: tower copy 0 uses generators 0..ng-1 = base generators.
+    // So the translation is the identity.
+    w
+}
+
+/// Britton's lemma: if w is a base word and w ≡ ε in the HNN extension G*, then w ≡ ε in G.
+///
+/// Proof sketch:
+/// 1. w ≡ ε in G* → derivation → translate to tower of sufficient height
+/// 2. tower(m) equivalence for w
+/// 3. lemma_g0_embeds_in_tower_textbook → w ≡ ε in G
+///
+/// The derivation translation (step 1) requires tracking levels through intermediate words
+/// and showing each HNN step maps to a valid tower step. This is ~400 lines of
+/// step-by-step translation (future work).
+///
+/// For now, we state the theorem with the tower prerequisites as conditions.
+/// The key structural contribution: AFP injectivity (204 verified) + tower induction.
+pub proof fn britton_lemma_via_tower(
+    data: HNNData, n: nat, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, data.base.num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        // Tower prerequisites (derivable from hnn_associations_isomorphic in principle)
+        tower_textbook_chain(data, n),
+        // The derivation fits within tower height n
+        equiv_in_presentation(tower_presentation(data, n), w, empty_word()),
+    ensures
+        equiv_in_presentation(data.base, w, empty_word()),
+{
+    lemma_g0_embeds_in_tower_textbook(data, n, w);
+}
+
 } // verus!
