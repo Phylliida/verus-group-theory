@@ -16,6 +16,7 @@ use crate::presentation_lemmas::*;
 use crate::free_product::*;
 use crate::amalgamated_free_product::*;
 use crate::reduction::*;
+use crate::benign::*;
 use crate::hnn::*;
 use crate::tower::*;
 
@@ -801,6 +802,25 @@ pub proof fn lemma_base_at_copy_k_embeds(
     lemma_shift_hom_applies(data, k, m, w1);
     lemma_shift_hom_applies(data, k, m, w2);
 }
+
+// Tower identifications_isomorphic from hnn_associations_isomorphic.
+//
+// Infrastructure proven:
+// - Backward: base_at_copy_k_embeds ✓ (shift homomorphism)
+//   equiv(base, v, ε) → equiv(tower(m), shift(v, k*ng), ε)
+// - Forward: lemma_afp_injectivity_right ✓ (G₂ one-shot)
+//   equiv(AFP, shift(w, n1), ε) → equiv(base, w, ε)
+//
+// Remaining connection (~30 lines):
+// - Show embed_a_tower(w) =~= shift(embed_a_hnn(w), k*ng) (shift-embedding distributivity)
+// - Combine with hnn_associations_isomorphic for the biconditional
+// - The Seq::new closure matching for a_words_tower vs shifted a_words_hnn
+//   is the technical blocker (same issue as inverse_word_len was before finding it in word.rs)
+
+// Remaining: ~30 lines to prove lemma_tower_identifications_isomorphic
+// using the shift-embedding distributivity:
+//   apply_embedding(shift_each(a_words, k*ng), w) =~= shift(apply_embedding(a_words, w), k*ng)
+// Once proven: forward uses AFP right-injectivity + hnn_iso, backward uses base_at_copy_k_embeds + hnn_iso.
 
 /// A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
 proof fn lemma_translate_base_pair_trivial(
