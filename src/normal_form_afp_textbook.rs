@@ -4631,15 +4631,167 @@ proof fn lemma_a_rcoset_h_left_canonical(
     // And from equiv invariance: left_h_part(embed_a(h)) =~= left_h_part(target_r) =~= h
 }
 
-// TODO: lemma_a_rcoset_h_b_canonical — A-equiv ↔ B-equiv transfer
-//
-// Needs: identifications_isomorphic → A-equiv class = B-equiv class on K-words.
-// Steps: (1) embed_b(h_b) ≡ embed_b(h) → embed_b(concat(h_b,inv(h))) ≡ ε
-//        (2) By iso: embed_a(concat(h_b,inv(h))) ≡ ε → embed_a(h_b) ≡ embed_a(h)
-//        (3) h_b in A-equiv class of h, h is min-len/min-lex → h_b.len() >= h.len()
-//        (4) h in B-equiv class, h_b is min-len → h_b.len() <= h.len()
-//        (5) Equal length + both min-lex → h_b =~= h
-// Requires: ~60 lines of A↔B transfer infrastructure (embedding distributes, etc.)
+/// A-witness transfer: if there's an A-side h-witness of length l for embed_a(h0),
+/// then there's a B-side h-witness of length l for embed_b(h0).
+/// Uses identifications_isomorphic to transfer between G₁ and G₂ equiv classes.
+proof fn lemma_a_witness_to_b_witness(
+    data: AmalgamatedData, h0: Word, l: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        word_valid(h0, k_size(data)),
+        has_left_h_witness_of_len(data, apply_embedding(a_words(data), h0), l),
+    ensures
+        has_right_h_witness_of_len(data, apply_embedding(b_words(data), h0), l),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let p1 = data.p1;
+    let p2 = data.p2;
+    let k = k_size(data);
+    reveal(presentation_valid);
+
+    // Extract A-witness: h' with embed_a(h') ≡ embed_a(h0) in G₁, h'.len() == l
+    let h_prime: Word = choose|h: Word| word_valid(h, k) && h.len() == l
+        && equiv_in_presentation(p1, apply_embedding(a_words(data), h),
+            apply_embedding(a_words(data), h0));
+
+    assert forall|j: int| 0 <= j < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[j], n1)
+    by { assert(word_valid(data.identifications[j].0, n1)); }
+    assert forall|j: int| 0 <= j < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[j], n2)
+    by { assert(word_valid(data.identifications[j].1, n2)); }
+
+    // embed_a(h') ≡ embed_a(h0) → embed_a(concat(h', inv(h0))) ≡ ε in G₁
+    // Step: a ≡ b → a·b⁻¹ ≡ ε
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h0, n1);
+    crate::word::lemma_inverse_word_valid(apply_embedding(a_words(data), h0), n1);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p1,
+        apply_embedding(a_words(data), h_prime),
+        apply_embedding(a_words(data), h0),
+        inverse_word(apply_embedding(a_words(data), h0)));
+    crate::presentation_lemmas::lemma_word_inverse_right(p1,
+        apply_embedding(a_words(data), h0));
+    crate::presentation::lemma_equiv_transitive(p1,
+        concat(apply_embedding(a_words(data), h_prime),
+               inverse_word(apply_embedding(a_words(data), h0))),
+        concat(apply_embedding(a_words(data), h0),
+               inverse_word(apply_embedding(a_words(data), h0))),
+        empty_word());
+
+    // embed_a(concat(h', inv(h0))) =~= concat(embed_a(h'), inv(embed_a(h0)))
+    crate::word::lemma_inverse_word_valid(h0, k);
+    crate::benign::lemma_apply_embedding_concat(a_words(data), h_prime, inverse_word(h0));
+    crate::benign::lemma_apply_embedding_inverse(a_words(data), h0);
+
+    // So: equiv(embed_a(concat(h', inv(h0))), ε) in G₁
+    let diff = concat(h_prime, inverse_word(h0));
+    assert(word_valid(diff, k)) by {
+        assert forall|j: int| 0 <= j < diff.len()
+            implies symbol_valid(#[trigger] diff[j], k)
+        by { if j < h_prime.len() as int {} else {} }
+    }
+
+    // By identifications_isomorphic: equiv(embed_b(diff), ε) in G₂
+    // (identifications_isomorphic quantifies over word_valid(w, k))
+
+    // equiv(embed_b(diff), ε) → equiv(embed_b(h'), embed_b(h0)) in G₂
+    crate::benign::lemma_apply_embedding_concat(b_words(data), h_prime, inverse_word(h0));
+    crate::benign::lemma_apply_embedding_inverse(b_words(data), h0);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_prime, n2);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h0, n2);
+    crate::word::lemma_inverse_word_valid(apply_embedding(b_words(data), h0), n2);
+    crate::word::lemma_concat_word_valid(
+        apply_embedding(b_words(data), h_prime),
+        inverse_word(apply_embedding(b_words(data), h0)), n2);
+    lemma_diff_trivial_implies_equiv(p2,
+        apply_embedding(b_words(data), h_prime),
+        apply_embedding(b_words(data), h0));
+
+    // h' is a B-witness: word_valid(h', k) && h'.len() == l && equiv(embed_b(h'), embed_b(h0)) in G₂
+    assert(has_right_h_witness_of_len(data, apply_embedding(b_words(data), h0), l));
+}
+
+/// Reverse transfer: B-witness → A-witness.
+proof fn lemma_b_witness_to_a_witness(
+    data: AmalgamatedData, h0: Word, l: nat,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        word_valid(h0, k_size(data)),
+        has_right_h_witness_of_len(data, apply_embedding(b_words(data), h0), l),
+    ensures
+        has_left_h_witness_of_len(data, apply_embedding(a_words(data), h0), l),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let p1 = data.p1;
+    let p2 = data.p2;
+    let k = k_size(data);
+    reveal(presentation_valid);
+
+    let h_prime: Word = choose|h: Word| word_valid(h, k) && h.len() == l
+        && equiv_in_presentation(p2, apply_embedding(b_words(data), h),
+            apply_embedding(b_words(data), h0));
+
+    assert forall|j: int| 0 <= j < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[j], n1)
+    by { assert(word_valid(data.identifications[j].0, n1)); }
+    assert forall|j: int| 0 <= j < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[j], n2)
+    by { assert(word_valid(data.identifications[j].1, n2)); }
+
+    // embed_b(h') ≡ embed_b(h0) → embed_b(concat(h', inv(h0))) ≡ ε in G₂
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_prime, n2);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h0, n2);
+    crate::word::lemma_inverse_word_valid(apply_embedding(b_words(data), h0), n2);
+    crate::presentation_lemmas::lemma_equiv_concat_left(p2,
+        apply_embedding(b_words(data), h_prime),
+        apply_embedding(b_words(data), h0),
+        inverse_word(apply_embedding(b_words(data), h0)));
+    crate::presentation_lemmas::lemma_word_inverse_right(p2,
+        apply_embedding(b_words(data), h0));
+    crate::presentation::lemma_equiv_transitive(p2,
+        concat(apply_embedding(b_words(data), h_prime),
+               inverse_word(apply_embedding(b_words(data), h0))),
+        concat(apply_embedding(b_words(data), h0),
+               inverse_word(apply_embedding(b_words(data), h0))),
+        empty_word());
+
+    crate::word::lemma_inverse_word_valid(h0, k);
+    crate::benign::lemma_apply_embedding_concat(b_words(data), h_prime, inverse_word(h0));
+    crate::benign::lemma_apply_embedding_inverse(b_words(data), h0);
+
+    let diff = concat(h_prime, inverse_word(h0));
+    assert(word_valid(diff, k)) by {
+        assert forall|j: int| 0 <= j < diff.len()
+            implies symbol_valid(#[trigger] diff[j], k)
+        by { if j < h_prime.len() as int {} else {} }
+    }
+
+    // By identifications_isomorphic (reverse direction): equiv(embed_a(diff), ε) in G₁
+    crate::benign::lemma_apply_embedding_concat(a_words(data), h_prime, inverse_word(h0));
+    crate::benign::lemma_apply_embedding_inverse(a_words(data), h0);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h_prime, n1);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h0, n1);
+    crate::word::lemma_inverse_word_valid(apply_embedding(a_words(data), h0), n1);
+    crate::word::lemma_concat_word_valid(
+        apply_embedding(a_words(data), h_prime),
+        inverse_word(apply_embedding(a_words(data), h0)), n1);
+    lemma_diff_trivial_implies_equiv(p1,
+        apply_embedding(a_words(data), h_prime),
+        apply_embedding(a_words(data), h0));
+
+    assert(has_left_h_witness_of_len(data, apply_embedding(a_words(data), h0), l));
+}
 
 pub proof fn lemma_action_well_defined_proof(
     data: AmalgamatedData,
