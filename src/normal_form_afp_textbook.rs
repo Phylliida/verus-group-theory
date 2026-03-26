@@ -4793,6 +4793,120 @@ proof fn lemma_b_witness_to_a_witness(
     assert(has_left_h_witness_of_len(data, apply_embedding(a_words(data), h0), l));
 }
 
+/// a_rcoset_h output satisfies the b_rcoset_h fixed-point condition.
+/// Uses: witness transfer (A↔B) + lex rank injectivity to show the B-choose gives h.
+#[verifier::rlimit(200)]
+proof fn lemma_a_rcoset_h_b_canonical(
+    data: AmalgamatedData, g: Word, h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(g, inverse_word(a_rcoset_rep(data, g)))),
+    ensures ({
+        let h = a_rcoset_h(data, g);
+        &&& word_valid(h, k_size(data))
+        &&& b_rcoset_h(data, apply_embedding(b_words(data), h)) =~= h
+    }),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let p1 = data.p1;
+    let p2 = data.p2;
+    let k = k_size(data);
+    reveal(presentation_valid);
+
+    lemma_a_rcoset_h_satisfiable(data, g, h_witness);
+    let h = a_rcoset_h(data, g);
+
+    assert forall|j: int| 0 <= j < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[j], n2)
+    by { assert(word_valid(data.identifications[j].1, n2)); }
+    assert forall|j: int| 0 <= j < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[j], n1)
+    by { assert(word_valid(data.identifications[j].0, n1)); }
+
+    let embed_b_h = apply_embedding(b_words(data), h);
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+
+    // embed_b(h) ∈ B → b_rcoset_rep = ε
+    lemma_apply_embedding_in_subgroup_g2(p2, b_words(data), h);
+    lemma_b_rcoset_in_subgroup(data, embed_b_h);
+
+    // h is a B-witness → b_rcoset_h satisfiable
+    crate::presentation::lemma_equiv_refl(p2, embed_b_h);
+    lemma_b_rcoset_h_satisfiable(data, embed_b_h, h);
+    let h_b = b_rcoset_h(data, embed_b_h);
+    // h_b: word_valid, h_b.len() == b_rcoset_h_min_len, equiv(embed_b(h_b), embed_b_h)
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h_b, n2);
+
+    // Strategy: show h and h_b have same length AND same lex rank → same word (by injectivity)
+
+    // Step 1: h_b.len() <= h.len() (h is a B-candidate, h_b is B-min-len)
+    // (This follows from b_rcoset_h_min_len being the minimum.)
+
+    // Step 2: h.len() <= h_b.len() (transfer h_b to A-side, h is A-min-len)
+    assert(has_right_h_witness_of_len(data, embed_b_h, h_b.len() as nat));
+    lemma_b_witness_to_a_witness(data, h, h_b.len() as nat);
+    // Now: has_left_h_witness_of_len(embed_a(h), h_b.len())
+
+    // h = left_h_part(embed_a(h)) (from A-canonical) → h.len() == left_h_min_len(embed_a(h))
+    lemma_a_rcoset_h_left_canonical(data, g, h_witness);
+    let embed_a_h = apply_embedding(a_words(data), h);
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
+    lemma_in_subgroup_both_reps_eps(data, embed_a_h);
+    // Extract full choose properties of left_h_part(embed_a_h)
+    // h_witness for left_h_part: h itself (embed_a(h) ≡ embed_a(h) reflexively, rep = ε → target = embed_a_h)
+    crate::presentation::lemma_equiv_refl(p1, embed_a_h);
+    lemma_left_h_part_full_props(data, embed_a_h, h);
+    // left_h_part(embed_a_h).len() == left_h_min_len(embed_a_h) and left_h_part =~= h
+    assert(h.len() == left_h_min_len(data, embed_a_h));
+    lemma_no_pred_below_implies_ge(
+        |l2: nat| has_left_h_witness_of_len(data,
+            concat(inverse_word(left_canonical_rep(data, embed_a_h)), embed_a_h), l2),
+        h.len() as nat, h_b.len() as nat);
+
+    // Step 3: h.len() == h_b.len()
+    assert(h.len() == h_b.len());
+
+    // Step 4: Same lex rank (both are min-lex at the same length for the same equiv class)
+    // Transfer at rank level: the rank-level B-witness at h_b's lex ↔ A-witness at same lex
+    // Since A and B witnesses at each (len, rank) coincide, the min-lex must agree too.
+    // h has lex == left_h_min_lex(embed_a_h) and h_b has lex == b_rcoset_h_min_lex(embed_b_h).
+    // Both are min-lex over the same set of K-words → same lex → same word.
+
+    // Use lex rank injectivity: same length + same lex rank → same word
+    // h and h_b satisfy the same B-choose predicate at (len, lex)
+    // h_b IS the choose result → h_b has len == bl and lex == br
+    // h satisfies the B-predicate too (equiv(embed_b(h), embed_b_h) by reflexivity)
+    // Both have len == bl. If lex(h) == lex(h_b), then h =~= h_b by injectivity.
+    // lex(h_b) == br (from choose). lex(h) >= br (from min-lex: h_b is min).
+    // But also: h is in the B-witness set at (bl, lex(h)). Transfer to A-side:
+    // h is in A-witness set at (bl, lex(h)). h is the A-min-lex at length bl.
+    // So lex(h) == left_h_min_lex(embed_a_h) <= lex(any A-witness at bl).
+    // h_b is an A-witness at bl (from transfer). So lex(h) <= lex(h_b).
+    // Combined: lex(h) <= lex(h_b) AND lex(h_b) <= lex(h) → lex(h) == lex(h_b).
+    assert(word_lex_rank_base(h, h_lex_base(data))
+        == word_lex_rank_base(h_b, h_lex_base(data)));
+
+    // Step 5: Apply lex rank injectivity
+    assert(h_lex_base(data) > 0);
+    assert forall|j: int| 0 <= j < h.len() implies
+        crate::todd_coxeter::symbol_to_column(#[trigger] h[j]) < h_lex_base(data)
+    by { assert(symbol_valid(h[j], k)); }
+    assert forall|j: int| 0 <= j < h_b.len() implies
+        crate::todd_coxeter::symbol_to_column(#[trigger] h_b[j]) < h_lex_base(data)
+    by { assert(symbol_valid(h_b[j], k)); }
+    lemma_word_lex_rank_base_injective(h, h_b, h_lex_base(data));
+}
+
 pub proof fn lemma_action_well_defined_proof(
     data: AmalgamatedData,
 )
