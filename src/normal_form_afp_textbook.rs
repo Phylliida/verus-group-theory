@@ -1803,16 +1803,6 @@ pub proof fn lemma_b_rcoset_h_identity(data: AmalgamatedData)
 }
 
 /// The identity state (ε, []) is canonical.
-/// inverse_word preserves length (trivial from Seq::new definition).
-pub proof fn lemma_inverse_word_len(w: Word)
-    ensures inverse_word(w).len() == w.len(),
-{
-    let n = w.len();
-    let f = |i: int| inverse_symbol(w[n as int - 1 - i]);
-    let explicit = Seq::new(n, f);
-    assert(explicit.len() == n);
-}
-
 pub proof fn lemma_identity_state_canonical(data: AmalgamatedData)
     requires
         amalgamated_data_valid(data),

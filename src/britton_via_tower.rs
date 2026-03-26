@@ -682,13 +682,6 @@ proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     }
 }
 
-/// inverse_word preserves length (trivial from Seq::new definition, but Z3 needs help in large contexts).
-#[verifier::rlimit(200)]
-proof fn lemma_inverse_word_len(w: Word)
-    ensures inverse_word(w).len() == w.len(),
-{
-}
-
 // ============================================================
 // Part G2: Base at copy k embeds in tower via shift homomorphism
 // ============================================================
@@ -745,7 +738,7 @@ proof fn lemma_shift_hom_applies(data: HNNData, k: nat, m: nat, w: Word)
                 assert(gen_img[0] == Symbol::Gen((i + k * ng) as nat));
                 // inverse_word definition: Seq::new(w.len(), |j| inverse_symbol(w[w.len()-1-j]))
                 // For len=1: Seq::new(1, |j| inverse_symbol(gen_img[0])) = [Inv(i+k*ng)]
-                lemma_inverse_word_len(gen_img);
+                crate::word::lemma_inverse_word_len(gen_img);
                 assert(sym_img.len() == 1);
                 assert(sym_img[0] == shift_symbol(s, k * ng));
             }
