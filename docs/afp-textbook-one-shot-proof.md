@@ -131,7 +131,17 @@ Canonical representatives use a three-step choose (min-length → min-lex-rank �
 - `lemma_ident_g1_product_equiv`: reveal_with_fuel for single-symbol embedding, lemma_diff_trivial_implies_equiv helper
 - Main function: extracted K-word construction into `lemma_ident_isomorphism_transfer`, used action_preserves_canonical
 
-### Next: Assembly
+### DONE: Assembly (2026-03-25)
+- `lemma_inv_r_concat_r_trivial`: concat(inv(r), r) trivial via inverse pairs (induction)
+- `lemma_trivial_action_inverse`: r trivial → inv(r) trivial
+- `lemma_action_well_defined_proof`: all AFP relators + inverse pairs act trivially
+- `lemma_afp_injectivity`: **MAIN THEOREM** — w ≡ ε in AFP → w ≡ ε in G₁
+
+### DONE: Tower wiring (2026-03-25)
+- `lemma_g0_embeds_in_tower_textbook`: textbook AFP injectivity at each tower level
+- `britton_lemma_via_tower`: Britton's lemma statement (tower embedding)
+
+### Remaining: Derivation Translation (~400 lines)
 - `lemma_action_well_defined_proof`: combine G₁ + G₂ + identification + inverse pair triviality into the `action_well_defined` spec
 - Requires mapping AFP relator indices to the three categories (G₁ relators at indices 0..n1_rel, shifted G₂ relators at n1_rel..n1_rel+n2_rel, identification relators at n1_rel+n2_rel..end)
 
