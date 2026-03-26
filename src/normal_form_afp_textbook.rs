@@ -5619,14 +5619,19 @@ proof fn lemma_act_sym_h_canonical(
 /// For now, we state the result and note it follows from proven infrastructure.
 ///
 /// KEY INFRASTRUCTURE ALL VERIFIED (0 assumes):
-/// - lemma_a_rcoset_h_left_canonical ✓
-/// - lemma_a_rcoset_h_b_canonical ✓
-/// - lemma_b_rcoset_h_b_canonical ✓
-/// - lemma_b_rcoset_h_left_canonical ✓
-/// - lemma_act_sym_h_canonical ✓
-/// - lemma_a_rcoset_rep_idempotent ✓
-/// - lemma_b_rcoset_rep_idempotent ✓
-/// - lemma_a_rcoset_rep_props / lemma_b_rcoset_rep_props ✓
+/// - lemma_act_sym_h_canonical ✓ (h-part conditions 1-3)
+/// - lemma_a_rcoset_rep_idempotent / lemma_b_rcoset_rep_idempotent ✓ (rep canonical)
+/// - lemma_a_rcoset_rep_props / lemma_b_rcoset_rep_props ✓ (rep word_valid)
+///
+/// Proof: induction on w.len(). Base: act_word(ε) = identity. Step: act_sym preserves canonical.
+/// act_sym h-part from lemma_act_sym_h_canonical. Syllables: structural from action definition.
+#[verifier::rlimit(500)]
+// NOTE: lemma_action_preserves_canonical_from_iso — to be completed.
+// The h-part conditions (word_valid, left_h_part, b_rcoset_h) are proven by
+// lemma_act_sym_h_canonical. The syllable conditions (word_valid reps, canonical reps,
+// non-identity, alternation) need explicit case analysis (~80 lines) for each action subcase.
+// All building blocks verified: a/b_rcoset_rep_props, a/b_rcoset_rep_idempotent,
+// and the 4 canonical lemmas (A→A, A→B, B→B, B→A).
 
 pub proof fn lemma_action_well_defined_proof(
     data: AmalgamatedData,
