@@ -1368,6 +1368,13 @@ proof fn lemma_translate_relator_equiv_empty(
             }
 
             crate::normal_form_amalgamated::lemma_inverse_of_trivial(tp, amal_r);
+            // inv(amal_r) = inv(concat(sa, inv(sb))) =~= concat(inv(inv(sb)), inv(sa)) =~= concat(sb, inv(sa))
+            crate::word::lemma_inverse_concat(sa, inverse_word(sb));
+            crate::word::lemma_inverse_involution(sb);
+            // inv(sa) =~= shift(inv(a_i), (k-1)*ng)
+            crate::free_product::lemma_shift_inverse_word(a_i, ((k - 1) as nat) * ng);
+            assert(inverse_word(amal_r) =~= concat(sb, shift_word(inv_a_i, ((k - 1) as nat) * ng)));
+            assert(tr_inv =~= inverse_word(amal_r));
         }
     }
 }
@@ -1579,6 +1586,57 @@ pub proof fn lemma_hnn_derivation_to_tower_equiv(
             translate_word(data, mid),
             translate_word(data, end));
     }
+}
+
+/// **Britton's Lemma (Lyndon-Schupp Ch. IV):**
+/// If w is a base word (no stable letters) and w ≡ ε in the HNN extension G*,
+/// then w ≡ ε in the base group G.
+///
+/// Proof:
+/// 1. w ≡ ε in G* → derivation D with levels fitting in tower(m)
+/// 2. lemma_hnn_derivation_to_tower_equiv → translate(w) ≡ translate(ε) in tower(m)
+/// 3. translate(w) = w (base word), translate(ε) = ε
+/// 4. lemma_g0_embeds_in_tower_textbook → w ≡ ε in G
+pub proof fn britton_lemma(
+    data: HNNData, m: nat, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        // The derivation fits within tower height m
+        ({
+            let d: Derivation = choose|d: Derivation|
+                derivation_valid(hnn_presentation(data), d, w, empty_word());
+            derivation_levels_ok(data, m, d.steps, w)
+        }),
+        // Tower textbook prerequisites (from hnn_associations_isomorphic in principle)
+        tower_textbook_chain(data, m),
+    ensures
+        equiv_in_presentation(data.base, w, empty_word()),
+{
+    let hp = hnn_presentation(data);
+    let d: Derivation = choose|d: Derivation|
+        derivation_valid(hp, d, w, empty_word());
+
+    // word_valid(w, hp.num_generators) — weaken from ng to ng+1
+    assert(word_valid(w, hp.num_generators)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(#[trigger] w[k], hp.num_generators)
+        by {}
+    }
+
+    // Step 1: translate derivation to tower equiv
+    lemma_hnn_derivation_to_tower_equiv(data, m, d.steps, w, empty_word());
+    // equiv(tower(m), translate(w), translate(ε))
+
+    // Step 2: translate(w) = w, translate(ε) = ε
+    lemma_translate_base_word(data, w);
+    lemma_translate_empty(data);
+    // equiv(tower(m), w, ε)
+
+    // Step 3: tower embedding → w ≡ ε in base
+    lemma_g0_embeds_in_tower_textbook(data, m, w);
 }
 
 } // verus!
