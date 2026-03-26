@@ -287,13 +287,11 @@ pub proof fn lemma_g0_embeds_in_tower(
 /// Textbook prerequisites at tower level k:
 /// - identifications_isomorphic: the identification map is an isomorphism
 /// - action_preserves_canonical: the van der Waerden action preserves canonical states
-/// - is_canonical_state(ε, []): the identity state is canonical
+/// (identity state canonicality is now proved from amalgamated_data_valid via lemma_identity_state_canonical)
 pub open spec fn tower_textbook_prereqs_at(data: HNNData, k: nat) -> bool {
     let afp_data = tower_afp_data(data, k);
     &&& crate::normal_form_amalgamated::identifications_isomorphic(afp_data)
     &&& crate::normal_form_afp_textbook::action_preserves_canonical(afp_data)
-    &&& crate::normal_form_afp_textbook::is_canonical_state(
-            afp_data, empty_word(), Seq::<crate::normal_form_afp_textbook::Syllable>::empty())
 }
 
 /// Textbook prerequisites hold at all tower levels 0..n-1.

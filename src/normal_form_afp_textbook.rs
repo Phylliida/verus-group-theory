@@ -1590,6 +1590,145 @@ pub proof fn lemma_left_h_identity(data: AmalgamatedData)
     // h.len() == l == 0, so h =~= ε
 }
 
+/// b_rcoset_h_min_len of ε is 0 (mirrors lemma_left_h_min_len_identity for B-side).
+proof fn lemma_b_rcoset_h_min_len_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        b_rcoset_h_min_len(data, empty_word()) == 0,
+{
+    let e = empty_word();
+    let k = k_size(data);
+    let p2 = data.p2;
+    reveal(presentation_valid);
+
+    // b_rcoset_rep(ε) = ε
+    lemma_identity_in_generated_subgroup(p2, b_words(data));
+    lemma_b_rcoset_in_subgroup(data, e);
+
+    // target =~= ε
+    let rep = b_rcoset_rep(data, e);
+    let target = concat(e, inverse_word(rep));
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(target =~= e) by { assert(concat(e, e).len() == 0); }
+
+    // ε is a K-word of length 0 with embed_b(ε) ≡ target
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(b_words(data), e) =~= e);
+    crate::presentation::lemma_equiv_refl(p2, e);
+    assert(has_right_h_witness_of_len(data, target, 0nat));
+
+    let pred = |l: nat| has_right_h_witness_of_len(data, target, l);
+    assert(pred(0nat));
+    assert(no_pred_below(pred, 0nat));
+
+    let l = b_rcoset_h_min_len(data, e);
+    lemma_no_pred_below_forces_zero(pred, l);
+}
+
+/// Establish h-part satisfiability for right B-coset decomposition.
+/// Mirrors lemma_a_rcoset_h_satisfiable for G₂.
+pub proof fn lemma_b_rcoset_h_satisfiable(data: AmalgamatedData, g: Word, h_witness: Word)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p2.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p2,
+            apply_embedding(b_words(data), h_witness),
+            concat(g, inverse_word(b_rcoset_rep(data, g)))),
+    ensures ({
+        let rep = b_rcoset_rep(data, g);
+        let target = concat(g, inverse_word(rep));
+        let h = b_rcoset_h(data, g);
+        &&& word_valid(h, k_size(data))
+        &&& equiv_in_presentation(data.p2,
+                apply_embedding(b_words(data), h), target)
+    }),
+{
+    let rep = b_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+
+    // h_witness witnesses has_right_h_witness_of_len(target, h_witness.len())
+    assert(has_right_h_witness_of_len(data, target, h_witness.len() as nat));
+
+    // Nat well-ordering → b_rcoset_h_min_len satisfiable
+    let pred_h = |l: nat| has_right_h_witness_of_len(data, target, l);
+    assert(pred_h(h_witness.len() as nat));
+    lemma_nat_well_ordering(pred_h, h_witness.len() as nat);
+
+    // h-lex satisfiability (scan for min lex at min length)
+    let l = b_rcoset_h_min_len(data, g);
+    let w: Word = choose|w: Word| word_valid(w, k_size(data)) && w.len() == l
+        && equiv_in_presentation(data.p2, apply_embedding(b_words(data), w), target);
+    let wr = word_lex_rank_base(w, h_lex_base(data));
+    assert(has_right_h_witness_of_len_rank(data, target, l, wr));
+    assert(no_smaller_h_lex_g2(data, target, l, 0nat));
+    lemma_scan_min_h_lex_g2(data, target, l, 0, wr);
+}
+
+/// b_rcoset_h of the empty word is ε (mirrors lemma_left_h_identity for the B-side).
+pub proof fn lemma_b_rcoset_h_identity(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        b_rcoset_h(data, empty_word()) =~= empty_word(),
+{
+    let e = empty_word();
+    let k = k_size(data);
+    let p2 = data.p2;
+    reveal(presentation_valid);
+
+    // b_rcoset_rep(ε) = ε
+    lemma_identity_in_generated_subgroup(p2, b_words(data));
+    lemma_b_rcoset_in_subgroup(data, e);
+    lemma_b_rcoset_h_min_len_identity(data);
+
+    let l = b_rcoset_h_min_len(data, e);
+    assert(l == 0);
+
+    let rep = b_rcoset_rep(data, e);
+    let target = concat(e, inverse_word(rep));
+
+    // ε satisfies the predicate
+    assert(word_valid(e, k)) by { assert(e.len() == 0); }
+    assert(apply_embedding(b_words(data), e) =~= e);
+    assert(inverse_word(e) =~= e) by { assert(inverse_word(e).len() == 0); }
+    assert(target =~= e) by { assert(concat(e, e).len() == 0); }
+    crate::presentation::lemma_equiv_refl(p2, e);
+
+    // Establish h-lex satisfiability: ε has lex rank 0
+    assert(word_lex_rank_base(e, h_lex_base(data)) == 0nat);
+    assert(has_right_h_witness_of_len_rank(data, target, 0nat, 0nat));
+    assert(no_smaller_h_lex_g2(data, target, 0nat, 0nat));
+    assert(is_min_h_lex_g2(data, target, 0nat, 0nat));
+
+    // The choose gives h with h.len() == 0, so h =~= ε
+}
+
+/// The identity state (ε, []) is canonical.
+pub proof fn lemma_identity_state_canonical(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+    ensures
+        is_canonical_state(data, empty_word(), Seq::<Syllable>::empty()),
+{
+    let e = empty_word();
+    let syls = Seq::<Syllable>::empty();
+
+    // word_valid(ε, k_size)
+    assert(word_valid(e, k_size(data)));
+
+    // left_h_part(embed_a(ε)) =~= ε
+    assert(apply_embedding(a_words(data), e) =~= e);
+    lemma_left_h_identity(data);
+
+    // b_rcoset_h(embed_b(ε)) =~= ε
+    assert(apply_embedding(b_words(data), e) =~= e);
+    lemma_b_rcoset_h_identity(data);
+
+    // Syllable conditions: vacuously true for empty syls
+}
+
 /// Inserting a word at a position preserves the action if the word acts trivially
 /// on ALL states (universal version).
 pub proof fn lemma_insert_trivial_preserves_action(
@@ -4425,6 +4564,83 @@ proof fn lemma_trivial_action_inverse(
 }
 
 /// The action is well-defined: all AFP relators and inverse pairs act trivially.
+/// The output of a_rcoset_h satisfies the left_h_part fixed-point condition.
+/// Uses equiv invariance: embed_a(h) ≡ target_r, and left_h_part is equiv-invariant.
+proof fn lemma_a_rcoset_h_left_canonical(
+    data: AmalgamatedData, g: Word, h_witness: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h_witness, k_size(data)),
+        equiv_in_presentation(data.p1,
+            apply_embedding(a_words(data), h_witness),
+            concat(g, inverse_word(a_rcoset_rep(data, g)))),
+    ensures ({
+        let h = a_rcoset_h(data, g);
+        &&& word_valid(h, k_size(data))
+        &&& left_h_part(data, apply_embedding(a_words(data), h)) =~= h
+    }),
+{
+    let n1 = data.p1.num_generators;
+    let p1 = data.p1;
+    reveal(presentation_valid);
+
+    lemma_a_rcoset_h_satisfiable(data, g, h_witness);
+    let h = a_rcoset_h(data, g);
+    let rep = a_rcoset_rep(data, g);
+    let target_r = concat(g, inverse_word(rep));
+    let embed_h = apply_embedding(a_words(data), h);
+
+    assert forall|j: int| 0 <= j < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[j], n1)
+    by { assert(word_valid(data.identifications[j].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+
+    // target_r ∈ A and word_valid
+    lemma_a_rcoset_rep_props(data, g);
+    crate::word::lemma_inverse_word_valid(rep, n1);
+    crate::word::lemma_concat_word_valid(g, inverse_word(rep), n1);
+
+    // embed_a(h) ∈ A → both reps = ε
+    lemma_apply_embedding_in_subgroup(p1, a_words(data), h);
+    lemma_in_subgroup_both_reps_eps(data, embed_h);
+    // target_r ∈ A → both reps = ε
+    lemma_in_subgroup_both_reps_eps(data, target_r);
+
+    // Use left_h_part equiv invariance: embed_a(h) ≡ target_r → left_h_part equal
+    // h_witness for embed_a(h): h (reflexive)
+    crate::presentation::lemma_equiv_refl(p1, embed_h);
+    // h_witness for target_r: h (embed_a(h) ≡ target_r)
+    // Need equiv(embed_a(h), concat(inv(left_canonical_rep(embed_h)), embed_h)) = equiv(embed_a(h), embed_h) [since rep=ε]
+    // And equiv(embed_a(h), concat(inv(left_canonical_rep(target_r)), target_r)) = equiv(embed_a(h), target_r) [since rep=ε]
+    lemma_left_h_part_equiv_invariant(data, embed_h, target_r, h, h);
+    // left_h_part(embed_a(h)) =~= left_h_part(target_r)
+
+    // Now: left_h_part(target_r) uses target = target_r (since rep=ε)
+    // And: a_rcoset_h(g) uses target = target_r (by definition)
+    // BOTH left_h_min_len and a_rcoset_h_min_len compute on has_left_h_witness_of_len(data, target_r, l)
+    // (since concat(inv(ε), target_r) =~= target_r =~= concat(g, inv(rep)))
+    // So left_h_part(target_r) and a_rcoset_h(g) pick the same h.
+    // Z3 needs help seeing the internal targets are =~=:
+    assert(concat(inverse_word(left_canonical_rep(data, target_r)), target_r) =~= target_r);
+    assert(concat(g, inverse_word(a_rcoset_rep(data, g))) =~= target_r);
+    // Therefore: left_h_part(target_r) =~= a_rcoset_h(g) = h
+    assert(left_h_part(data, target_r) =~= h);
+    // And from equiv invariance: left_h_part(embed_a(h)) =~= left_h_part(target_r) =~= h
+}
+
+// TODO: lemma_a_rcoset_h_b_canonical — A-equiv ↔ B-equiv transfer
+//
+// Needs: identifications_isomorphic → A-equiv class = B-equiv class on K-words.
+// Steps: (1) embed_b(h_b) ≡ embed_b(h) → embed_b(concat(h_b,inv(h))) ≡ ε
+//        (2) By iso: embed_a(concat(h_b,inv(h))) ≡ ε → embed_a(h_b) ≡ embed_a(h)
+//        (3) h_b in A-equiv class of h, h is min-len/min-lex → h_b.len() >= h.len()
+//        (4) h in B-equiv class, h_b is min-len → h_b.len() <= h.len()
+//        (5) Equal length + both min-lex → h_b =~= h
+// Requires: ~60 lines of A↔B transfer infrastructure (embedding distributes, etc.)
+
 pub proof fn lemma_action_well_defined_proof(
     data: AmalgamatedData,
 )
@@ -4530,12 +4746,12 @@ pub proof fn lemma_afp_injectivity(
         presentation_valid(data.p2),
         identifications_isomorphic(data),
         action_preserves_canonical(data),
-        is_canonical_state(data, empty_word(), Seq::<Syllable>::empty()),
         word_valid(w, data.p1.num_generators),
         equiv_in_presentation(amalgamated_free_product(data), w, empty_word()),
     ensures
         equiv_in_presentation(data.p1, w, empty_word()),
 {
+    lemma_identity_state_canonical(data);
     let n1 = data.p1.num_generators;
     let n2 = data.p2.num_generators;
     let afp = amalgamated_free_product(data);
