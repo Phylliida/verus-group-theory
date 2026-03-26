@@ -1923,8 +1923,9 @@ pub open spec fn is_canonical_state(data: AmalgamatedData, h: Word, syls: Seq<Sy
 /// A full inductive proof requires showing act_sym preserves word_valid(h, k),
 /// which follows from the choose predicates of left_h_part/right_h_part.
 pub open spec fn action_preserves_canonical(data: AmalgamatedData) -> bool {
+    let n = data.p1.num_generators + data.p2.num_generators;
     forall|w: Word, h: Word, syls: Seq<Syllable>|
-        is_canonical_state(data, h, syls) ==>
+        word_valid(w, n) && is_canonical_state(data, h, syls) ==>
         #[trigger] is_canonical_state(data,
             act_word(data, w, h, syls).0,
             act_word(data, w, h, syls).1)
@@ -1969,6 +1970,11 @@ pub proof fn lemma_act_word_deriv(
         let step = steps.first();
         let w_mid = apply_step(afp, w1, step).unwrap();
 
+        // Connect afp.num_generators == n1 + n2 for action_preserves_canonical trigger
+        crate::amalgamated_free_product::lemma_add_relators_num_generators(
+            crate::free_product::free_product(data.p1, data.p2),
+            crate::amalgamated_free_product::amalgamation_relators(data));
+
         // Per-step: act_word(w1, h, syls) == act_word(w_mid, h, syls)
         // Each step inserts/deletes a relator or free pair at some position.
         // By lemma_act_word_concat: we split at the position.
@@ -2002,6 +2008,10 @@ pub proof fn lemma_act_word_deriv(
                 }
                 assert(w_mid =~= concat(prefix, suffix));
                 let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(word_valid(suffix, afp.num_generators)) by {
+                    assert forall|k: int| 0 <= k < suffix.len()
+                        implies symbol_valid(#[trigger] suffix[k], afp.num_generators) by {}
+                }
                 assert(is_canonical_state(data, sh, ss));
                 assert(symbol_valid(s2, afp.num_generators));
                 assert(relator_acts_trivially(data, inverse_pair_word(s2), sh, ss));
@@ -2021,6 +2031,10 @@ pub proof fn lemma_act_word_deriv(
                     by { if k < position {} else {} }
                 }
                 let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(word_valid(suffix, afp.num_generators)) by {
+                    assert forall|k: int| 0 <= k < suffix.len()
+                        implies symbol_valid(#[trigger] suffix[k], afp.num_generators) by {}
+                }
                 assert(is_canonical_state(data, sh, ss));
                 assert(symbol_valid(inverse_symbol(symbol), afp.num_generators));
                 assert(relator_acts_trivially(data, inverse_pair_word(inverse_symbol(symbol)), sh, ss));
@@ -2039,6 +2053,10 @@ pub proof fn lemma_act_word_deriv(
                     by { if k < position {} else {} }
                 }
                 let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(word_valid(suffix, afp.num_generators)) by {
+                    assert forall|k: int| 0 <= k < suffix.len()
+                        implies symbol_valid(#[trigger] suffix[k], afp.num_generators) by {}
+                }
                 assert(is_canonical_state(data, sh, ss));
                 assert(relator_acts_trivially(data,
                     get_relator(afp, relator_index, inverted), sh, ss));
@@ -2062,6 +2080,10 @@ pub proof fn lemma_act_word_deriv(
                 }
                 assert(w_mid =~= concat(prefix, suffix));
                 let (sh, ss) = act_word(data, suffix, h, syllables);
+                assert(word_valid(suffix, afp.num_generators)) by {
+                    assert forall|k: int| 0 <= k < suffix.len()
+                        implies symbol_valid(#[trigger] suffix[k], afp.num_generators) by {}
+                }
                 assert(is_canonical_state(data, sh, ss));
                 assert(relator_acts_trivially(data,
                     get_relator(afp, relator_index, inverted), sh, ss));
@@ -2098,6 +2120,7 @@ proof fn lemma_action_preserves_canonical(
     requires
         action_preserves_canonical(data),
         is_canonical_state(data, h, syls),
+        word_valid(w, data.p1.num_generators + data.p2.num_generators),
     ensures
         is_canonical_state(data,
             act_word(data, w, h, syls).0,
@@ -5659,6 +5682,12 @@ proof fn lemma_act_sym_preserves_canonical(
         let product = concat(Seq::new(1, |_i: int| s), embed_h);
         let rep = a_rcoset_rep(data, product);
 
+        assert forall|i: int| 0 <= i < a_words(data).len()
+            implies word_valid(#[trigger] a_words(data)[i], n1)
+        by { assert(word_valid(data.identifications[i].0, n1)); }
+        crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+        crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s), embed_h, n1);
+
         if rep =~= empty_word() {
             // Subgroup case: syls_out = syls → preserved
         } else if syls.len() == 0 || !syls.first().is_left {
@@ -5690,12 +5719,18 @@ proof fn lemma_act_sym_preserves_canonical(
         let product = concat(Seq::new(1, |_i: int| s_local), embed_h);
         let rep = b_rcoset_rep(data, product);
 
+        assert forall|i: int| 0 <= i < b_words(data).len()
+            implies word_valid(#[trigger] b_words(data)[i], n2)
+        by { assert(word_valid(data.identifications[i].1, n2)); }
+        crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+        crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s_local), embed_h, n2);
+
         if rep =~= empty_word() {
             // Subgroup: syls unchanged
         } else if syls.len() == 0 || syls.first().is_left {
             // Prepend right syllable
-            assert(word_valid(rep, n2)) by { lemma_b_rcoset_rep_props(data, product); }
-            assert(b_rcoset_rep(data, rep) =~= rep) by { lemma_b_rcoset_rep_idempotent(data, product); }
+            lemma_b_rcoset_rep_props(data, product);
+            lemma_b_rcoset_rep_idempotent(data, product);
         } else {
             // Merge
             let full = concat(product, syls.first().rep);
@@ -5719,7 +5754,9 @@ proof fn lemma_act_sym_preserves_canonical(
 
 /// Prove action_preserves_canonical by induction on word length.
 #[verifier::rlimit(200)]
-pub proof fn lemma_action_preserves_canonical_from_iso(
+/// Inductive proof: act_word preserves canonical for word_valid words.
+#[verifier::rlimit(200)]
+proof fn lemma_action_preserves_canonical_from_iso(
     data: AmalgamatedData,
     w: Word,
     h: Word,
@@ -5731,6 +5768,7 @@ pub proof fn lemma_action_preserves_canonical_from_iso(
         presentation_valid(data.p2),
         identifications_isomorphic(data),
         is_canonical_state(data, h, syls),
+        word_valid(w, data.p1.num_generators + data.p2.num_generators),
     ensures
         is_canonical_state(data,
             act_word(data, w, h, syls).0,
@@ -5739,36 +5777,24 @@ pub proof fn lemma_action_preserves_canonical_from_iso(
 {
     if w.len() == 0 {
     } else {
+        let n = data.p1.num_generators + data.p2.num_generators;
         let s = w.last();
         let w_prefix = w.drop_last();
         let (h1, syls1) = act_sym(data, s, h, syls);
 
-        // act_sym preserves canonical (full: h-part + syllables)
-        if symbol_valid(s, data.p1.num_generators + data.p2.num_generators) {
-            lemma_act_sym_preserves_canonical(data, s, h, syls);
+        // s is word_valid since w is word_valid
+        assert(symbol_valid(s, n));
+        lemma_act_sym_preserves_canonical(data, s, h, syls);
+
+        // w_prefix is word_valid
+        assert(word_valid(w_prefix, n)) by {
+            assert forall|k: int| 0 <= k < w_prefix.len()
+                implies symbol_valid(#[trigger] w_prefix[k], n)
+            by { assert(w_prefix[k] == w[k]); }
         }
+
         // IH
         lemma_action_preserves_canonical_from_iso(data, w_prefix, h1, syls1);
-    }
-}
-
-/// Wrapper: establishes the action_preserves_canonical spec.
-pub proof fn lemma_action_preserves_canonical_spec(data: AmalgamatedData)
-    requires
-        amalgamated_data_valid(data),
-        presentation_valid(data.p1),
-        presentation_valid(data.p2),
-        identifications_isomorphic(data),
-    ensures
-        action_preserves_canonical(data),
-{
-    assert forall|w: Word, h: Word, syls: Seq<Syllable>|
-        is_canonical_state(data, h, syls) implies
-        #[trigger] is_canonical_state(data,
-            act_word(data, w, h, syls).0,
-            act_word(data, w, h, syls).1)
-    by {
-        lemma_action_preserves_canonical_from_iso(data, w, h, syls);
     }
 }
 
