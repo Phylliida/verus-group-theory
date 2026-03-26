@@ -15,6 +15,7 @@ use crate::presentation::*;
 use crate::presentation_lemmas::*;
 use crate::free_product::*;
 use crate::amalgamated_free_product::*;
+use crate::reduction::*;
 use crate::hnn::*;
 use crate::tower::*;
 
@@ -679,6 +680,70 @@ proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     } else {
         lemma_translate_stable_empty(data, inverse_symbol(s), base_level - 1);
     }
+}
+
+/// A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
+proof fn lemma_translate_base_pair_trivial(
+    data: HNNData, m: nat, s: Symbol, base_level: nat,
+)
+    requires
+        hnn_data_valid(data),
+        !is_stable(data, s),
+        symbol_valid(s, data.base.num_generators),
+        base_level <= m,
+    ensures ({
+        let pair = concat(Seq::new(1, |_j: int| s), Seq::new(1, |_j: int| inverse_symbol(s)));
+        &&& net_level(data, pair) == 0
+        &&& equiv_in_presentation(tower_presentation(data, m),
+                translate_word_at(data, pair, base_level as int), empty_word())
+    }),
+{
+    let ng = data.base.num_generators;
+    let s_word = Seq::new(1, |_j: int| s);
+    let inv_s_word = Seq::new(1, |_j: int| inverse_symbol(s));
+    let pair = concat(s_word, inv_s_word);
+
+    // net_level(pair) = 0 (neither s nor inv(s) is stable)
+    lemma_net_level_concat(data, s_word, inv_s_word);
+    assert(s_word.first() == s);
+    assert(s_word.drop_first() =~= Seq::<Symbol>::empty());
+    assert(inv_s_word.first() == inverse_symbol(s));
+    assert(inv_s_word.drop_first() =~= Seq::<Symbol>::empty());
+    reveal_with_fuel(net_level, 2);
+    assert(net_level(data, s_word) == 0) by {
+        match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    assert(net_level(data, inv_s_word) == 0) by {
+        match s {
+            Symbol::Gen(i) => { assert(!is_stable(data, Symbol::Inv(i))); }
+            Symbol::Inv(i) => { assert(!is_stable(data, Symbol::Gen(i))); }
+        }
+    }
+
+    // Fully unfold translate for 2-element pair
+    reveal_with_fuel(translate_word_at, 3);
+    // translate(pair, bl) = [shift_symbol(s, bl*ng), shift_symbol(inv(s), bl*ng)]
+    // These form a cancelling pair
+    let ss = shift_symbol(s, base_level * ng);
+    let iss = shift_symbol(inverse_symbol(s), base_level * ng);
+    // ss and iss are inverses: Gen(j+k) and Inv(j+k)
+    assert(is_inverse_pair(ss, iss)) by {
+        match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+    }
+    // The translated pair has a cancellation at position 0
+    let translated = translate_word_at(data, pair, base_level as int);
+    assert(has_cancellation_at(translated, 0));
+    assert(reduce_at(translated, 0) =~= empty_word());
+    // Free reduction gives a 1-step derivation proving ≡ ε
+    let step = DerivationStep::FreeReduce { position: 0 };
+    assert(apply_step(tower_presentation(data, m), translated, step)
+        == Some(empty_word()));
+    let d = Derivation { steps: Seq::new(1, |_i: int| step) };
+    assert(d.steps.len() == 1);
+    assert(d.steps.first() == step);
+    assert(d.steps.drop_first() =~= Seq::<DerivationStep>::empty());
+    reveal_with_fuel(derivation_produces, 2);
+    assert(derivation_valid(tower_presentation(data, m), d, translated, empty_word()));
 }
 
 } // verus!
