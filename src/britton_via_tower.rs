@@ -682,6 +682,133 @@ proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     }
 }
 
+/// inverse_word preserves length (trivial from Seq::new definition, but Z3 needs help in large contexts).
+#[verifier::rlimit(200)]
+proof fn lemma_inverse_word_len(w: Word)
+    ensures inverse_word(w).len() == w.len(),
+{
+}
+
+// ============================================================
+// Part G2: Base at copy k embeds in tower via shift homomorphism
+// ============================================================
+
+/// Shift homomorphism: base → tower(m), mapping Gen(i) → [Gen(i + k*ng)].
+pub open spec fn shift_hom(data: HNNData, m: nat, k: nat) -> crate::homomorphism::HomomorphismData {
+    let ng = data.base.num_generators;
+    crate::homomorphism::HomomorphismData {
+        source: data.base,
+        target: tower_presentation(data, m),
+        generator_images: Seq::new(ng, |i: int| Seq::new(1, |_j: int| Symbol::Gen((i + k * ng) as nat))),
+    }
+}
+
+/// The shift homomorphism maps words to their shifted versions.
+#[verifier::rlimit(200)]
+proof fn lemma_shift_hom_applies(data: HNNData, k: nat, m: nat, w: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators),
+    ensures
+        crate::homomorphism::apply_hom(shift_hom(data, m, k), w)
+            =~= shift_word(w, k * data.base.num_generators),
+    decreases w.len(),
+{
+    let h = shift_hom(data, m, k);
+    let ng = data.base.num_generators;
+    let result = crate::homomorphism::apply_hom(h, w);
+    let shifted = shift_word(w, k * ng);
+    if w.len() == 0 {
+        assert(result.len() == 0);
+        assert(shifted.len() == 0);
+    } else {
+        lemma_shift_hom_applies(data, k, m, w.drop_first());
+        // IH: apply_hom(h, rest) =~= shift_word(rest, k*ng)
+        // result = concat(apply_hom_symbol(h, w.first()), apply_hom(h, rest))
+        // shifted = Seq::new(w.len(), |j| shift_symbol(w[j], k*ng))
+        // Element-wise: result[0] == shifted[0] and result[j] == shifted[j] for j > 0
+
+        // The result has same length as shifted
+        let s = w.first();
+        assert(symbol_valid(s, ng));
+        let sym_img = crate::homomorphism::apply_hom_symbol(h, s);
+        // For both Gen and Inv: sym_img is a 1-element word = [shift_symbol(s, k*ng)]
+        match s {
+            Symbol::Gen(i) => {
+                assert(sym_img.len() == 1);
+                assert(sym_img[0] == shift_symbol(s, k * ng));
+            }
+            Symbol::Inv(i) => {
+                // sym_img = inverse_word([Gen(i+k*ng)]) = [Inv(i+k*ng)]
+                let gen_img = h.generator_images[i as int];
+                assert(gen_img.len() == 1);
+                assert(gen_img[0] == Symbol::Gen((i + k * ng) as nat));
+                // inverse_word definition: Seq::new(w.len(), |j| inverse_symbol(w[w.len()-1-j]))
+                // For len=1: Seq::new(1, |j| inverse_symbol(gen_img[0])) = [Inv(i+k*ng)]
+                lemma_inverse_word_len(gen_img);
+                assert(sym_img.len() == 1);
+                assert(sym_img[0] == shift_symbol(s, k * ng));
+            }
+        }
+    }
+}
+
+/// The shift homomorphism is valid: relator images ≡ ε in tower(m).
+proof fn lemma_shift_hom_valid(data: HNNData, m: nat, k: nat)
+    requires
+        hnn_data_valid(data),
+        k <= m,
+    ensures
+        crate::homomorphism::is_valid_homomorphism(shift_hom(data, m, k)),
+{
+    let h = shift_hom(data, m, k);
+    let ng = data.base.num_generators;
+    reveal(presentation_valid);
+    lemma_tower_valid(data, m);
+    lemma_tower_num_generators(data, m);
+
+    // Generator images are word_valid for tower(m)
+    assert forall|i: int| 0 <= i < h.generator_images.len()
+        implies word_valid(h.generator_images[i], h.target.num_generators)
+    by {
+        assert(h.generator_images[i].len() == 1);
+        assert((i + k * ng) < (m + 1) * ng) by (nonlinear_arith)
+            requires i < ng as int, k <= m;
+    }
+
+    // Relator images ≡ ε: shift(relator, k*ng) ≡ ε in tower(m)
+    assert forall|i: int| 0 <= i < h.source.relators.len()
+        implies equiv_in_presentation(h.target,
+            crate::homomorphism::apply_hom(h, h.source.relators[i]), empty_word())
+    by {
+        lemma_shift_hom_applies(data, k, m, h.source.relators[i]);
+        // apply_hom(h, relator) =~= shift(relator, k*ng)
+        lemma_base_relator_in_tower(data, m, k, i);
+        // shift(relator, k*ng) ≡ ε in tower(m)
+    }
+}
+
+/// Base at copy k embeds in tower(m): equiv(base, w1, w2) → equiv(tower(m), shift(w1, k*ng), shift(w2, k*ng)).
+pub proof fn lemma_base_at_copy_k_embeds(
+    data: HNNData, m: nat, k: nat, w1: Word, w2: Word,
+)
+    requires
+        hnn_data_valid(data),
+        k <= m,
+        word_valid(w1, data.base.num_generators),
+        word_valid(w2, data.base.num_generators),
+        equiv_in_presentation(data.base, w1, w2),
+    ensures
+        equiv_in_presentation(tower_presentation(data, m),
+            shift_word(w1, k * data.base.num_generators),
+            shift_word(w2, k * data.base.num_generators)),
+{
+    lemma_shift_hom_valid(data, m, k);
+    crate::homomorphism::lemma_hom_preserves_equiv(shift_hom(data, m, k), w1, w2);
+    lemma_shift_hom_applies(data, k, m, w1);
+    lemma_shift_hom_applies(data, k, m, w2);
+}
+
 /// A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
 proof fn lemma_translate_base_pair_trivial(
     data: HNNData, m: nat, s: Symbol, base_level: nat,
