@@ -1455,6 +1455,40 @@ proof fn lemma_no_pred_below_forces_zero(pred: spec_fn(nat) -> bool, l: nat)
     }
 }
 
+/// Transfer no_pred_below through implication: if pred2(l) → pred1(l) for all l,
+/// and no_pred_below(pred1, n), then no_pred_below(pred2, n).
+proof fn lemma_no_pred_below_transfer(
+    pred1: spec_fn(nat) -> bool, pred2: spec_fn(nat) -> bool, n: nat,
+)
+    requires
+        no_pred_below(pred1, n),
+        forall|l: nat| pred2(l) ==> #[trigger] pred1(l),
+    ensures
+        no_pred_below(pred2, n),
+    decreases n,
+{
+    if n == 0 {} else {
+        lemma_no_pred_below_transfer(pred1, pred2, (n - 1) as nat);
+    }
+}
+
+/// Transfer no_smaller_h_lex (A-side) to no_smaller_h_lex_g2 (B-side).
+proof fn lemma_no_smaller_h_lex_transfer(
+    data: AmalgamatedData, target_a: Word, target_b: Word, l: nat, r: nat,
+)
+    requires
+        no_smaller_h_lex(data, target_a, l, r),
+        forall|r2: nat| has_right_h_witness_of_len_rank(data, target_b, l, r2)
+            ==> #[trigger] has_left_h_witness_of_len_rank(data, target_a, l, r2),
+    ensures
+        no_smaller_h_lex_g2(data, target_b, l, r),
+    decreases r,
+{
+    if r == 0 {} else {
+        lemma_no_smaller_h_lex_transfer(data, target_a, target_b, l, (r - 1) as nat);
+    }
+}
+
 /// left_min_coset_len for the empty word is 0.
 proof fn lemma_left_min_coset_len_identity(data: AmalgamatedData)
     requires
@@ -4868,13 +4902,40 @@ proof fn lemma_a_rcoset_h_b_canonical(
     lemma_left_h_part_full_props(data, embed_a_h, h);
     // left_h_part(embed_a_h).len() == left_h_min_len(embed_a_h) and left_h_part =~= h
     assert(h.len() == left_h_min_len(data, embed_a_h));
-    lemma_no_pred_below_implies_ge(
-        |l2: nat| has_left_h_witness_of_len(data,
-            concat(inverse_word(left_canonical_rep(data, embed_a_h)), embed_a_h), l2),
-        h.len() as nat, h_b.len() as nat);
+    // Connect transfer target with left_h_part target
+    let target_lh = concat(inverse_word(left_canonical_rep(data, embed_a_h)), embed_a_h);
+    assert(target_lh =~= embed_a_h);
+
+    // Establish no_pred_below for the A-side at h.len()
+    let pred_a = |l2: nat| has_left_h_witness_of_len(data, target_lh, l2);
+    assert(pred_a(h.len() as nat)); // h is a witness
+    lemma_nat_well_ordering(pred_a, h.len() as nat);
+    // This makes left_h_min_len satisfiable, and since h.len() == left_h_min_len,
+    // no_pred_below(pred_a, h.len()) holds.
+
+    // Transfer: A-witness(h_b.len()) exists
+    assert(has_left_h_witness_of_len(data, target_lh, h_b.len() as nat));
+    // h_b.len() >= h.len() (from no_pred_below at h.len())
+    lemma_no_pred_below_implies_ge(pred_a, h.len() as nat, h_b.len() as nat);
+
+    // Establish no_pred_below for B-side at h.len() via transfer from A-side
+    let target_bh = concat(embed_b_h, inverse_word(b_rcoset_rep(data, embed_b_h)));
+    assert(target_bh =~= embed_b_h);
+    let pred_b = |l2: nat| has_right_h_witness_of_len(data, target_bh, l2);
+    assert(pred_b(h.len() as nat)); // h is a B-witness
+
+    // Transfer no_pred_below: !pred_b(l) for l < h.len()
+    // Because pred_b(l) → pred_a(l) (via b_witness_to_a_witness), and !pred_a(l) for l < h.len()
+    assert forall|l: nat| pred_b(l) implies #[trigger] pred_a(l) by {
+        lemma_b_witness_to_a_witness(data, h, l);
+    }
+    lemma_no_pred_below_transfer(pred_a, pred_b, h.len() as nat);
+
+    // Now: pred_b(h.len()) && no_pred_below(pred_b, h.len())
+    // This is the UNIQUE value satisfying the b_rcoset_h_min_len choose predicate
+    // → b_rcoset_h_min_len(embed_b_h) == h.len()
 
     // Step 3: h.len() == h_b.len()
-    assert(h.len() == h_b.len());
 
     // Step 4: Same lex rank (both are min-lex at the same length for the same equiv class)
     // Transfer at rank level: the rank-level B-witness at h_b's lex ↔ A-witness at same lex
@@ -4890,9 +4951,108 @@ proof fn lemma_a_rcoset_h_b_canonical(
     // lex(h_b) == br (from choose). lex(h) >= br (from min-lex: h_b is min).
     // But also: h is in the B-witness set at (bl, lex(h)). Transfer to A-side:
     // h is in A-witness set at (bl, lex(h)). h is the A-min-lex at length bl.
-    // So lex(h) == left_h_min_lex(embed_a_h) <= lex(any A-witness at bl).
-    // h_b is an A-witness at bl (from transfer). So lex(h) <= lex(h_b).
-    // Combined: lex(h) <= lex(h_b) AND lex(h_b) <= lex(h) → lex(h) == lex(h_b).
+    // Step 4: Same lex rank — same pattern at the rank level
+    // A-side: has_left_h_witness_of_len_rank(target_lh, h.len(), lex(h))
+    // B-side: has_right_h_witness_of_len_rank(target_bh, h.len(), lex(h_b))
+    // Transfer at rank level: pred_b_rank(r) → pred_a_rank(r)
+    // + no_pred_below on A-side → no_pred_below on B-side
+    // → min lex for B == min lex for A == lex(h)
+
+    let hl = h.len() as nat;
+    let pred_a_rank = |r: nat| has_left_h_witness_of_len_rank(data, target_lh, hl, r);
+    let pred_b_rank = |r: nat| has_right_h_witness_of_len_rank(data, target_bh, hl, r);
+
+    // h is a B-witness at (hl, lex(h))
+    let hr = word_lex_rank_base(h, h_lex_base(data));
+    assert(pred_b_rank(hr));
+
+    // Transfer: pred_b_rank(r) → pred_a_rank(r)
+    assert forall|r: nat| pred_b_rank(r) implies #[trigger] pred_a_rank(r) by {
+        // Extract h'' from B-witness: embed_b(h'') ≡ embed_b(h), h''.len() == hl, lex == r
+        let h_r: Word = choose|hw: Word| word_valid(hw, k) && hw.len() == hl
+            && word_lex_rank_base(hw, h_lex_base(data)) == r
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw), target_bh);
+        // Transfer h_r from B to A
+        crate::benign::lemma_apply_embedding_valid(b_words(data), h_r, n2);
+        crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+        crate::word::lemma_inverse_word_valid(apply_embedding(b_words(data), h), n2);
+        crate::presentation_lemmas::lemma_equiv_concat_left(p2,
+            apply_embedding(b_words(data), h_r), apply_embedding(b_words(data), h),
+            inverse_word(apply_embedding(b_words(data), h)));
+        crate::presentation_lemmas::lemma_word_inverse_right(p2, apply_embedding(b_words(data), h));
+        crate::presentation::lemma_equiv_transitive(p2,
+            concat(apply_embedding(b_words(data), h_r), inverse_word(apply_embedding(b_words(data), h))),
+            concat(apply_embedding(b_words(data), h), inverse_word(apply_embedding(b_words(data), h))),
+            empty_word());
+        crate::word::lemma_inverse_word_valid(h, k);
+        crate::benign::lemma_apply_embedding_concat(b_words(data), h_r, inverse_word(h));
+        crate::benign::lemma_apply_embedding_inverse(b_words(data), h);
+        let diff = concat(h_r, inverse_word(h));
+        assert(word_valid(diff, k)) by {
+            assert forall|j: int| 0 <= j < diff.len()
+                implies symbol_valid(#[trigger] diff[j], k) by {
+                    if j < h_r.len() as int {} else {}
+                }
+        }
+        // identifications_isomorphic: embed_b(diff) ≡ ε → embed_a(diff) ≡ ε
+        // → embed_a(h_r) ≡ embed_a(h) → h_r is an A-witness
+        crate::benign::lemma_apply_embedding_concat(a_words(data), h_r, inverse_word(h));
+        crate::benign::lemma_apply_embedding_inverse(a_words(data), h);
+        crate::benign::lemma_apply_embedding_valid(a_words(data), h_r, n1);
+        crate::word::lemma_inverse_word_valid(apply_embedding(a_words(data), h), n1);
+        crate::word::lemma_concat_word_valid(
+            apply_embedding(a_words(data), h_r),
+            inverse_word(apply_embedding(a_words(data), h)), n1);
+        lemma_diff_trivial_implies_equiv(p1,
+            apply_embedding(a_words(data), h_r), embed_a_h);
+    }
+
+    // Transfer no_smaller_h_lex from A to B using the dedicated transfer lemma
+    // A-side: no_smaller_h_lex(target_lh, hl, hr) — from left_h_part_full_props
+    // Need: B-rank transfer forall
+    assert forall|r2: nat| has_right_h_witness_of_len_rank(data, target_bh, hl, r2)
+        implies #[trigger] has_left_h_witness_of_len_rank(data, target_lh, hl, r2)
+    by {
+        // Same proof as pred_b_rank → pred_a_rank but at rank level
+        let h_r: Word = choose|hw: Word| word_valid(hw, k) && hw.len() == hl
+            && word_lex_rank_base(hw, h_lex_base(data)) == r2
+            && equiv_in_presentation(p2, apply_embedding(b_words(data), hw), target_bh);
+        crate::benign::lemma_apply_embedding_valid(b_words(data), h_r, n2);
+        crate::word::lemma_inverse_word_valid(apply_embedding(b_words(data), h), n2);
+        crate::presentation_lemmas::lemma_equiv_concat_left(p2,
+            apply_embedding(b_words(data), h_r), apply_embedding(b_words(data), h),
+            inverse_word(apply_embedding(b_words(data), h)));
+        crate::presentation_lemmas::lemma_word_inverse_right(p2, apply_embedding(b_words(data), h));
+        crate::presentation::lemma_equiv_transitive(p2,
+            concat(apply_embedding(b_words(data), h_r), inverse_word(apply_embedding(b_words(data), h))),
+            concat(apply_embedding(b_words(data), h), inverse_word(apply_embedding(b_words(data), h))),
+            empty_word());
+        crate::word::lemma_inverse_word_valid(h, k);
+        crate::benign::lemma_apply_embedding_concat(b_words(data), h_r, inverse_word(h));
+        crate::benign::lemma_apply_embedding_inverse(b_words(data), h);
+        let diff = concat(h_r, inverse_word(h));
+        assert(word_valid(diff, k)) by {
+            assert forall|j: int| 0 <= j < diff.len()
+                implies symbol_valid(#[trigger] diff[j], k) by {
+                    if j < h_r.len() as int {} else {}
+                }
+        }
+        crate::benign::lemma_apply_embedding_concat(a_words(data), h_r, inverse_word(h));
+        crate::benign::lemma_apply_embedding_inverse(a_words(data), h);
+        crate::benign::lemma_apply_embedding_valid(a_words(data), h_r, n1);
+        crate::word::lemma_inverse_word_valid(embed_a_h, n1);
+        crate::word::lemma_concat_word_valid(
+            apply_embedding(a_words(data), h_r), inverse_word(embed_a_h), n1);
+        lemma_diff_trivial_implies_equiv(p1, apply_embedding(a_words(data), h_r), embed_a_h);
+    }
+    // Establish no_smaller_h_lex on A-side from left_h_min_lex satisfiability
+    lemma_left_h_min_lex_satisfiable(data, embed_a_h, h);
+    assert(no_smaller_h_lex(data, target_lh, hl, hr));
+    lemma_no_smaller_h_lex_transfer(data, target_lh, target_bh, hl, hr);
+
+    // Now: pred_b_rank(hr) && no_smaller_h_lex_g2(target_bh, hl, hr)
+    // This matches the b_rcoset_h_min_lex choose → hr == b_rcoset_h_min_lex
+    // → lex(h_b) == lex(h)
     assert(word_lex_rank_base(h, h_lex_base(data))
         == word_lex_rank_base(h_b, h_lex_base(data)));
 
