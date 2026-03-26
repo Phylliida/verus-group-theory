@@ -5964,6 +5964,83 @@ pub proof fn lemma_afp_injectivity(
     crate::presentation::lemma_equiv_symmetric(data.p1, empty_word(), w);
 }
 
+/// AFP right-factor injectivity: if shift(w, n1) ≡ ε in the AFP, then w ≡ ε in G₂.
+/// Mirrors lemma_afp_injectivity for the right factor via G₂ one-shot.
+pub proof fn lemma_afp_injectivity_right(
+    data: AmalgamatedData,
+    w: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        action_preserves_canonical(data),
+        word_valid(w, data.p2.num_generators),
+        equiv_in_presentation(amalgamated_free_product(data), shift_word(w, data.p1.num_generators), empty_word()),
+    ensures
+        equiv_in_presentation(data.p2, w, empty_word()),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    let afp = amalgamated_free_product(data);
+    let h0 = empty_word();
+    let syls0 = Seq::<Syllable>::empty();
+    reveal(presentation_valid);
+
+    // Identity state is canonical
+    lemma_identity_state_canonical(data);
+
+    // action_well_defined
+    lemma_action_well_defined_proof(data);
+
+    // word_valid for AFP
+    crate::amalgamated_free_product::lemma_add_relators_num_generators(
+        crate::free_product::free_product(data.p1, data.p2),
+        crate::amalgamated_free_product::amalgamation_relators(data));
+    assert(word_valid(shift_word(w, n1), n1 + n2)) by {
+        assert forall|k: int| 0 <= k < shift_word(w, n1).len()
+            implies symbol_valid(#[trigger] shift_word(w, n1)[k], n1 + n2)
+        by {
+            match w[k] {
+                Symbol::Gen(i) => {}
+                Symbol::Inv(i) => {}
+            }
+        }
+    }
+
+    // Derivation → action equality
+    let steps: Seq<DerivationStep> = choose|steps: Seq<DerivationStep>|
+        #[trigger] derivation_produces(afp, steps, shift_word(w, n1)) == Some(empty_word());
+    lemma_act_word_deriv(data, steps, shift_word(w, n1), empty_word(), h0, syls0);
+    lemma_act_word_empty(data, h0, syls0);
+    // act_word(shift(w, n1), ε, []) = (ε, [])
+
+    // G₂ one-shot
+    lemma_act_word_eq_g2_one_shot(data, w, h0, syls0);
+    // act_word(shift(w, n1), ε, []) = g2_one_shot(concat(w, embed_b(ε)), [])
+    // embed_b(ε) = ε → g2_one_shot(w, []) = (ε, [])
+
+    // Extract b_rcoset_rep(w) =~= ε, b_rcoset_h(w) =~= ε
+    // → w ∈ B → h_witness → b_rcoset_h_satisfiable → equiv(ε, w)
+    lemma_b_rcoset_rep_props(data, w);
+
+    assert forall|j: int| 0 <= j < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[j], n2)
+    by { assert(word_valid(data.identifications[j].1, n2)); }
+
+    // w ∈ B (from b_rcoset_rep = ε → in_right_subgroup)
+    lemma_subgroup_to_k_word(data.p2, b_words(data), w);
+    let h_witness: Word = choose|hw: Word|
+        word_valid(hw, k_size(data))
+        && equiv_in_presentation(data.p2, apply_embedding(b_words(data), hw), w);
+
+    lemma_b_rcoset_h_satisfiable(data, w, h_witness);
+    // equiv(embed_b(b_rcoset_h(w)), concat(w, inv(rep))) = equiv(embed_b(ε), w) = equiv(ε, w)
+
+    crate::presentation::lemma_equiv_symmetric(data.p2, empty_word(), w);
+}
+
 // ============================================================
 // Part I2: Choose property extraction
 // ============================================================
