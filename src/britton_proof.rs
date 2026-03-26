@@ -14204,7 +14204,7 @@ proof fn lemma_relator_valid_lifted(p: Presentation, i: int)
 }
 
 /// The HNN presentation is valid (all relators are word_valid).
-proof fn lemma_hnn_presentation_valid(data: HNNData)
+pub proof fn lemma_hnn_presentation_valid(data: HNNData)
     requires
         hnn_data_valid(data),
     ensures

@@ -265,7 +265,7 @@ proof fn lemma_empty_v_means_u_trivial(
 // ============================================================
 
 /// If w ≡ ε and we have word_valid + presentation_valid, inverse_word(w) ≡ ε.
-proof fn lemma_inverse_of_trivial(p: Presentation, w: Word)
+pub proof fn lemma_inverse_of_trivial(p: Presentation, w: Word)
     requires
         presentation_valid(p),
         word_valid(w, p.num_generators),
