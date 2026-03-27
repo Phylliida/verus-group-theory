@@ -19,6 +19,7 @@ use crate::reduction::*;
 use crate::benign::*;
 use crate::hnn::*;
 use crate::tower::*;
+use crate::normal_form_afp_textbook::Syllable;
 
 verus! {
 
@@ -2255,6 +2256,675 @@ pub proof fn britton_lemma_unconditional(
 
     // Step 5: Copy-s tower embedding → w ≡ ε in base
     lemma_copy_s_embeds(data, m, base_level, w);
+}
+
+// ============================================================
+// Part W: Full Britton's Lemma — right syllable count preservation
+// ============================================================
+
+/// Count right syllables in a syllable sequence.
+pub open spec fn right_syllable_count(syls: Seq<Syllable>) -> nat
+    decreases syls.len(),
+{
+    if syls.len() == 0 { 0 }
+    else {
+        (if !syls.first().is_left { 1nat } else { 0nat })
+            + right_syllable_count(syls.drop_first())
+    }
+}
+
+/// G₁ single-symbol action never changes the right syllable count.
+proof fn lemma_act_left_sym_preserves_right_count(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires generator_index(s) < data.p1.num_generators,
+    ensures
+        right_syllable_count(
+            crate::normal_form_afp_textbook::act_left_sym(data, s, h, syls).1)
+            == right_syllable_count(syls),
+{
+    let product = concat(Seq::new(1, |_j: int| s),
+        apply_embedding(crate::normal_form_afp_textbook::a_words(data), h));
+    let new_rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, product);
+
+    if new_rep =~= empty_word() {
+        // Absorbed: syllables unchanged
+    } else if syls.len() == 0 || !syls.first().is_left {
+        // Prepend LEFT syllable: right count unchanged
+        let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: new_rep }) + syls;
+        assert(new_syls.first().is_left);
+        assert(new_syls.drop_first() =~= syls);
+    } else {
+        // Merge with existing LEFT syllable
+        let full_product = concat(product, syls.first().rep);
+        let merged_rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, full_product);
+        if merged_rep =~= empty_word() {
+            // Absorbed left syllable
+            assert(syls.first().is_left);
+        } else {
+            // Replace left syllable with new left
+            let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep })
+                + syls.drop_first();
+            assert(new_syls.first().is_left);
+            assert(new_syls.drop_first() =~= syls.drop_first());
+        }
+    }
+}
+
+/// G₁ full-word action preserves right syllable count.
+proof fn lemma_act_g1_word_preserves_right_count(
+    data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        crate::normal_form_amalgamated::identifications_isomorphic(data),
+        crate::normal_form_afp_textbook::action_preserves_canonical(data),
+        crate::normal_form_afp_textbook::is_canonical_state(data, h, syls),
+        word_valid(w, data.p1.num_generators),
+    ensures
+        right_syllable_count(
+            crate::normal_form_afp_textbook::act_word(data, w, h, syls).1)
+            == right_syllable_count(syls),
+    decreases w.len(),
+{
+    use crate::normal_form_afp_textbook::*;
+    if w.len() == 0 {
+        lemma_act_word_empty(data, h, syls);
+    } else {
+        let n = data.p1.num_generators;
+        let s = w.last();
+        let w_prefix = w.drop_last();
+        assert(symbol_valid(s, n));
+        assert(generator_index(s) < n);
+        let (h1, syls1) = act_sym(data, s, h, syls);
+
+        // act_sym for G₁ = act_left_sym
+        assert(act_sym(data, s, h, syls) == act_left_sym(data, s, h, syls));
+        lemma_act_left_sym_preserves_right_count(data, s, h, syls);
+
+        // Canonical preservation: action_preserves_canonical is about act_word
+        // Use single-symbol word to trigger it
+        let s_word: Word = Seq::new(1, |_i: int| s);
+        assert(word_valid(s_word, data.p1.num_generators + data.p2.num_generators)) by {
+            let n12 = data.p1.num_generators + data.p2.num_generators;
+            assert(symbol_valid(s, n));
+            match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        // act_word([s], h, syls) gives canonical state
+        assert(is_canonical_state(data,
+            act_word(data, s_word, h, syls).0,
+            act_word(data, s_word, h, syls).1));
+        // act_word([s], ...) == act_sym(s, ...) — connect to h1, syls1
+        lemma_act_word_single(data, s, h, syls);
+        assert(is_canonical_state(data, h1, syls1));
+
+        // IH
+        assert(word_valid(w_prefix, n)) by {
+            assert forall|k: int| 0 <= k < w_prefix.len()
+                implies symbol_valid(#[trigger] w_prefix[k], n)
+            by { assert(w_prefix[k] == w[k]); }
+        }
+        lemma_act_g1_word_preserves_right_count(data, w_prefix, h1, syls1);
+    }
+}
+
+// ============================================================
+// Part X: Full Britton's Lemma (Pinch Theorem)
+// Lyndon-Schupp Ch. IV, Thm 2.1: if w ≡ ε in G* and w has
+// stable letters, then w has a pinch.
+// ============================================================
+
+// --- X.1: Definitions ---
+
+/// Whether word w contains at least one stable letter (t or t⁻¹).
+pub open spec fn has_stable_letter(data: HNNData, w: Word) -> bool {
+    exists|i: int| 0 <= i < w.len() && is_stable(data, #[trigger] w[i])
+}
+
+/// Adjacent opposite stable letters with only base symbols between.
+pub open spec fn has_adjacent_opposite_at(data: HNNData, w: Word, i: int, j: int) -> bool {
+    let ng = data.base.num_generators;
+    &&& 0 <= i < j < w.len()
+    &&& is_stable(data, w[i])
+    &&& is_stable(data, w[j])
+    &&& w[i] != w[j]
+    &&& forall|k: int| i < k < j ==> !is_stable(data, #[trigger] w[k])
+}
+
+/// A pinch at (i, j): adjacent opposite stable letters whose intervening
+/// base word lies in the appropriate associated subgroup.
+/// - t·g·t⁻¹ (Gen then Inv at positions i,j): pinch iff g ∈ B
+/// - t⁻¹·g·t (Inv then Gen at positions i,j): pinch iff g ∈ A
+pub open spec fn has_pinch_at(data: HNNData, w: Word, i: int, j: int) -> bool {
+    let ng = data.base.num_generators;
+    let base_word = w.subrange(i + 1, j);
+    let nk = data.associations.len();
+    let a_gens = Seq::new(nk, |k: int| data.associations[k].0);
+    let b_gens = Seq::new(nk, |k: int| data.associations[k].1);
+    &&& has_adjacent_opposite_at(data, w, i, j)
+    &&& (
+        // t·g·t⁻¹: pinch iff g ∈ B
+        (w[i] == Symbol::Gen(ng) && w[j] == Symbol::Inv(ng)
+         && in_generated_subgroup(data.base, b_gens, base_word))
+        ||
+        // t⁻¹·g·t: pinch iff g ∈ A
+        (w[i] == Symbol::Inv(ng) && w[j] == Symbol::Gen(ng)
+         && in_generated_subgroup(data.base, a_gens, base_word))
+    )
+}
+
+/// Word w has a pinch somewhere.
+pub open spec fn has_pinch(data: HNNData, w: Word) -> bool {
+    exists|i: int, j: int| has_pinch_at(data, w, i, j)
+}
+
+// --- X.2: Net level preservation ---
+
+/// Net level of a single-symbol word.
+proof fn lemma_net_level_single(data: HNNData, s: Symbol)
+    ensures
+        net_level(data, Seq::new(1, |_j: int| s)) == (
+            if s == Symbol::Gen(data.base.num_generators) { 1int }
+            else if s == Symbol::Inv(data.base.num_generators) { -1int }
+            else { 0int }
+        ),
+{
+    let w: Word = Seq::new(1, |_j: int| s);
+    assert(w.first() == s);
+    assert(w.drop_first() =~= Seq::<Symbol>::empty());
+    reveal_with_fuel(net_level, 2);
+}
+
+/// Net level of an inverse pair [s, inv(s)] is 0.
+proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
+    ensures
+        net_level(data, Seq::new(1, |_j: int| s)
+            + Seq::new(1, |_j: int| inverse_symbol(s))) == 0,
+{
+    let sw: Word = Seq::new(1, |_j: int| s);
+    let iw: Word = Seq::new(1, |_j: int| inverse_symbol(s));
+    lemma_net_level_concat(data, sw, iw);
+    lemma_net_level_single(data, s);
+    lemma_net_level_single(data, inverse_symbol(s));
+    let ng = data.base.num_generators;
+    match s {
+        Symbol::Gen(i) => {
+            assert(inverse_symbol(s) == Symbol::Inv(i));
+            if i == ng {
+                // Gen(ng) + Inv(ng): 1 + (-1) = 0
+            } else {
+                // Gen(i) + Inv(i): 0 + 0 = 0
+                assert(Symbol::Inv(i) != Symbol::Gen(ng));
+                assert(Symbol::Inv(i) != Symbol::Inv(ng));
+            }
+        }
+        Symbol::Inv(i) => {
+            assert(inverse_symbol(s) == Symbol::Gen(i));
+            if i == ng {
+                // Inv(ng) + Gen(ng): (-1) + 1 = 0
+            } else {
+                assert(Symbol::Gen(i) != Symbol::Gen(ng));
+                assert(Symbol::Gen(i) != Symbol::Inv(ng));
+            }
+        }
+    }
+}
+
+/// Each derivation step preserves net_level.
+proof fn lemma_step_preserves_net_level(data: HNNData, w: Word, step: DerivationStep)
+    requires
+        hnn_data_valid(data),
+        apply_step(hnn_presentation(data), w, step).is_Some(),
+    ensures
+        net_level(data, apply_step(hnn_presentation(data), w, step).unwrap())
+            == net_level(data, w),
+{
+    let hp = hnn_presentation(data);
+    let w2 = apply_step(hp, w, step).unwrap();
+    match step {
+        DerivationStep::FreeReduce { position } => {
+            let p = position;
+            let prefix = w.subrange(0, p);
+            let suffix = w.subrange(p + 2, w.len() as int);
+            let s = w[p];
+            assert(w[p + 1] == inverse_symbol(s));
+            let pair: Word = Seq::new(1, |_j: int| s)
+                + Seq::new(1, |_j: int| inverse_symbol(s));
+            // Decompose: w =~= prefix ++ pair ++ suffix, w2 =~= prefix ++ suffix
+            assert(concat(pair, suffix) =~= w.subrange(p, w.len() as int)) by {
+                assert(pair.len() == 2);
+                assert(pair[0] == w[p]);
+                assert(pair[1] == w[p + 1]);
+                assert forall|k: int| 0 <= k < concat(pair, suffix).len()
+                    implies concat(pair, suffix)[k] == w.subrange(p, w.len() as int)[k]
+                by {}
+            }
+            assert(w =~= concat(prefix, concat(pair, suffix)));
+            assert(w2 =~= concat(prefix, suffix));
+            lemma_net_level_concat(data, prefix, concat(pair, suffix));
+            lemma_net_level_concat(data, pair, suffix);
+            lemma_net_level_concat(data, prefix, suffix);
+            lemma_net_level_inverse_pair(data, s);
+        }
+        DerivationStep::FreeExpand { position, symbol } => {
+            let p = position;
+            let prefix = w.subrange(0, p);
+            let suffix = w.subrange(p, w.len() as int);
+            let pair: Word = Seq::new(1, |_j: int| symbol)
+                + Seq::new(1, |_j: int| inverse_symbol(symbol));
+            assert(w =~= concat(prefix, suffix));
+            assert(w2 =~= concat(prefix, concat(pair, suffix)));
+            lemma_net_level_concat(data, prefix, suffix);
+            lemma_net_level_concat(data, prefix, concat(pair, suffix));
+            lemma_net_level_concat(data, pair, suffix);
+            lemma_net_level_inverse_pair(data, symbol);
+        }
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            let p = position;
+            let r = get_relator(hp, relator_index, inverted);
+            let prefix = w.subrange(0, p);
+            let suffix = w.subrange(p, w.len() as int);
+            assert(w =~= concat(prefix, suffix));
+            assert(w2 =~= concat(prefix, concat(r, suffix)));
+            lemma_net_level_concat(data, prefix, suffix);
+            lemma_net_level_concat(data, prefix, concat(r, suffix));
+            lemma_net_level_concat(data, r, suffix);
+            lemma_net_level_get_relator(data, relator_index, inverted);
+        }
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            let p = position;
+            let r = get_relator(hp, relator_index, inverted);
+            let rlen = r.len();
+            let prefix = w.subrange(0, p);
+            let suffix = w.subrange(p + rlen as int, w.len() as int);
+            assert(w.subrange(p, p + rlen as int) == r);
+            assert(concat(r, suffix) =~= w.subrange(p, w.len() as int)) by {
+                assert forall|k: int| 0 <= k < concat(r, suffix).len()
+                    implies concat(r, suffix)[k] == w.subrange(p, w.len() as int)[k]
+                by {}
+            }
+            assert(w =~= concat(prefix, concat(r, suffix)));
+            assert(w2 =~= concat(prefix, suffix));
+            lemma_net_level_concat(data, prefix, concat(r, suffix));
+            lemma_net_level_concat(data, r, suffix);
+            lemma_net_level_concat(data, prefix, suffix);
+            lemma_net_level_get_relator(data, relator_index, inverted);
+        }
+    }
+}
+
+/// A derivation preserves net_level.
+proof fn lemma_derivation_preserves_net_level(
+    data: HNNData, steps: Seq<DerivationStep>, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        derivation_produces(hnn_presentation(data), steps, w).is_Some(),
+    ensures
+        net_level(data, derivation_produces(hnn_presentation(data), steps, w).unwrap())
+            == net_level(data, w),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+    } else {
+        let hp = hnn_presentation(data);
+        let first = steps[0];
+        let rest = steps.drop_first();
+        let w2 = apply_step(hp, w, first).unwrap();
+        lemma_step_preserves_net_level(data, w, first);
+        lemma_derivation_preserves_net_level(data, rest, w2);
+    }
+}
+
+/// If w ≡ ε in the HNN extension, then net_level(w) = 0.
+proof fn lemma_equiv_net_level_zero(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+    ensures
+        net_level(data, w) == 0,
+{
+    let hp = hnn_presentation(data);
+    let d: Derivation = choose|d: Derivation| derivation_valid(hp, d, w, empty_word());
+    lemma_derivation_preserves_net_level(data, d.steps, w);
+}
+
+// --- X.3: Adjacent opposite pair existence ---
+
+/// Count of stable letters (Gen(ng) or Inv(ng)) in w starting from position `from`.
+pub open spec fn stable_count_from(data: HNNData, w: Word, from: int) -> nat
+    decreases (w.len() - from),
+{
+    if from >= w.len() { 0 }
+    else {
+        (if is_stable(data, w[from]) { 1nat } else { 0nat })
+            + stable_count_from(data, w, from + 1)
+    }
+}
+
+/// Find the next stable letter position at or after `from`.
+pub open spec fn next_stable(data: HNNData, w: Word, from: int) -> int
+    decreases (w.len() - from),
+{
+    if from >= w.len() { w.len() as int }
+    else if is_stable(data, w[from]) { from }
+    else { next_stable(data, w, from + 1) }
+}
+
+/// next_stable finds a stable letter if one exists from `from` onward.
+proof fn lemma_next_stable_props(data: HNNData, w: Word, from: int)
+    requires 0 <= from <= w.len(),
+    ensures
+        from <= next_stable(data, w, from) <= w.len(),
+        next_stable(data, w, from) < w.len() ==>
+            is_stable(data, w[next_stable(data, w, from)]),
+        next_stable(data, w, from) < w.len() ==>
+            forall|k: int| from <= k < next_stable(data, w, from)
+                ==> !is_stable(data, #[trigger] w[k]),
+        (next_stable(data, w, from) == w.len()) ==>
+            forall|k: int| from <= k < w.len()
+                ==> !is_stable(data, #[trigger] w[k]),
+    decreases (w.len() - from),
+{
+    if from >= w.len() {
+    } else if is_stable(data, w[from]) {
+    } else {
+        lemma_next_stable_props(data, w, from + 1);
+    }
+}
+
+/// If all stable letters in w have the same sign, net_level has that sign.
+/// Specifically: if every stable letter is Gen(ng), then net_level ≥ 0.
+proof fn lemma_net_level_same_sign_nonneg(data: HNNData, w: Word)
+    requires
+        forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
+            ==> w[k] == Symbol::Gen(data.base.num_generators),
+    ensures
+        net_level(data, w) >= 0,
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert forall|k: int| 0 <= k < rest.len() && is_stable(data, #[trigger] rest[k])
+            implies rest[k] == Symbol::Gen(data.base.num_generators)
+        by { assert(rest[k] == w[k + 1]); }
+        lemma_net_level_same_sign_nonneg(data, rest);
+    }
+}
+
+/// Symmetric: all Inv(ng) → net_level ≤ 0.
+proof fn lemma_net_level_same_sign_nonpos(data: HNNData, w: Word)
+    requires
+        forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
+            ==> w[k] == Symbol::Inv(data.base.num_generators),
+    ensures
+        net_level(data, w) <= 0,
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert forall|k: int| 0 <= k < rest.len() && is_stable(data, #[trigger] rest[k])
+            implies rest[k] == Symbol::Inv(data.base.num_generators)
+        by { assert(rest[k] == w[k + 1]); }
+        lemma_net_level_same_sign_nonpos(data, rest);
+    }
+}
+
+/// If net_level = 0 and the word has stable letters, there exist adjacent
+/// opposite stable letters with only base symbols between.
+proof fn lemma_adjacent_opposite_exists(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+    ensures
+        exists|i: int, j: int| has_adjacent_opposite_at(data, w, i, j),
+{
+    let witness_k: int = choose|i: int| 0 <= i < w.len() && is_stable(data, w[i]);
+    lemma_next_stable_props(data, w, 0);
+    let first_pos = next_stable(data, w, 0);
+    assert(first_pos < w.len());
+    // All stable letters before first_pos have same sign (vacuously: there are none).
+    assert forall|k: int| 0 <= k < first_pos && is_stable(data, #[trigger] w[k])
+        implies w[k] == w[first_pos] by {}
+    lemma_scan_for_sign_change(data, w, first_pos);
+}
+
+/// Scan from position `pos` for the first adjacent opposite pair.
+/// Invariant: all stable letters in w[0..pos] have the same sign as w[pos].
+proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
+    requires
+        hnn_data_valid(data),
+        0 <= pos < w.len(),
+        is_stable(data, w[pos]),
+        net_level(data, w) == 0,
+        forall|k: int| 0 <= k < pos && is_stable(data, #[trigger] w[k])
+            ==> w[k] == w[pos],
+    ensures
+        exists|i: int, j: int| has_adjacent_opposite_at(data, w, i, j),
+    decreases w.len() - pos,
+{
+    let ng = data.base.num_generators;
+    lemma_next_stable_props(data, w, pos + 1);
+    let next_pos = next_stable(data, w, pos + 1);
+
+    if next_pos >= w.len() {
+        // All stable letters have the same sign as w[pos].
+        // If w[pos] = Gen(ng): all stable are Gen → net_level ≥ 0.
+        //   But w[pos] = Gen(ng) contributes +1 so net_level ≥ 1 > 0. Contradiction.
+        // If w[pos] = Inv(ng): all stable are Inv → net_level ≤ 0.
+        //   But w[pos] = Inv(ng) contributes -1 so net_level ≤ -1 < 0. Contradiction.
+        assert forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
+            implies w[k] == w[pos]
+        by {}
+        if w[pos] == Symbol::Gen(ng) {
+            lemma_net_level_same_sign_nonneg(data, w);
+            // net_level ≥ 0 but we need > 0. Since w[pos] = Gen(ng):
+            // Split at pos: net_level = net_level(w[0..pos]) + 1 + net_level(w[pos+1..])
+            // w[0..pos] has all Gen stable → net_level ≥ 0
+            // w[pos+1..] has no stable → net_level = 0
+            // Total ≥ 0 + 1 + 0 = 1 > 0. Contradicts net_level = 0.
+            lemma_net_level_subrange_prefix(data, w, pos);
+            let before = w.subrange(0, pos);
+            let tail = w.subrange(pos, w.len() as int);
+            lemma_net_level_subrange_prefix(data, tail, 1);
+            let after = tail.subrange(1, tail.len() as int);
+            assert(after =~= w.subrange(pos + 1, w.len() as int));
+            let s_word: Word = Seq::new(1, |_j: int| w[pos]);
+            assert(tail.subrange(0, 1) =~= s_word);
+            lemma_net_level_single(data, w[pos]);
+            assert forall|k: int| 0 <= k < before.len() && is_stable(data, #[trigger] before[k])
+                implies before[k] == Symbol::Gen(ng)
+            by { assert(before[k] == w[k]); }
+            lemma_net_level_same_sign_nonneg(data, before);
+            assert forall|k: int| 0 <= k < after.len()
+                implies !is_stable(data, #[trigger] after[k])
+            by { assert(after[k] == w[pos + 1 + k]); }
+            lemma_net_level_no_stable(data, after, 0);
+        } else {
+            assert(w[pos] == Symbol::Inv(ng));
+            lemma_net_level_same_sign_nonpos(data, w);
+            lemma_net_level_subrange_prefix(data, w, pos);
+            let before = w.subrange(0, pos);
+            let tail = w.subrange(pos, w.len() as int);
+            lemma_net_level_subrange_prefix(data, tail, 1);
+            let after = tail.subrange(1, tail.len() as int);
+            assert(after =~= w.subrange(pos + 1, w.len() as int));
+            let s_word: Word = Seq::new(1, |_j: int| w[pos]);
+            assert(tail.subrange(0, 1) =~= s_word);
+            lemma_net_level_single(data, w[pos]);
+            assert forall|k: int| 0 <= k < before.len() && is_stable(data, #[trigger] before[k])
+                implies before[k] == Symbol::Inv(ng)
+            by { assert(before[k] == w[k]); }
+            lemma_net_level_same_sign_nonpos(data, before);
+            assert forall|k: int| 0 <= k < after.len()
+                implies !is_stable(data, #[trigger] after[k])
+            by { assert(after[k] == w[pos + 1 + k]); }
+            lemma_net_level_no_stable(data, after, 0);
+        }
+        assert(false);
+    } else if w[pos] != w[next_pos] {
+        assert(has_adjacent_opposite_at(data, w, pos, next_pos));
+    } else {
+        // Same sign — extend the invariant and recurse
+        assert forall|k: int| 0 <= k < next_pos && is_stable(data, #[trigger] w[k])
+            implies w[k] == w[next_pos]
+        by {
+            if k <= pos {
+                if k < pos {
+                    assert(w[k] == w[pos]);
+                }
+                assert(w[pos] == w[next_pos]);
+            } else {
+                // k is between pos+1 and next_pos-1: not stable
+                assert(!is_stable(data, w[k]));
+            }
+        }
+        lemma_scan_for_sign_change(data, w, next_pos);
+    }
+}
+
+/// A word with no stable letters from position `offset` onward has net_level = 0.
+proof fn lemma_net_level_no_stable(data: HNNData, w: Word, offset: int)
+    requires
+        hnn_data_valid(data),
+        forall|k: int| 0 <= k < w.len()
+            ==> !is_stable(data, #[trigger] w[k]),
+    ensures
+        net_level(data, w) == 0,
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        assert(!is_stable(data, s));
+        assert(s != Symbol::Gen(data.base.num_generators));
+        assert(s != Symbol::Inv(data.base.num_generators));
+        assert forall|k: int| 0 <= k < rest.len()
+            implies !is_stable(data, #[trigger] rest[k])
+        by { assert(rest[k] == w[k + 1]); }
+        lemma_net_level_no_stable(data, rest, offset + 1);
+    }
+}
+
+// --- X.4: Subgroup helpers ---
+
+/// If b_rcoset_rep(g) = ε, then g is in the right subgroup (B).
+proof fn lemma_b_rcoset_empty_implies_in_right_subgroup(
+    data: AmalgamatedData, g: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p2.num_generators),
+        b_rcoset_rep(data, g) =~= empty_word(),
+    ensures
+        crate::normal_form_amalgamated::in_right_subgroup(data, g),
+{
+    use crate::normal_form_afp_textbook::*;
+    lemma_b_rcoset_rep_props(data, g);
+    // same_b_rcoset(data, g, rep) where rep =~= ε
+    // same_b_rcoset(data, g, ε) = in_right_subgroup(data, concat(g, inverse_word(ε)))
+    let rep = b_rcoset_rep(data, g);
+    assert(same_b_rcoset(data, g, rep));
+    // rep =~= ε implies inverse_word(rep) =~= ε
+    assert(inverse_word(empty_word()) =~= empty_word()) by {
+        assert(inverse_word(empty_word()).len() == 0);
+    }
+    // concat(g, inverse_word(ε)) =~= g
+    assert(concat(g, inverse_word(empty_word())) =~= g) by {
+        let e = inverse_word(empty_word());
+        assert(e.len() == 0);
+        assert forall|k: int| 0 <= k < concat(g, e).len()
+            implies concat(g, e)[k] == g[k] by {}
+    }
+}
+
+/// Contrapositive: if g ∉ B, then b_rcoset_rep(g) ≠ ε.
+proof fn lemma_not_in_right_subgroup_rep_nonempty(
+    data: AmalgamatedData, g: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p2.num_generators),
+        !crate::normal_form_amalgamated::in_right_subgroup(data, g),
+    ensures
+        !(b_rcoset_rep(data, g) =~= empty_word()),
+{
+    use crate::normal_form_afp_textbook::*;
+    if b_rcoset_rep(data, g) =~= empty_word() {
+        lemma_b_rcoset_empty_implies_in_right_subgroup(data, g);
+    }
+}
+
+/// Subgroup right cancellation: if concat(g, b) ∈ S and b ∈ S, then g ∈ S.
+proof fn lemma_subgroup_right_cancel(
+    p: Presentation, gens: Seq<Word>, g: Word, b: Word,
+)
+    requires
+        presentation_valid(p),
+        word_valid(g, p.num_generators),
+        word_valid(b, p.num_generators),
+        in_generated_subgroup(p, gens, concat(g, b)),
+        in_generated_subgroup(p, gens, b),
+        forall|i: int| 0 <= i < gens.len()
+            ==> word_valid(#[trigger] gens[i], p.num_generators),
+    ensures
+        in_generated_subgroup(p, gens, g),
+{
+    use crate::normal_form_afp_textbook::*;
+    // inv(b) ∈ S
+    lemma_subgroup_inverse(p, gens, b);
+    // concat(concat(g, b), inv(b)) ∈ S
+    lemma_subgroup_concat(p, gens, concat(g, b), inverse_word(b));
+    // concat(concat(g, b), inv(b)) ≡ g
+    lemma_right_cancel(p, g, b);
+    // g ∈ S (by equiv closure)
+    lemma_in_subgroup_equiv(
+        p, gens,
+        concat(concat(g, b), inverse_word(b)), g,
+    );
+}
+
+/// If g ∉ B and embed_b(h) ∈ B, then concat(g, embed_b(h)) ∉ B.
+proof fn lemma_not_in_subgroup_concat_embed_b(
+    data: AmalgamatedData, g: Word, h: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+        word_valid(h, crate::normal_form_afp_textbook::k_size(data)),
+        !crate::normal_form_amalgamated::in_right_subgroup(data, g),
+        forall|i: int| 0 <= i < crate::normal_form_afp_textbook::b_words(data).len()
+            ==> word_valid(
+                #[trigger] crate::normal_form_afp_textbook::b_words(data)[i],
+                data.p2.num_generators),
+    ensures
+        !crate::normal_form_amalgamated::in_right_subgroup(
+            data, concat(g, apply_embedding(
+                crate::normal_form_afp_textbook::b_words(data), h))),
+{
+    use crate::normal_form_afp_textbook::*;
+    use crate::normal_form_amalgamated::in_right_subgroup;
+    let embed = apply_embedding(b_words(data), h);
+    // embed is word_valid
+    lemma_apply_embedding_valid(b_words(data), h, data.p2.num_generators);
+    // embed_b(h) ∈ B
+    lemma_apply_embedding_in_subgroup_g2(data.p2, b_words(data), h);
+    // in_right_subgroup(data, w) == in_generated_subgroup(data.p2, b_words(data), w)
+    assert(b_words(data) =~= Seq::new(data.identifications.len(), |i: int| data.identifications[i].1));
+    // If concat(g, embed) were in B, then g ∈ B by right cancel. Contradiction.
+    if in_right_subgroup(data, concat(g, embed)) {
+        let b_gens = b_words(data);
+        lemma_subgroup_right_cancel(data.p2, b_gens, g, embed);
+    }
 }
 
 } // verus!

@@ -658,7 +658,7 @@ pub proof fn lemma_nat_well_ordering(p: spec_fn(nat) -> bool, bound: nat)
 }
 
 /// The generated subgroup is closed under equivalence.
-proof fn lemma_in_subgroup_equiv(
+pub proof fn lemma_in_subgroup_equiv(
     p: Presentation, gens: Seq<Word>, w1: Word, w2: Word,
 )
     requires
@@ -9638,7 +9638,7 @@ proof fn lemma_a_rcoset_h_from_equiv(
 }
 
 /// Right cancellation: concat(concat(a, b), inv(b)) ≡ a.
-proof fn lemma_right_cancel(p: Presentation, a: Word, b: Word)
+pub proof fn lemma_right_cancel(p: Presentation, a: Word, b: Word)
     requires
         presentation_valid(p),
         word_valid(a, p.num_generators),
@@ -10216,7 +10216,7 @@ proof fn lemma_b_rcoset_rep_satisfiable(data: AmalgamatedData, g: Word)
 }
 
 /// Extract right-B-coset rep properties.
-proof fn lemma_b_rcoset_rep_props(data: AmalgamatedData, g: Word)
+pub proof fn lemma_b_rcoset_rep_props(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         word_valid(g, data.p2.num_generators),
