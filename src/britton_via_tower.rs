@@ -3564,6 +3564,227 @@ proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
     lemma_find_gen_inv_forward(data, w, 1, any_k);
 }
 
+/// Find the RIGHTMOST Gen-Inv pair at the max level.
+/// Ensures: no prefix level after pair_j reaches max.
+/// This guarantees the suffix after the pair is entirely G₁ at the top junction.
+proof fn lemma_rightmost_gen_inv_at_max(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+    ensures
+        exists|i: int, j: int|
+            has_adjacent_opposite_at(data, w, i, j)
+            && w[i] == Symbol::Gen(data.base.num_generators)
+            && w[j] == Symbol::Inv(data.base.num_generators)
+            && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w)
+            // Suffix after j never reaches max level again:
+            && (forall|k: int| j < k <= w.len()
+                ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w)),
+{
+    let ng = data.base.num_generators;
+    let max_lev = max_prefix_level(data, w);
+
+    // Find the LAST position where the level achieves max.
+    // Since net_level(w) = 0 and max ≥ 1: the last achiever is < w.len().
+    // After the last achiever: all levels < max.
+    lemma_max_prefix_achieved(data, w);
+    // net_level(w) = 0 < max ≥ 1. So w.len() doesn't achieve max.
+    assert(net_level(data, w.subrange(0, w.len() as int)) < max_lev) by {
+        assert(w.subrange(0, w.len() as int) =~= w);
+    }
+
+    // Find the last achiever by scanning backward.
+    // Start from w.len() (which doesn't achieve max) and go left until we find one.
+    lemma_find_last_max_achiever(data, w, w.len() as int);
+}
+
+/// Scan backward to find the last position achieving max, then find the Gen-Inv pair.
+proof fn lemma_find_last_max_achiever(data: HNNData, w: Word, pos: int)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+        0 < pos <= w.len(),
+        net_level(data, w.subrange(0, pos)) < max_prefix_level(data, w),
+        // All positions after pos are < max
+        forall|k: int| pos < k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
+    ensures
+        exists|i: int, j: int|
+            has_adjacent_opposite_at(data, w, i, j)
+            && w[i] == Symbol::Gen(data.base.num_generators)
+            && w[j] == Symbol::Inv(data.base.num_generators)
+            && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w)
+            && (forall|k: int| j < k <= w.len()
+                ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w)),
+    decreases pos,
+{
+    let ng = data.base.num_generators;
+    let max_lev = max_prefix_level(data, w);
+    lemma_max_prefix_bounds(data, w, pos - 1);
+
+    if net_level(data, w.subrange(0, pos - 1)) == max_lev {
+        // pos-1 achieves max, pos doesn't. So w[pos-1] decreased the level.
+        // Contribution of w[pos-1] = net(w[0..pos]) - net(w[0..pos-1]) = (< max) - max < 0.
+        // So contribution = -1 → w[pos-1] = Inv(ng).
+        let prev = w.subrange(0, pos - 1);
+        let curr = w.subrange(0, pos);
+        assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[pos - 1])));
+        lemma_net_level_concat(data, prev, Seq::new(1, |_j: int| w[pos - 1]));
+        lemma_net_level_single(data, w[pos - 1]);
+        assert(w[pos - 1] == Symbol::Inv(ng));
+
+        // The position before pos-1 must be the Gen that brought us to max.
+        // pos-1 is the Inv leaving max. We need the Gen that entered max.
+        // Use the forward scan from 1 to pos-1 to find a Gen-Inv pair.
+        // The Gen must have brought the level to max (from < max).
+        // Find the last Gen before pos-1 that achieved max.
+        assert(net_level(data, w.subrange(0, 0int)) < max_lev) by {
+            assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+        }
+        lemma_find_gen_inv_forward(data, w, 1, pos - 1);
+        // This gives a Gen-Inv pair (i, j) with j ≤ w.len().
+        // But we need j = pos - 1 (the Inv we just found) for the suffix property.
+        // Actually, the forward scan might find a DIFFERENT pair earlier.
+        // Let me instead directly construct the pair.
+
+        // Find the Gen that entered max level just before pos-1.
+        // Scan backward from pos-1 to find the last position achieving max.
+        // pos-1 achieves max. pos-2 might also achieve max.
+        // Go back until we find a position that doesn't achieve max.
+        // The position AFTER that is the first achiever in this segment.
+        // That achiever arrived via Gen.
+        lemma_find_gen_before_inv(data, w, pos - 1, pos);
+    } else {
+        // pos-1 doesn't achieve max. Go further left.
+        if pos == 1 {
+            // pos-1 = 0, net_level(w[0..0]) = 0 < max. But max is achieved somewhere.
+            // All positions from 1 to w.len() are < max (from our invariant + pos=1).
+            // And position 0 = 0 < max. So max is never achieved. Contradiction with max_prefix_achieved.
+            lemma_max_prefix_achieved(data, w);
+            let any_k: int = choose|k: int| 0 <= k <= w.len()
+                && net_level(data, w.subrange(0, k)) == max_lev;
+            // any_k must be in (0, pos] = (0, 1] = {1}. But net(w[0..1]) < max (from above).
+            // Or any_k = 0 but net(w[0..0]) = 0 < max. Contradiction.
+            assert(any_k > 0) by {
+                assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+            }
+            assert(any_k <= pos) by {
+                if any_k > pos { /* from our forall: net < max. Contradiction. */ }
+            }
+            // any_k = 1, but we just checked net(w[0..1]) < max. Contradiction.
+        } else {
+            lemma_find_last_max_achiever(data, w, pos - 1);
+        }
+    }
+}
+
+/// Given that position `pos` achieves max and `inv_pos` doesn't (Inv at inv_pos):
+/// scan left from `pos` to find the Gen that entered max.
+proof fn lemma_find_gen_before_inv(data: HNNData, w: Word, pos: int, inv_pos: int)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+        1 <= pos < inv_pos <= w.len(),
+        net_level(data, w.subrange(0, pos)) == max_prefix_level(data, w),
+        w[inv_pos - 1] == Symbol::Inv(data.base.num_generators),
+        net_level(data, w.subrange(0, inv_pos)) < max_prefix_level(data, w),
+        // All positions after inv_pos are < max
+        forall|k: int| inv_pos < k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
+        // All positions from pos to inv_pos-1 achieve max (no drop between)
+        forall|k: int| pos <= k < inv_pos
+            ==> net_level(data, w.subrange(0, k)) == max_prefix_level(data, w),
+    ensures
+        exists|i: int, j: int|
+            has_adjacent_opposite_at(data, w, i, j)
+            && w[i] == Symbol::Gen(data.base.num_generators)
+            && w[j] == Symbol::Inv(data.base.num_generators)
+            && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w)
+            && (forall|k: int| j < k <= w.len()
+                ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w)),
+    decreases pos,
+{
+    let ng = data.base.num_generators;
+    let max_lev = max_prefix_level(data, w);
+    lemma_max_prefix_bounds(data, w, pos - 1);
+
+    if net_level(data, w.subrange(0, pos - 1)) < max_lev {
+        // pos-1 is below max, pos is AT max. So w[pos-1] contributed +1 → Gen.
+        let prev = w.subrange(0, pos - 1);
+        let curr = w.subrange(0, pos);
+        assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[pos - 1])));
+        lemma_net_level_concat(data, prev, Seq::new(1, |_j: int| w[pos - 1]));
+        lemma_net_level_single(data, w[pos - 1]);
+        assert(w[pos - 1] == Symbol::Gen(ng));
+
+        // Now: Gen at pos-1, Inv at inv_pos-1.
+        // Between them (pos to inv_pos-2): all at level max.
+        // Symbols at level max that aren't stable letters: base symbols.
+        // Stable letters between: they'd change the level from max.
+        // Since all positions from pos to inv_pos-1 are AT max:
+        // symbols at positions pos to inv_pos-2 don't change the level → base symbols.
+        // So (pos-1, inv_pos-1) is an adjacent opposite pair with only base between.
+
+        // Need to show: all symbols between pos and inv_pos-1 are non-stable.
+        assert forall|k: int| pos - 1 < k < inv_pos - 1
+            implies !is_stable(data, #[trigger] w[k])
+        by {
+            // Position k+1 (next prefix) has net_level = max (from our forall, k+1 ∈ [pos, inv_pos-1]).
+            // Position k has net_level = max too (k ∈ [pos, inv_pos-1]).
+            // Wait: we need net_level(w[0..k]) and net_level(w[0..k+1]).
+            // Hmm, k ranges from pos to inv_pos-2. So k ∈ [pos, inv_pos-2].
+            // net_level(w[0..k]) = max (from forall, k ∈ [pos, inv_pos-1]).
+            // net_level(w[0..k+1]) = max (from forall, k+1 ∈ [pos+1, inv_pos-1] ⊂ [pos, inv_pos-1]).
+            // Contribution of w[k] = max - max = 0. So w[k] is base (not stable).
+            let prev_k = w.subrange(0, k);
+            let next_k = w.subrange(0, k + 1);
+            assert(next_k =~= concat(prev_k, Seq::new(1, |_j: int| w[k])));
+            lemma_net_level_concat(data, prev_k, Seq::new(1, |_j: int| w[k]));
+            lemma_net_level_single(data, w[k]);
+            // net(next) = net(prev) + contribution = max + contribution.
+            // If k+1 ≤ inv_pos - 1: net(next) = max → contribution = 0 → not stable.
+            // If k+1 = inv_pos: net(next) = net(w[0..inv_pos]) < max → contribution < 0 = -1 → Inv.
+            // But k < inv_pos - 1 → k+1 ≤ inv_pos - 1 < inv_pos.
+            // So k+1 < inv_pos → k+1 ≤ inv_pos - 1 → in [pos, inv_pos-1].
+            assert(k + 1 < inv_pos);
+        }
+
+        // So (pos-1, inv_pos-1) is has_adjacent_opposite_at.
+        assert(has_adjacent_opposite_at(data, w, pos - 1, inv_pos - 1));
+        // net_level(w[0..(pos-1)+1]) = net_level(w[0..pos]) = max. ✓
+        assert(w.subrange(0, (pos - 1) + 1) =~= w.subrange(0, pos));
+        // Suffix property: all k > inv_pos-1: k ≥ inv_pos.
+        // net_level(w[0..k]) < max (from the forall in requires for k > inv_pos,
+        // and net_level(w[0..inv_pos]) < max for k = inv_pos). ✓
+    } else {
+        // pos-1 also achieves max. Go further left.
+        if pos == 1 {
+            // pos-1 = 0, net(w[0..0]) = 0. If 0 = max: max = 0 < 1. Contradiction.
+            assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+        } else {
+            // Extend the plateau: pos-1 also at max level.
+            assert(net_level(data, w.subrange(0, pos - 1)) == max_lev);
+            // Need: forall k in [pos-1, inv_pos-1] achieves max.
+            assert forall|k: int| pos - 1 <= k < inv_pos
+                implies net_level(data, w.subrange(0, k)) == max_lev
+            by {
+                if k >= pos {
+                    // Already in the old forall.
+                } else {
+                    assert(k == pos - 1);
+                }
+            }
+            lemma_find_gen_before_inv(data, w, pos - 1, inv_pos);
+        }
+    }
+}
+
 // --- X.12: Full Britton's Lemma ---
 // Miller Thm 3.10, Lyndon-Schupp Ch. IV Thm 2.1.
 // Two cases: max_prefix_level ≥ 1 → Gen-Inv pair → right syllable.
