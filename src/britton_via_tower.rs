@@ -4034,12 +4034,296 @@ proof fn lemma_suffix_levels_bounded(
     }
 }
 
+// --- X.17: Small helpers for the action chain ---
+
+/// The Gen·base·Inv segment has net_level 0, so the level after pair_j+1
+/// returns to prefix_level.
+proof fn lemma_pair_net_level_return(
+    data: HNNData, w: Word, pair_i: int, pair_j: int,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        has_adjacent_opposite_at(data, w, pair_i, pair_j),
+        w[pair_i] == Symbol::Gen(data.base.num_generators),
+        w[pair_j] == Symbol::Inv(data.base.num_generators),
+        net_level(data, w.subrange(0, pair_i + 1)) == max_prefix_level(data, w),
+    ensures
+        net_level(data, w.subrange(0, pair_j + 1))
+            == net_level(data, w.subrange(0, pair_i)),
+{
+    let ng = data.base.num_generators;
+    // net(w[0..pair_j+1]) = net(w[0..pair_i]) + net(w[pair_i..pair_j+1])
+    // net(w[pair_i..pair_j+1]) = net([Gen]) + net(base) + net([Inv]) = 1 + 0 + (-1) = 0
+    // So net(w[0..pair_j+1]) = net(w[0..pair_i]) = prefix_level.
+    lemma_suffix_net_level(data, w, pair_i, pair_j + 1 - pair_i);
+    // net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - net(w[0..pair_i])
+    // We need net(w.subrange(pair_i, pair_j+1)) = 0.
+    // The subrange pair_i..pair_j+1 contains Gen at pair_i, base, Inv at pair_j.
+    // Each non-stable symbol between pair_i+1 and pair_j-1 contributes 0.
+    // Gen contributes +1, Inv contributes -1. Base contributes 0.
+    // Total contribution: 1 + 0 + (-1) = 0.
+    // Express this via subrange decompositions:
+    lemma_suffix_net_level(data, w, pair_i, 1);
+    // net(w.subrange(pair_i, pair_i+1)) = net(w[0..pair_i+1]) - net(w[0..pair_i])
+    //   = max_prefix_level - prefix_level = 1  (since max = prefix_level + 1 from requires)
+    lemma_suffix_net_level(data, w, pair_i + 1, pair_j - pair_i - 1);
+    // net(w.subrange(pair_i+1, pair_j)) = net(w[0..pair_j]) - net(w[0..pair_i+1])
+    // = net(w[0..pair_j]) - max_prefix_level
+
+    // Base word between pair: all non-stable.
+    // net of base word = 0 (from lemma_net_level_no_stable on the base word)
+    let base_word = w.subrange(pair_i + 1, pair_j);
+    assert forall|k: int| 0 <= k < base_word.len()
+        implies !is_stable(data, #[trigger] base_word[k])
+    by {
+        assert(base_word[k] == w[pair_i + 1 + k]);
+    }
+    lemma_net_level_no_stable(data, base_word, 0);
+
+    // net(w.subrange(pair_i+1, pair_j)) = 0 (same as base_word)
+    assert(w.subrange(pair_i + 1, pair_j) =~= base_word);
+
+    // Now: net(w.subrange(pair_i, pair_j+1)) = 1 + 0 + (-1) = 0
+    // Using: net(w.subrange(pair_i, pair_j+1))
+    //   = net(w[0..pair_j+1]) - net(w[0..pair_i]) (from suffix_net_level)
+    // And: net(w[0..pair_j+1]) = net(w[0..pair_i]) + 0 = net(w[0..pair_i])
+    // So we need to show net(w[0..pair_j+1]) = net(w[0..pair_i]).
+    // From suffix_net_level: net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - prefix_level.
+    // If we can show net(w.subrange(pair_i, pair_j+1)) = 0: then net(w[0..pair_j+1]) = prefix_level. ✓
+
+    // Show net(w.subrange(pair_i, pair_j+1)) = 0 by decomposing it:
+    // w.subrange(pair_i, pair_j+1) = [w[pair_i]] ++ base_word ++ [w[pair_j]]
+    let gen_s: Word = Seq::new(1, |_j: int| w[pair_i]);
+    let inv_s: Word = Seq::new(1, |_j: int| w[pair_j]);
+    let mid = w.subrange(pair_i, pair_j + 1);
+    assert(mid =~= concat(gen_s, concat(base_word, inv_s))) by {
+        assert(mid.len() == gen_s.len() + base_word.len() + inv_s.len());
+        assert forall|k: int| 0 <= k < mid.len()
+            implies mid[k] == concat(gen_s, concat(base_word, inv_s))[k]
+        by {
+            if k == 0 {} else if k < pair_j - pair_i { assert(mid[k] == base_word[k - 1]); }
+            else {}
+        }
+    }
+    lemma_net_level_concat(data, gen_s, concat(base_word, inv_s));
+    lemma_net_level_single(data, w[pair_i]);
+    lemma_net_level_concat(data, base_word, inv_s);
+    lemma_net_level_single(data, w[pair_j]);
+    // net(mid) = 1 + 0 + (-1) = 0
+}
+
+/// The suffix w[pair_j+1..] translates to a G₁ word at junction junc↔pl.
+/// Uses: suffix levels < max → translate valid for tower(junc).
+proof fn lemma_suffix_translate_g1(
+    data: HNNData, w: Word, pair_i: int, pair_j: int, bl: nat, pl: nat,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        has_adjacent_opposite_at(data, w, pair_i, pair_j),
+        w[pair_i] == Symbol::Gen(data.base.num_generators),
+        w[pair_j] == Symbol::Inv(data.base.num_generators),
+        net_level(data, w.subrange(0, pair_i + 1)) == max_prefix_level(data, w),
+        max_prefix_level(data, w) >= 1,
+        forall|k: int| pair_j < k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
+        net_level(data, w.subrange(0, pair_j + 1))
+            == net_level(data, w.subrange(0, pair_i)),
+        pl >= 1,
+        pl == (bl + max_prefix_level(data, w)) as nat,
+        bl >= w.len(),
+    ensures ({
+        let junc = (pl - 1) as nat;
+        let prefix_level = net_level(data, w.subrange(0, pair_i));
+        let w_suffix = w.subrange(pair_j + 1, w.len() as int);
+        let tw_suffix = translate_word_at(data, w_suffix, bl as int + prefix_level);
+        word_valid(tw_suffix, tower_presentation(data, junc).num_generators)
+    }),
+{
+    let ng = data.base.num_generators;
+    let junc = (pl - 1) as nat;
+    let prefix_level = net_level(data, w.subrange(0, pair_i));
+    let w_suffix = w.subrange(pair_j + 1, w.len() as int);
+
+    // Suffix word_valid for HNN pres
+    assert(word_valid(w_suffix, hnn_presentation(data).num_generators)) by {
+        assert forall|k: int| 0 <= k < w_suffix.len()
+            implies symbol_valid(#[trigger] w_suffix[k], hnn_presentation(data).num_generators)
+        by { assert(w_suffix[k] == w[pair_j + 1 + k]); }
+    }
+
+    // Suffix running levels bounded: use lemma_suffix_levels_bounded
+    // Need: pair_j + 1 as split point, bl + prefix_level as shifted level at split
+    // bl + net_level(w[0..pair_j+1]) = bl + prefix_level = junc (from pair_net_level_return)
+    lemma_suffix_levels_bounded(data, w, pair_j + 1, bl as int, pl);
+
+    // Connect suffix subrange levels to translate validity
+    assert forall|k: int| #![trigger w_suffix.subrange(0, k)]
+        0 <= k <= w_suffix.len() ==>
+        0 <= (bl as int + prefix_level) + net_level(data, w_suffix.subrange(0, k)) <= junc as int
+    by {
+        if 0 <= k && k <= w_suffix.len() {
+            assert(w_suffix.subrange(0, k) =~= w.subrange(pair_j + 1, pair_j + 1 + k)) by {
+                assert forall|i: int| 0 <= i < k
+                    implies w_suffix.subrange(0, k)[i] == w.subrange(pair_j + 1, pair_j + 1 + k)[i]
+                by {}
+            }
+            lemma_suffix_net_level(data, w, pair_j + 1, k);
+            lemma_prefix_level_bounded_by_k(data, w, pair_j + 1 + k);
+        }
+    }
+    lemma_translate_word_valid_for_level(data, w_suffix, bl as int + prefix_level, junc);
+}
+
+/// Decompose translate(w) = tw_prefix · tw_g2 · tw_suffix at the Gen-Inv pair.
+proof fn lemma_translate_decompose_at_pair(
+    data: HNNData, w: Word, pair_i: int, pair_j: int, bl: int,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        has_adjacent_opposite_at(data, w, pair_i, pair_j),
+        w[pair_i] == Symbol::Gen(data.base.num_generators),
+        w[pair_j] == Symbol::Inv(data.base.num_generators),
+        bl >= w.len() as int,
+    ensures ({
+        let ng = data.base.num_generators;
+        let prefix_level = net_level(data, w.subrange(0, pair_i));
+        let base_word = w.subrange(pair_i + 1, pair_j);
+        let tw = translate_word_at(data, w, bl);
+        let tw_prefix = translate_word_at(data, w.subrange(0, pair_i), bl);
+        let tw_g2 = shift_word(base_word, ((bl + prefix_level + 1) * ng) as nat);
+        let tw_suffix = translate_word_at(data, w.subrange(pair_j + 1, w.len() as int),
+            bl + prefix_level);
+        &&& word_valid(base_word, ng)
+        &&& tw =~= concat(tw_prefix, concat(tw_g2, tw_suffix))
+    }),
+{
+    let ng = data.base.num_generators;
+    let prefix_level = net_level(data, w.subrange(0, pair_i));
+    let base_word = w.subrange(pair_i + 1, pair_j);
+    let w_prefix = w.subrange(0, pair_i);
+    let w_suffix = w.subrange(pair_j + 1, w.len() as int);
+
+    // base_word valid
+    assert(word_valid(base_word, ng)) by {
+        assert forall|k: int| 0 <= k < base_word.len()
+            implies symbol_valid(#[trigger] base_word[k], ng)
+        by {
+            assert(base_word[k] == w[pair_i + 1 + k]);
+            assert(!is_stable(data, w[pair_i + 1 + k]));
+            match w[pair_i + 1 + k] {
+                Symbol::Gen(idx) => { assert(idx < ng); }
+                Symbol::Inv(idx) => { assert(idx < ng); }
+            }
+        }
+    }
+
+    // Gen·base·Inv segment
+    let gen_base_inv = concat(Seq::new(1, |_j: int| Symbol::Gen(ng)),
+        concat(base_word, Seq::new(1, |_j: int| Symbol::Inv(ng))));
+
+    // Net levels for the segment
+    lemma_net_level_concat(data, Seq::new(1, |_j: int| Symbol::Gen(ng)),
+        concat(base_word, Seq::new(1, |_j: int| Symbol::Inv(ng))));
+    lemma_net_level_single(data, Symbol::Gen(ng));
+    lemma_net_level_concat(data, base_word, Seq::new(1, |_j: int| Symbol::Inv(ng)));
+    lemma_net_level_single(data, Symbol::Inv(ng));
+    lemma_net_level_base_word(data, base_word);
+    // net_level(gen_base_inv) = 0
+
+    // w = w_prefix · gen_base_inv · w_suffix
+    assert(w =~= concat(w_prefix, concat(gen_base_inv, w_suffix))) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies w[k] == concat(w_prefix, concat(gen_base_inv, w_suffix))[k]
+        by {
+            if k < pair_i {} else if k == pair_i {}
+            else if k < pair_j { assert(w[k] == base_word[k - pair_i - 1]); }
+            else if k == pair_j {} else { assert(w[k] == w_suffix[k - pair_j - 1]); }
+        }
+    }
+
+    // bl + prefix_level >= 0 (since bl >= 0 and prefix_level >= -bl from level bounds)
+    assert(bl + prefix_level >= 0) by {
+        lemma_prefix_level_bounded_by_k(data, w, pair_i);
+    }
+
+    // Translate distributes
+    lemma_translate_concat(data, w_prefix, concat(gen_base_inv, w_suffix), bl);
+    lemma_translate_concat(data, gen_base_inv, w_suffix, bl + prefix_level);
+    lemma_translate_gen_base_inv(data, base_word, bl + prefix_level);
+}
+
+/// G₂ one-shot on the base word creates a right syllable when starting
+/// from a state with right_count = 0 (left-topped or empty).
+/// base_word ∉ B (from no-pinch) → product ∉ B → rep ≠ ε → prepend.
+proof fn lemma_g2_creates_right_syllable(
+    data: HNNData, base_word: Word,
+    afp: AmalgamatedData, h: Word, syls: Seq<crate::normal_form_afp_textbook::Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        amalgamated_data_valid(afp),
+        presentation_valid(afp.p1),
+        presentation_valid(afp.p2),
+        crate::normal_form_amalgamated::identifications_isomorphic(afp),
+        crate::normal_form_afp_textbook::action_preserves_canonical(afp),
+        crate::normal_form_afp_textbook::is_canonical_state(afp, h, syls),
+        word_valid(base_word, afp.p2.num_generators),
+        // base_word ∉ B (in the AFP's B-subgroup)
+        !crate::normal_form_amalgamated::in_right_subgroup(afp, base_word),
+        // State has right_count = 0
+        right_syllable_count(syls) == 0,
+        // b_words are valid
+        forall|i: int| 0 <= i < crate::normal_form_afp_textbook::b_words(afp).len()
+            ==> word_valid(
+                #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i],
+                afp.p2.num_generators),
+        // K-size and h valid
+        word_valid(h, crate::normal_form_afp_textbook::k_size(afp)),
+    ensures ({
+        use crate::normal_form_afp_textbook::*;
+        let tw_g2 = shift_word(base_word, afp.p1.num_generators);
+        right_syllable_count(
+            act_word(afp, tw_g2, h, syls).1) >= 1
+    }),
+{
+    use crate::normal_form_afp_textbook::*;
+
+    // G₂ one-shot
+    lemma_act_word_eq_g2_one_shot(afp, base_word, h, syls);
+    let product = concat(base_word, apply_embedding(b_words(afp), h));
+    let result = g2_one_shot_action(afp, product, syls);
+
+    // product ∉ B (from base_word ∉ B + embed_b(h) ∈ B + right-cancel)
+    lemma_not_in_subgroup_concat_embed_b(afp, base_word, h);
+    // So rep ≠ ε
+    lemma_not_in_right_subgroup_rep_nonempty(afp, product);
+    let rep = b_rcoset_rep(afp, product);
+
+    // right_count(syls) = 0 → syls empty or left-topped.
+    // If empty: g2_one_shot case 2 → prepend right → right_count = 1
+    // If left-topped: g2_one_shot case 2 → prepend right → right_count = 1
+    // (Both go to the "prepend" branch since syls.len() == 0 || syls.first().is_left)
+
+    // Need to show: syls.len() == 0 || syls.first().is_left
+    // This follows from right_count(syls) = 0: if syls non-empty and first is right,
+    // then right_count ≥ 1. Contradiction.
+    if syls.len() > 0 && !syls.first().is_left {
+        // syls.first() is right → right_count ≥ 1. But right_count = 0. Contradiction.
+    }
+    // So: syls.len() == 0 || syls.first().is_left ✓
+    // g2_one_shot: rep ≠ ε and (empty or left-topped) → prepend right syllable
+    // result = (h_new, [Syllable(false, rep)] ++ syls)
+    // right_count of result = 1 + right_count(syls) = 1 + 0 = 1 ≥ 1. ✓
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
 /// Proof outline (textbook permutation representation):
 /// 1. net_level(w) = 0 (from w ≡ ε)
-
 /// 2. Find rightmost Gen-Inv pair at max level (suffix strictly below max)
 /// 3. Translate to tower, peel to pair_level, get act = (ε, [])
 /// 4. Decompose: translate = tw_prefix · tw_g2 · tw_suffix
