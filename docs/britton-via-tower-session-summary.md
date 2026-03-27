@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document summarizes the formalization of Britton's lemma via the tower construction, following Lyndon-Schupp Chapter IV. Starting from 195 verified functions with 3 errors, we reached **293 verified, 0 errors, 0 assumes** across 3 files (223 + 15 + 55).
+This document summarizes the formalization of Britton's lemma via the tower construction, following Lyndon-Schupp Chapter IV. Starting from 195 verified functions with 3 errors, we reached **302 verified, 0 errors, 0 assumes** across 3 files (224 + 15 + 63).
 
-**Gaps closed:** All 4 gaps (action_preserves_canonical, identity canonical, tower isomorphism, AFP right-injectivity). Only Gap 3 (level normalization, ~50 lines) remains for fully unconditional Britton.
+**All gaps closed.** Britton's lemma is fully unconditional — no extra preconditions beyond the mathematical ones.
 
 **Theorem (Britton's Lemma):** If `w` is a base word (no stable letters) and `w = 1` in the HNN extension `G*`, then `w = 1` in the base group `G`.
 
@@ -14,9 +14,9 @@ This document summarizes the formalization of Britton's lemma via the tower cons
 
 | File | Verified | Role |
 |------|----------|------|
-| `normal_form_afp_textbook.rs` | 223 | AFP injectivity via textbook one-shot action |
+| `normal_form_afp_textbook.rs` | 224 | AFP injectivity via textbook one-shot action |
 | `tower.rs` | 15 | Tower construction + textbook embedding |
-| `britton_via_tower.rs` | 52 | Derivation translation + Britton's lemma |
+| `britton_via_tower.rs` | 63 | Derivation translation + unconditional Britton's lemma |
 
 ## Architecture
 
@@ -138,45 +138,38 @@ The user blocks ALL tool calls containing `assume()` or `admit()`. When stuck:
 - Move helper lemmas to the defining module
 - Document the gap and return later — never write assume as a placeholder
 
-## Remaining Work
+## ALL GAPS CLOSED — COMPLETE
 
-### Gap 4: Tower Isomorphism — CLOSED
+**Grand total: 302 verified (224 + 15 + 63), 0 errors, 0 assumes.**
 
-`lemma_tower_identifications_isomorphic` proved via:
-- `lemma_tower_iso_forward_mid`: tower equiv → base equiv (AFP right-injectivity for k>0, shift-by-0 identity for k=0)
-- `lemma_tower_iso_backward_mid`: base equiv → tower equiv (shift homomorphism + base_at_copy_k_embeds)
-- `lemma_shift_embedding_distributes`: apply_embedding distributes over shift
-- hnn_associations_isomorphic biconditional for the A↔B connection
+### Gap 3: Level Normalization — CLOSED (Session 3)
 
-Key Z3 engineering lesson: extracting implications into separate helper functions gives Z3 a clean context. The biconditional `mid <==> rhs` fires automatically from hnn_iso, but `lhs ==> mid` and `mid ==> lhs` need separate functions because `if A { proof_of_B }` does NOT give `A ==> B` in the outer Z3 context.
+HNN derivations can have negative levels, but the one-sided tower requires levels in [0, m]. Solution: generalize the translation lemmas with a `base_level: int` parameter instead of hard-coding 0.
 
-### Gap 4 (ORIGINAL): Tower Isomorphism (10 lines of Z3 assertions)
+Key insight: instead of constructing shifted derivations explicitly (conjugating with t^s), simply shift all level computations by `base_level`. The existing `translate_word_at(data, w, base_level)` already supports arbitrary base levels.
 
-`lemma_tower_iso_per_word` has the complete proof logic:
-- Forward: AFP right-injectivity + hnn_iso
-- Backward: base_at_copy_k_embeds + hnn_iso
+New infrastructure:
+- `derivation_min_adj_level(data, steps, start)` — minimum "adjusted" level (accounting for HNN steps needing level >= 1)
+- `derivation_max_step_level(data, steps, start)` — maximum level across all steps
+- `lemma_derivation_levels_ok_from_bounds` — if shift >= -min_adj and m >= max + shift, levels are OK
+- Generalized `step_level_ok`, `derivation_levels_ok`, `lemma_hnn_step_tower_equiv`, `lemma_hnn_derivation_to_tower_equiv` with `base_level: int` parameter
+- `lemma_translate_delete_middle` / `lemma_translate_insert_middle` generalized with `base_level`
 
-Z3 needs ~10 more intermediate assertions to connect:
-1. `tower_afp_data(data, k-1).p2 == data.base` (spec function unfolding)
-2. `shift(embed_a_hnn, tower(k-1).num_generators) =~= embed_a_tower` (shift distributivity already proven)
-3. The hnn_iso biconditional firing inside the if-blocks
+### Gap 4: Tower Isomorphism — CLOSED (Session 2)
 
-### Gap 3: Level Normalization (~50 lines)
+Weakened prerequisites from `tower_textbook_chain(data, k+1)` to `tower_textbook_chain(data, k)`.
 
-HNN derivations can have negative levels. The one-sided tower only handles levels [0, m]. Need either:
-- Prove derivations of base words can be normalized to non-negative levels
-- Or add a level-shift preprocessing step
+### Gaps 1+2: CLOSED (Session 2)
 
-### Gap 1+2+4: ALL CLOSED
+### Final Assembly (Session 3)
 
-With `lemma_tower_identifications_isomorphic` proven, `tower_textbook_chain` can now be established from `hnn_associations_isomorphic` alone (the `action_preserves_canonical` follows from `identifications_isomorphic` via `lemma_action_preserves_canonical_spec`).
-
-### Final Assembly
-
-After gap 3: update `britton_lemma` to remove `tower_textbook_chain` and `derivation_levels_ok` preconditions. The theorem becomes:
+- `lemma_iso_implies_apc`: universal `action_preserves_canonical(data)` from `identifications_isomorphic(data)`
+- `lemma_tower_textbook_chain_from_hnn_iso`: inductive tower prerequisites from `hnn_associations_isomorphic`
+- `lemma_copy_s_embeds`: generalized tower embedding for copy s (not just copy 0)
+- `britton_lemma_unconditional`: the final theorem
 
 ```
-britton_lemma(data, w):
+britton_lemma_unconditional(data, w):
     requires: hnn_data_valid(data), hnn_associations_isomorphic(data),
               word_valid(w, base.num_generators), equiv(hnn, w, empty)
     ensures: equiv(base, w, empty)

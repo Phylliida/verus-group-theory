@@ -5798,6 +5798,26 @@ proof fn lemma_action_preserves_canonical_from_iso(
     }
 }
 
+/// identifications_isomorphic implies action_preserves_canonical (universal statement).
+pub proof fn lemma_iso_implies_apc(data: AmalgamatedData)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+    ensures
+        action_preserves_canonical(data),
+{
+    assert forall|w: Word, h: Word, syls: Seq<Syllable>|
+        is_canonical_state(data, h, syls) &&
+        word_valid(w, data.p1.num_generators + data.p2.num_generators)
+    implies
+        is_canonical_state(data, act_word(data, w, h, syls).0, act_word(data, w, h, syls).1)
+    by {
+        lemma_action_preserves_canonical_from_iso(data, w, h, syls);
+    }
+}
+
 pub proof fn lemma_action_well_defined_proof(
     data: AmalgamatedData,
 )
