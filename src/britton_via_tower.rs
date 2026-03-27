@@ -3388,4 +3388,243 @@ proof fn lemma_translate_gen_base_inv(data: HNNData, g: Word, bl: int)
 }
 
 
+// --- X.10b: Max prefix level (re-added) ---
+
+/// Max prefix net level: max of net_level(w[0..k]) for k in [0, |w|].
+pub open spec fn max_prefix_level(data: HNNData, w: Word) -> int
+    decreases w.len(),
+{
+    if w.len() == 0 { 0 }
+    else {
+        let ng = data.base.num_generators;
+        let s = w.first();
+        let s_val = if s == Symbol::Gen(ng) { 1int }
+            else if s == Symbol::Inv(ng) { -1int }
+            else { 0int };
+        let rest_max = s_val + max_prefix_level(data, w.drop_first());
+        if rest_max > 0 { rest_max } else { 0 }
+    }
+}
+
+/// max_prefix_level ≥ 0 and bounds all prefix levels.
+proof fn lemma_max_prefix_bounds(data: HNNData, w: Word, k: int)
+    requires 0 <= k <= w.len(),
+    ensures
+        max_prefix_level(data, w) >= 0,
+        net_level(data, w.subrange(0, k)) <= max_prefix_level(data, w),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    } else if k == 0 {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+        let sw: Word = Seq::new(1, |_j: int| s);
+        assert(w.subrange(0, k) =~= concat(sw, rest.subrange(0, k - 1)));
+        lemma_net_level_concat(data, sw, rest.subrange(0, k - 1));
+        lemma_net_level_single(data, s);
+        lemma_max_prefix_bounds(data, rest, k - 1);
+    }
+}
+
+/// The max is achieved at some k.
+proof fn lemma_max_prefix_achieved(data: HNNData, w: Word)
+    ensures
+        exists|k: int| 0 <= k <= w.len()
+            && net_level(data, w.subrange(0, k)) == max_prefix_level(data, w),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    } else {
+        let ng = data.base.num_generators;
+        let s = w.first();
+        let rest = w.drop_first();
+        let s_val = if s == Symbol::Gen(ng) { 1int }
+            else if s == Symbol::Inv(ng) { -1int }
+            else { 0int };
+        let rest_max = s_val + max_prefix_level(data, rest);
+
+        if rest_max <= 0 {
+            assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+        } else {
+            lemma_max_prefix_achieved(data, rest);
+            let k_rest: int = choose|k: int| 0 <= k <= rest.len()
+                && net_level(data, rest.subrange(0, k)) == max_prefix_level(data, rest);
+            let k_w = k_rest + 1;
+            let sw: Word = Seq::new(1, |_j: int| s);
+            assert(w.subrange(0, k_w) =~= concat(sw, rest.subrange(0, k_rest)));
+            lemma_net_level_concat(data, sw, rest.subrange(0, k_rest));
+            lemma_net_level_single(data, s);
+        }
+    }
+}
+
+// --- X.11: Gen-Inv pair when max_prefix_level ≥ 1 ---
+
+/// Forward scan: find first k in [from, bound] achieving max after a drop.
+proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: int)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+        1 <= from <= bound <= w.len(),
+        net_level(data, w.subrange(0, bound)) == max_prefix_level(data, w),
+        net_level(data, w.subrange(0, from - 1)) < max_prefix_level(data, w),
+    ensures
+        exists|i: int, j: int|
+            has_adjacent_opposite_at(data, w, i, j)
+            && w[i] == Symbol::Gen(data.base.num_generators)
+            && w[j] == Symbol::Inv(data.base.num_generators),
+    decreases bound - from,
+{
+    let ng = data.base.num_generators;
+    let max_lev = max_prefix_level(data, w);
+    lemma_max_prefix_bounds(data, w, from);
+
+    if net_level(data, w.subrange(0, from)) == max_lev {
+        // First achiever after drop. Contribution = max - prev ≥ 1 → Gen.
+        let prev = w.subrange(0, from - 1);
+        let curr = w.subrange(0, from);
+        assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[from - 1])));
+        lemma_net_level_concat(data, prev, Seq::new(1, |_j: int| w[from - 1]));
+        lemma_net_level_single(data, w[from - 1]);
+        assert(w[from - 1] == Symbol::Gen(ng));
+
+        // Next stable after from: must be Inv (Gen would exceed max).
+        lemma_next_stable_props(data, w, from);
+        let ns = next_stable(data, w, from);
+
+        if ns >= w.len() {
+            // No stable after → suffix net = 0 → total = max ≥ 1 ≠ 0. Contradiction.
+            lemma_net_level_subrange_prefix(data, w, from);
+            let suffix = w.subrange(from, w.len() as int);
+            assert forall|k: int| 0 <= k < suffix.len()
+                implies !is_stable(data, #[trigger] suffix[k])
+            by { assert(suffix[k] == w[from + k]); }
+            lemma_net_level_no_stable(data, suffix, 0);
+            // net(w) = max + 0 = max ≥ 1 ≠ 0. Contradiction.
+        } else if w[ns] == Symbol::Gen(ng) {
+            // Level goes to max + 1 > max. Contradiction with max bound.
+            let mid = w.subrange(from, ns);
+            assert forall|k: int| 0 <= k < mid.len()
+                implies !is_stable(data, #[trigger] mid[k])
+            by { assert(mid[k] == w[from + k]); }
+            lemma_net_level_no_stable(data, mid, 0);
+            assert(w.subrange(0, ns + 1) =~=
+                concat(w.subrange(0, from), w.subrange(from, ns + 1)));
+            let tail = w.subrange(from, ns + 1);
+            assert(tail =~= concat(mid, Seq::new(1, |_j: int| w[ns])));
+            lemma_net_level_concat(data, mid, Seq::new(1, |_j: int| w[ns]));
+            lemma_net_level_single(data, w[ns]);
+            lemma_net_level_concat(data, w.subrange(0, from), tail);
+            lemma_max_prefix_bounds(data, w, ns + 1);
+        } else {
+            // Inv! Gen-Inv pair found.
+            assert(w[ns] == Symbol::Inv(ng));
+            assert(has_adjacent_opposite_at(data, w, from - 1, ns));
+        }
+    } else {
+        // from doesn't achieve max. net(w[0..from]) < max (since ≤ max and ≠ max).
+        // Recurse forward.
+        lemma_find_gen_inv_forward(data, w, from + 1, bound);
+    }
+}
+
+/// When max_prefix_level ≥ 1, there exists a Gen-Inv adjacent pair.
+proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+    ensures
+        exists|i: int, j: int|
+            has_adjacent_opposite_at(data, w, i, j)
+            && w[i] == Symbol::Gen(data.base.num_generators)
+            && w[j] == Symbol::Inv(data.base.num_generators),
+{
+    lemma_max_prefix_achieved(data, w);
+    let any_k: int = choose|k: int| 0 <= k <= w.len()
+        && net_level(data, w.subrange(0, k)) == max_prefix_level(data, w);
+    assert(any_k > 0) by {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    }
+    assert(net_level(data, w.subrange(0, 0int)) < max_prefix_level(data, w)) by {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    }
+    lemma_find_gen_inv_forward(data, w, 1, any_k);
+}
+
+// --- X.12: Full Britton's Lemma ---
+// Miller Thm 3.10, Lyndon-Schupp Ch. IV Thm 2.1.
+// Two cases: max_prefix_level ≥ 1 → Gen-Inv pair → right syllable.
+//            max_prefix_level = 0 → Inv-Gen pair → left syllable.
+// Both give syls ≠ [], contradicting act = (ε, []).
+
+/// **Britton's Lemma (Full):** If w ≡ ε in G* and w has stable letters, w has a pinch.
+pub proof fn britton_lemma_full(
+    data: HNNData, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        has_stable_letter(data, w),
+    ensures
+        has_pinch(data, w),
+{
+    if !has_pinch(data, w) {
+        // Step 1: net_level = 0
+        lemma_equiv_net_level_zero(data, w);
+
+        // Step 2: Find the right kind of adjacent pair
+        let max_lev = max_prefix_level(data, w);
+        lemma_max_prefix_bounds(data, w, 0);
+
+        if max_lev >= 1 {
+            // Case A: max ≥ 1 → Gen-Inv pair exists
+            lemma_gen_inv_pair_when_max_ge_1(data, w);
+            let pair_i: int = choose|i: int|
+                #[trigger] w[i] == Symbol::Gen(data.base.num_generators)
+                && exists|j: int| has_adjacent_opposite_at(data, w, i, j)
+                    && w[j] == Symbol::Inv(data.base.num_generators);
+            let pair_j: int = choose|j: int|
+                #[trigger] w[j] == Symbol::Inv(data.base.num_generators)
+                && has_adjacent_opposite_at(data, w, pair_i, j);
+
+            // Base word between the pair: not in B (since no pinch, Gen-Inv case)
+            assert(!has_pinch_at(data, w, pair_i, pair_j));
+
+            // TODO: Tower setup + decompose translate + show right_count ≥ 1
+            // This is the core textbook argument.
+            // For now, the pair finding is verified.
+            // The action argument will be added next.
+            assert(false); // PLACEHOLDER for the action argument
+        } else {
+            // Case B: max = 0 → word only goes down → use Inv-Gen pair + left syllable
+            // lemma_adjacent_opposite_exists gives some pair (must be Inv-Gen since no Gen-Inv)
+            lemma_adjacent_opposite_exists(data, w);
+            let pair_i: int = choose|i: int|
+                #[trigger] is_stable(data, w[i])
+                && exists|j: int| has_adjacent_opposite_at(data, w, i, j);
+            let pair_j: int = choose|j: int|
+                #[trigger] is_stable(data, w[j])
+                && has_adjacent_opposite_at(data, w, pair_i, j);
+
+            // This pair is Inv-Gen (since max = 0 means no Gen-Inv pair possible)
+            // Base word between: not in A (since no pinch, Inv-Gen case)
+            assert(!has_pinch_at(data, w, pair_i, pair_j));
+
+            // TODO: Tower setup + decompose translate + show left_count ≥ 1
+            // Symmetric to case A using lemma_act_g2_word_preserves_left_count.
+            assert(false); // PLACEHOLDER for the action argument
+        }
+    }
+}
+
 } // verus!
