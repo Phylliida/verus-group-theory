@@ -3251,4 +3251,85 @@ proof fn lemma_act_g2_word_preserves_left_count(
     }
 }
 
+// --- X.9: A-side subgroup helpers (dual of X.4) ---
+
+/// If a_rcoset_rep(g) = ε, then g is in the left subgroup (A).
+proof fn lemma_a_rcoset_empty_implies_in_left_subgroup(
+    data: AmalgamatedData, g: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        crate::normal_form_afp_textbook::a_rcoset_rep(data, g) =~= empty_word()
+            ==> crate::normal_form_amalgamated::in_left_subgroup(data, g),
+{
+    use crate::normal_form_afp_textbook::*;
+    if a_rcoset_rep(data, g) =~= empty_word() {
+        lemma_a_rcoset_rep_props(data, g);
+        assert(inverse_word(empty_word()) =~= empty_word()) by {
+            assert(inverse_word(empty_word()).len() == 0);
+        }
+        assert(concat(g, inverse_word(empty_word())) =~= g) by {
+            assert forall|k: int| 0 <= k < concat(g, empty_word()).len()
+                implies concat(g, empty_word())[k] == g[k] by {}
+        }
+    }
+}
+
+/// If g ∉ A and embed_a(h) ∈ A, then concat(g, embed_a(h)) ∉ A.
+proof fn lemma_not_in_left_subgroup_concat_embed_a(
+    data: AmalgamatedData, g: Word, h: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+        word_valid(h, crate::normal_form_afp_textbook::k_size(data)),
+        !crate::normal_form_amalgamated::in_left_subgroup(data, g),
+        forall|i: int| 0 <= i < crate::normal_form_afp_textbook::a_words(data).len()
+            ==> word_valid(
+                #[trigger] crate::normal_form_afp_textbook::a_words(data)[i],
+                data.p1.num_generators),
+    ensures
+        !crate::normal_form_amalgamated::in_left_subgroup(
+            data, concat(g, apply_embedding(
+                crate::normal_form_afp_textbook::a_words(data), h))),
+{
+    use crate::normal_form_afp_textbook::*;
+    use crate::normal_form_amalgamated::in_left_subgroup;
+    let embed = apply_embedding(a_words(data), h);
+    lemma_apply_embedding_valid(a_words(data), h, data.p1.num_generators);
+    lemma_apply_embedding_in_subgroup(data.p1, a_words(data), h);
+    assert(a_words(data) =~= Seq::new(data.identifications.len(), |i: int| data.identifications[i].0));
+    if in_left_subgroup(data, concat(g, embed)) {
+        let a_gens = a_words(data);
+        lemma_subgroup_right_cancel(data.p1, a_gens, g, embed);
+    }
+}
+
+
+
+// --- X.10: The Full Britton's Lemma Statement ---
+// The proof infrastructure is complete (96 lemmas verified).
+// The main theorem handles both Gen-Inv and Inv-Gen pairs symmetrically,
+// following Miller Thm 3.10 (Lyndon-Schupp Ch. IV Thm 2.1).
+//
+// The remaining proof body requires:
+// 1. Tower setup (bl, m from derivation bounds + word level bounds)
+// 2. translate(w, bl) ≡ ε in tower(m) via lemma_hnn_derivation_to_tower_equiv
+// 3. Peel to tower(L) where L = pair's shifted level
+// 4. At junction (L-1)↔L: act_word on translate(w) from (ε,[]) gives (ε,[])
+//    (from equiv to ε + act_word_deriv)
+// 5. But: the adjacent pair's base word creates a syllable
+//    (Gen-Inv → right syllable from g ∉ B + g2_one_shot;
+//     Inv-Gen → left syllable from g ∉ A + g1_one_shot)
+// 6. Preservation: right_count by G₁ (lemma_act_g1_word_preserves_right_count),
+//    left_count by G₂ (lemma_act_g2_word_preserves_left_count)
+// 7. For multi-visit: inter-visit G₁ not in A (from no-pinch on Inv-Gen pairs)
+//    creates left syllable, preventing G₂ merge
+// 8. Contradiction: syls ≠ [] but (ε,[]) has syls = []
+//
+// TODO: Implement the proof body. All building blocks are verified above.
+
 } // verus!
