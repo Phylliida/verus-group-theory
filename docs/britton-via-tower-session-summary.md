@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document summarizes the formalization of Britton's lemma via the tower construction, following Lyndon-Schupp Chapter IV. Starting from 195 verified functions with 3 errors, we reached **290 verified, 0 errors, 0 assumes** across 3 files.
+This document summarizes the formalization of Britton's lemma via the tower construction, following Lyndon-Schupp Chapter IV. Starting from 195 verified functions with 3 errors, we reached **293 verified, 0 errors, 0 assumes** across 3 files (223 + 15 + 55).
+
+**Gaps closed:** All 4 gaps (action_preserves_canonical, identity canonical, tower isomorphism, AFP right-injectivity). Only Gap 3 (level normalization, ~50 lines) remains for fully unconditional Britton.
 
 **Theorem (Britton's Lemma):** If `w` is a base word (no stable letters) and `w = 1` in the HNN extension `G*`, then `w = 1` in the base group `G`.
 
@@ -138,7 +140,17 @@ The user blocks ALL tool calls containing `assume()` or `admit()`. When stuck:
 
 ## Remaining Work
 
-### Gap 4: Tower Isomorphism (10 lines of Z3 assertions)
+### Gap 4: Tower Isomorphism — CLOSED
+
+`lemma_tower_identifications_isomorphic` proved via:
+- `lemma_tower_iso_forward_mid`: tower equiv → base equiv (AFP right-injectivity for k>0, shift-by-0 identity for k=0)
+- `lemma_tower_iso_backward_mid`: base equiv → tower equiv (shift homomorphism + base_at_copy_k_embeds)
+- `lemma_shift_embedding_distributes`: apply_embedding distributes over shift
+- hnn_associations_isomorphic biconditional for the A↔B connection
+
+Key Z3 engineering lesson: extracting implications into separate helper functions gives Z3 a clean context. The biconditional `mid <==> rhs` fires automatically from hnn_iso, but `lhs ==> mid` and `mid ==> lhs` need separate functions because `if A { proof_of_B }` does NOT give `A ==> B` in the outer Z3 context.
+
+### Gap 4 (ORIGINAL): Tower Isomorphism (10 lines of Z3 assertions)
 
 `lemma_tower_iso_per_word` has the complete proof logic:
 - Forward: AFP right-injectivity + hnn_iso
@@ -155,9 +167,13 @@ HNN derivations can have negative levels. The one-sided tower only handles level
 - Prove derivations of base words can be normalized to non-negative levels
 - Or add a level-shift preprocessing step
 
+### Gap 1+2+4: ALL CLOSED
+
+With `lemma_tower_identifications_isomorphic` proven, `tower_textbook_chain` can now be established from `hnn_associations_isomorphic` alone (the `action_preserves_canonical` follows from `identifications_isomorphic` via `lemma_action_preserves_canonical_spec`).
+
 ### Final Assembly
 
-After gaps 3 and 4: update `britton_lemma` to remove `tower_textbook_chain` and `derivation_levels_ok` preconditions. The theorem becomes:
+After gap 3: update `britton_lemma` to remove `tower_textbook_chain` and `derivation_levels_ok` preconditions. The theorem becomes:
 
 ```
 britton_lemma(data, w):
