@@ -3670,81 +3670,173 @@ proof fn lemma_gen_inv_action_contradiction(
         lemma_net_level_single(data, w[pair_i]);
     }
 
-    // --- Peel down to tower(pair_level) ---
-    // tw is word_valid for tower(m). Need it for tower(pair_level).
-    // pair_level = bl + prefix_level + 1. Max shifted level = bl + max_prefix_level.
-    // Need: pair_level ≥ max shifted level, i.e., prefix_level + 1 ≥ max_prefix_level.
-    // This is true when the Gen-Inv pair is at the max prefix level:
-    // net_level(w[0..pair_i+1]) = prefix_level + 1 = max_prefix_level
-    // (from the forward scan which finds the pair at the max level).
-    // So pair_level = bl + max_prefix_level = max shifted level.
+    // --- pair_level = bl + max_prefix_level (from max-level precondition) ---
+    let max_pref = max_prefix_level(data, w);
+    // net_level(w[0..pair_i+1]) = max_pref (from requires)
+    // prefix_level = net_level(w[0..pair_i])
+    // net_level(w[0..pair_i+1]) = prefix_level + 1 (Gen contributes +1)
+    lemma_net_level_subrange_prefix(data, w, pair_i);
+    let w_to_gen = w.subrange(pair_i, w.len() as int);
+    lemma_net_level_subrange_prefix(data, w_to_gen, 1);
+    assert(w_to_gen.subrange(0, 1) =~= Seq::new(1, |_j: int| w[pair_i]));
+    lemma_net_level_single(data, w[pair_i]);
+    assert(w.subrange(0, pair_i + 1) =~=
+        concat(w.subrange(0, pair_i), Seq::new(1, |_j: int| w[pair_i])));
+    lemma_net_level_concat(data, w.subrange(0, pair_i),
+        Seq::new(1, |_j: int| w[pair_i]));
+    assert(prefix_level + 1 == max_pref);
+    assert(pair_level == (bl + max_pref) as nat);
 
-    // For the peel: tw valid for tower(pair_level) requires all generators < (pair_level+1)*ng.
-    // The max shifted level = bl + max_prefix_level = pair_level.
-    // So all generators in tw are at levels ≤ pair_level. ✓
-    // Need to prove: tw is word_valid for tower(pair_level).
-    // Since pair_level ≤ m and tw is valid for tower(m), we need the stronger
-    // bound that tw's generators are ≤ pair_level (not just ≤ m).
+    // --- tw is word_valid for tower(pair_level) ---
+    // All shifted running levels ≤ bl + max_pref = pair_level.
+    assert forall|k: int| #![trigger w.subrange(0, k)]
+        0 <= k <= w.len() ==>
+        0 <= bl as int + net_level(data, w.subrange(0, k)) <= pair_level as int
+    by {
+        if 0 <= k && k <= w.len() {
+            lemma_prefix_level_bounded_by_k(data, w, k);
+            lemma_max_prefix_bounds(data, w, k);
+        }
+    }
+    lemma_translate_word_valid_for_level(data, w, bl as int, pair_level);
 
-    // For this: need net_level(w[0..pair_i+1]) = max_prefix_level.
-    // I.e., prefix_level + 1 = max_prefix_level.
-    // The Gen-Inv pair from lemma_gen_inv_pair_when_max_ge_1 is at the max level.
-    // From the forward scan: the pair is found where level first reaches max.
-    // So net_level(w[0..pair_i+1]) = max_prefix_level. ✓
-    // But we didn't carry this fact through the choose. Let me assert it.
+    // --- Peel: tw ≡ ε in tower(pair_level) ---
+    lemma_tower_injectivity_peel(data, pair_level, m, tw);
 
-    // Actually, we don't have this assertion from the choose.
-    // The choose just gives us SOME Gen-Inv pair, not necessarily at max level.
-    // We need to either carry the max-level property through, or prove it here.
+    // --- AFP at junction (pair_level-1)↔pair_level ---
+    let junc = (pair_level - 1) as nat;
+    let afp = tower_afp_data(data, junc);
+    assert(tower_textbook_prereqs_at(data, junc));
+    lemma_tower_afp_data_valid(data, junc);
+    lemma_tower_valid(data, junc);
+    lemma_tower_num_generators(data, junc);
+    reveal(presentation_valid);
 
-    // For now: use the fact that pair_level ≤ m and tw valid for tower(m).
-    // Peel from tower(m) to tower(pair_level).
-    // For the peel: need tw valid for tower(pair_level).
-    // This requires ALL generators in tw to be < (pair_level + 1) * ng.
-    // From lemma_translate_word_valid_for_level with m = pair_level:
-    // need all shifted running levels ≤ pair_level.
-    // Shifted running level at position k = bl + net_level(w[0..k]) ≤ bl + max_prefix_level.
-    // We need bl + max_prefix_level ≤ pair_level = bl + prefix_level + 1.
-    // I.e., max_prefix_level ≤ prefix_level + 1.
-    // Since prefix_level + 1 = net_level(w[0..pair_i+1]) ≤ max_prefix_level:
-    // we need max_prefix_level ≤ max_prefix_level. ✓ (equality).
-    // So: prefix_level + 1 = max_prefix_level.
+    let iso_data = afp;
+    lemma_iso_implies_apc(afp);
+    lemma_action_well_defined_proof(afp);
 
-    // I'll need to add this as a precondition or prove it from the pair's properties.
-    // For now, let me add it as a requires and fix the caller.
+    // --- act(tw, ε, []) = (ε, []) ---
+    // tw ≡ ε in tower(pair_level) = amalgamated_free_product(afp)
+    // By well-definedness: act(tw, ε, []) = act(ε, ε, []) = (ε, [])
+    lemma_identity_state_canonical(afp);
+    let empty_h = empty_word();
+    let empty_syls = Seq::<Syllable>::empty();
 
-    // ACTUALLY: lemma_find_gen_inv_forward ensures the pair is at the position where
-    // level first reaches max. From its proof: net_level(w[0..from]) = max at the
-    // position where pair_i = from - 1. So net_level(w[0..pair_i+1]) = max.
-    // But this isn't carried through the choose in britton_lemma_full.
+    // Get the derivation in tower(pair_level)
+    let d_tower: Derivation = choose|d: Derivation|
+        derivation_valid(tower_presentation(data, pair_level), d, tw, empty_word());
+    lemma_act_word_deriv(afp, d_tower.steps, tw, empty_word(),
+        empty_h, empty_syls);
+    lemma_act_word_empty(afp, empty_h, empty_syls);
+    // So: act(tw, ε, []) = (ε, [])
+    let (h_result, syls_result) = act_word(afp, tw, empty_h, empty_syls);
+    assert(h_result =~= empty_h);
+    assert(syls_result =~= empty_syls);
+    assert(right_syllable_count(syls_result) == 0);
 
-    // To fix: strengthen lemma_gen_inv_pair_when_max_ge_1 to also ensure
-    // net_level(w[0..pair_i+1]) = max_prefix_level. Then carry through choose.
+    // --- Decompose w at the pair → translate has a G₂ segment ---
+    // w = w[0..pair_i] · Gen · base_word · Inv · w[pair_j+1..n]
+    let w_prefix = w.subrange(0, pair_i);
+    let base_word = w.subrange(pair_i + 1, pair_j);
+    let w_suffix = w.subrange(pair_j + 1, w.len() as int);
+    let gen_sym: Word = Seq::new(1, |_j: int| Symbol::Gen(ng));
+    let inv_sym: Word = Seq::new(1, |_j: int| Symbol::Inv(ng));
+    let mid_segment = concat(gen_sym, concat(base_word, inv_sym));
 
-    // For now: let me just add this assertion and see if it verifies.
-    // If not, I'll strengthen the pair-finding lemma.
+    // w = w_prefix · mid_segment · w_suffix
+    // (This decomposition is used for the translate_concat)
 
-    // TEMPORARY: assert the max-level property
-    // This should follow from the pair being at the max level.
-    lemma_max_prefix_bounds(data, w, pair_i + 1);
-    // net_level(w[0..pair_i+1]) ≤ max_prefix_level ✓
-    // Need equality. Can't prove without stronger pair-finding ensures.
+    // Base word is valid for base group
+    assert(word_valid(base_word, ng)) by {
+        assert forall|k: int| 0 <= k < base_word.len()
+            implies symbol_valid(#[trigger] base_word[k], ng)
+        by {
+            let wk = pair_i + 1 + k;
+            assert(base_word[k] == w[wk]);
+            assert(!is_stable(data, w[wk]));
+            match w[wk] {
+                Symbol::Gen(idx) => { assert(idx < ng); }
+                Symbol::Inv(idx) => { assert(idx < ng); }
+            }
+        }
+    }
 
-    // ALTERNATIVE: don't peel. Work at tower(m) directly.
-    // At junction (m-1)↔m: tw is valid. But the pair might not be G₂ at this junction.
-    // The pair is G₂ at junction (pair_level-1)↔pair_level, not at (m-1)↔m.
+    // translate(mid_segment, bl + prefix_level) = shift(base_word, pair_level * ng)
+    // (from lemma_translate_gen_base_inv)
+    lemma_translate_gen_base_inv(data, base_word, bl as int + prefix_level);
+    // The shifted base word is G₂ at junction junc↔pair_level.
 
-    // CLEANEST FIX: strengthen the pair-finding ensures.
-    // Add: net_level(w[0..i+1]) == max_prefix_level.
-    // Then pair_level = bl + max_prefix_level.
-    // And tw is valid for tower(pair_level) by the level bounds.
+    // --- translate decomposes via concat ---
+    // translate(w, bl) = translate(w_prefix, bl) · translate(mid · suffix, bl + net_level(prefix))
+    // = translate(w_prefix, bl) · translate(mid, bl + prefix_level) · translate(suffix, bl + prefix_level + net_level(mid))
+    // Since net_level(mid) = 0: translate(suffix, bl + prefix_level)
+    // translate(w, bl) = tw_prefix · shift(base_word, pair_level*ng) · tw_suffix
 
-    // For now, I'll restructure to pass the max-level property through.
-    // This requires modifying lemma_gen_inv_pair_when_max_ge_1.
-    // Let me do that.
+    let tw_prefix = translate_word_at(data, w_prefix, bl as int);
+    let tw_g2 = shift_word(base_word, (pair_level * ng) as nat);
+    let tw_suffix = translate_word_at(data, w_suffix, bl as int + prefix_level);
 
-    // PLACEHOLDER for the rest of the argument
-    assert(false); // Will be replaced after strengthening pair-finding
+    // The decomposition:
+    assert(w =~= concat(w_prefix, concat(mid_segment, w_suffix))) by {
+        assert(w.len() == w_prefix.len() + mid_segment.len() + w_suffix.len());
+        assert forall|k: int| 0 <= k < w.len()
+            implies w[k] == concat(w_prefix, concat(mid_segment, w_suffix))[k]
+        by {
+            if k < pair_i {
+                assert(w[k] == w_prefix[k]);
+            } else if k == pair_i {
+                assert(w[k] == Symbol::Gen(ng));
+            } else if k < pair_j {
+                assert(w[k] == base_word[k - pair_i - 1]);
+            } else if k == pair_j {
+                assert(w[k] == Symbol::Inv(ng));
+            } else {
+                assert(w[k] == w_suffix[k - pair_j - 1]);
+            }
+        }
+    }
+
+    // translate distributes
+    lemma_translate_concat(data, w_prefix, concat(mid_segment, w_suffix), bl as int);
+    lemma_net_level_base_word(data, w_prefix);
+
+    // Hmm, w_prefix might not be a base word (it could have stable letters).
+    // net_level(w_prefix) = prefix_level (not necessarily 0).
+    // Actually w_prefix = w[0..pair_i], and prefix_level = net_level(w[0..pair_i]).
+
+    lemma_translate_concat(data, mid_segment, w_suffix,
+        bl as int + prefix_level);
+
+    // net_level(mid_segment) = 0 (from lemma_translate_gen_base_inv)
+    // So translate(w_suffix, bl + prefix_level + 0) = translate(w_suffix, bl + prefix_level)
+
+    assert(tw =~= concat(tw_prefix, concat(tw_g2, tw_suffix)));
+
+    // --- Now: act_word(afp, tw, ε, []) decomposes ---
+    // act(tw, ε, []) = act(tw_prefix, act(tw_g2 · tw_suffix, ε, []))
+    //                = act(tw_prefix, act(tw_g2, act(tw_suffix, ε, [])))
+
+    // Step A: act(tw_suffix, ε, [])
+    // tw_suffix is at levels ≤ pair_level - 1 (since suffix has levels ≤ max-1).
+    // At junction junc↔pair_level: tw_suffix is G₁.
+    // right_count preserved at 0.
+    // (We'd need to prove tw_suffix is G₁ and call lemma_act_g1_word_preserves_right_count.)
+
+    // Step B: act(tw_g2, state_from_A)
+    // tw_g2 = shift(base_word, pair_level*ng) is G₂.
+    // By lemma_act_word_eq_g2_one_shot: act = g2_one_shot(concat(base_word, embed_b(h_A)), syls_A).
+    // base_word ∉ B (no pinch) → product ∉ B → rep ≠ ε → creates right syllable.
+    // right_count = 1.
+
+    // Step C: act(tw_prefix, state_from_B)
+    // tw_prefix has both G₁ and G₂ parts. G₁ preserves right_count.
+    // G₂ might merge. Need inter-visit argument for general case.
+    // For the single-visit case: prefix is all G₁ → right_count preserved.
+
+    // For now: the full argument requires more work (multi-visit handling).
+    // The structure is in place. Assert false as the remaining gap.
+    assert(false); // TODO: Complete steps A, B, C with formal proofs
 }
 
 /// **Britton's Lemma (Full):** If w ≡ ε in G* and w has stable letters, w has a pinch.
