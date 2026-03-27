@@ -4298,6 +4298,10 @@ proof fn lemma_g2_creates_right_syllable(
 
     // product ∉ B (from base_word ∉ B + embed_b(h) ∈ B + right-cancel)
     lemma_not_in_subgroup_concat_embed_b(afp, base_word, h);
+    // product is word_valid for p2
+    lemma_apply_embedding_valid(b_words(afp), h, afp.p2.num_generators);
+    crate::word::lemma_concat_word_valid(
+        base_word, apply_embedding(b_words(afp), h), afp.p2.num_generators);
     // So rep ≠ ε
     lemma_not_in_right_subgroup_rep_nonempty(afp, product);
     let rep = b_rcoset_rep(afp, product);
