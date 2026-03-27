@@ -817,10 +817,169 @@ pub proof fn lemma_base_at_copy_k_embeds(
 // - The Seq::new closure matching for a_words_tower vs shifted a_words_hnn
 //   is the technical blocker (same issue as inverse_word_len was before finding it in word.rs)
 
-// Remaining: ~30 lines to prove lemma_tower_identifications_isomorphic
-// using the shift-embedding distributivity:
-//   apply_embedding(shift_each(a_words, k*ng), w) =~= shift(apply_embedding(a_words, w), k*ng)
-// Once proven: forward uses AFP right-injectivity + hnn_iso, backward uses base_at_copy_k_embeds + hnn_iso.
+/// Shift-embedding distributivity: embedding with shifted images = shift of embedding.
+/// apply_embedding(shift_each(images, offset), w) =~= shift(apply_embedding(images, w), offset)
+/// Shift-embedding distributivity: embedding with shifted images = shift of embedding.
+/// Takes shifted_images as parameter to avoid Seq::new closure mismatch in ensures.
+proof fn lemma_shift_embedding_distributes(
+    images: Seq<Word>, shifted_images: Seq<Word>, w: Word, offset: nat,
+)
+    requires
+        shifted_images.len() == images.len(),
+        word_valid(w, images.len()),
+        forall|i: int| 0 <= i < images.len() ==>
+            #[trigger] shifted_images[i] =~= shift_word(images[i], offset),
+    ensures
+        apply_embedding(shifted_images, w)
+            =~= shift_word(apply_embedding(images, w), offset),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        lemma_shift_embedding_distributes(images, shifted_images, w.drop_first(), offset);
+        let s = w.first();
+        crate::free_product::lemma_shift_concat(
+            apply_embedding_symbol(images, s),
+            apply_embedding(images, w.drop_first()), offset);
+        // Trigger the forall for the specific symbol index and establish symbol-level =~=
+        match s {
+            Symbol::Gen(i) => {
+                assert(shifted_images[i as int] =~= shift_word(images[i as int], offset));
+            }
+            Symbol::Inv(i) => {
+                assert(shifted_images[i as int] =~= shift_word(images[i as int], offset));
+                crate::free_product::lemma_shift_inverse_word(images[i as int], offset);
+            }
+        }
+    }
+}
+
+/// Tower identifications_isomorphic from hnn_associations_isomorphic.
+/// Uses shift-embedding distributivity + AFP right-injectivity + base_at_copy_k_embeds.
+#[verifier::rlimit(300)]
+/// Helper: per-word proof of the tower isomorphism biconditional.
+#[verifier::rlimit(300)]
+proof fn lemma_tower_iso_per_word(
+    data: HNNData, k: nat, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        tower_textbook_chain(data, k + 1),
+        word_valid(w, data.associations.len() as nat),
+    ensures ({
+        let afp_data = tower_afp_data(data, k);
+        let a_words_tower = Seq::new(afp_data.identifications.len(), |i: int| afp_data.identifications[i].0);
+        let b_words_tower = Seq::new(afp_data.identifications.len(), |i: int| afp_data.identifications[i].1);
+        equiv_in_presentation(afp_data.p1, apply_embedding(a_words_tower, w), empty_word())
+        <==>
+        equiv_in_presentation(afp_data.p2, apply_embedding(b_words_tower, w), empty_word())
+    }),
+{
+    let ng = data.base.num_generators;
+    let afp_data = tower_afp_data(data, k);
+    let kk = data.associations.len();
+    reveal(presentation_valid);
+
+    let ident_len = afp_data.identifications.len();
+    assert(ident_len == kk);
+    let a_words_hnn = Seq::new(kk, |i: int| data.associations[i].0);
+    let b_words_hnn = Seq::new(kk, |i: int| data.associations[i].1);
+    // Use ident_len to match ensures clause's Seq::new
+    let a_words_tower = Seq::new(ident_len, |i: int| afp_data.identifications[i].0);
+    let b_words_tower = Seq::new(ident_len, |i: int| afp_data.identifications[i].1);
+
+    // Element-wise: a_words_tower[i] = shift(a_words_hnn[i], k*ng) and b_words_tower[i] = b_words_hnn[i]
+    assert forall|i: int| 0 <= i < kk implies
+        afp_data.identifications[i].1 == data.associations[i].1 by {}
+    assert forall|i: int| 0 <= i < kk implies
+        #[trigger] b_words_tower[i] =~= b_words_hnn[i] by {}
+    assert(b_words_tower =~= b_words_hnn);
+
+    // Shift-embedding distributivity
+    assert forall|i: int| 0 <= i < a_words_hnn.len() implies
+        #[trigger] a_words_tower[i] =~= shift_word(a_words_hnn[i], k * ng) by {}
+    lemma_shift_embedding_distributes(a_words_hnn, a_words_tower, w, k * ng);
+    let embed_a_hnn = apply_embedding(a_words_hnn, w);
+
+    // word_valid for embed_a_hnn
+    assert forall|j: int| 0 <= j < a_words_hnn.len()
+        implies word_valid(#[trigger] a_words_hnn[j], ng)
+    by { assert(word_valid(data.associations[j].0, ng)); }
+    lemma_apply_embedding_valid(a_words_hnn, w, ng);
+
+    let embed_a_tower = apply_embedding(a_words_tower, w);
+    let embed_b_tower = apply_embedding(b_words_tower, w);
+
+    // Connect embed_b_tower to embed_b_hnn (shift by 0 = identity)
+    assert forall|i: int| 0 <= i < b_words_hnn.len() implies
+        #[trigger] b_words_tower[i] =~= shift_word(b_words_hnn[i], 0nat) by {}
+    lemma_shift_embedding_distributes(b_words_hnn, b_words_tower, w, 0nat);
+    // embed_b_tower =~= shift(embed_b_hnn, 0) =~= embed_b_hnn
+    assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
+
+    // HNN biconditional (should fire from hnn_associations_isomorphic)
+    assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word())
+        <==> equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
+
+    // Forward: equiv(tower(k), embed_a_tower, ε) → equiv(base, embed_b_tower, ε)
+    if equiv_in_presentation(afp_data.p1, embed_a_tower, empty_word()) {
+        // embed_a_tower =~= shift(embed_a_hnn, k*ng) ≡ ε in tower(k) → embed_a_hnn ≡ ε in base
+        if k == 0 {
+            assert(k * ng == 0) by (nonlinear_arith) requires k == 0;
+            // shift by 0 = identity → embed_a_tower =~= embed_a_hnn → equiv(base, embed_a_hnn, ε)
+        } else {
+            assert(tower_textbook_prereqs_at(data, (k - 1) as nat));
+            lemma_tower_afp_data_valid(data, (k - 1) as nat);
+            lemma_tower_valid(data, (k - 1) as nat);
+            lemma_tower_num_generators(data, (k - 1) as nat);
+            crate::normal_form_afp_textbook::lemma_afp_injectivity_right(
+                tower_afp_data(data, (k - 1) as nat), embed_a_hnn);
+        }
+        // Now equiv(base, embed_a_hnn, ε) → equiv(base, embed_b_hnn, ε) by hnn_iso
+        // And embed_b_tower =~= embed_b_hnn → equiv(base, embed_b_tower, ε)
+    }
+
+    // Backward: equiv(base, embed_b_tower, ε) → equiv(tower(k), embed_a_tower, ε)
+    if equiv_in_presentation(afp_data.p2, embed_b_tower, empty_word()) {
+        assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
+        assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word()));
+        lemma_base_at_copy_k_embeds(data, k, k, embed_a_hnn, empty_word());
+    }
+
+    // Assert postcondition explicitly
+    assert(equiv_in_presentation(afp_data.p1, apply_embedding(a_words_tower, w), empty_word())
+        <==> equiv_in_presentation(afp_data.p2, apply_embedding(b_words_tower, w), empty_word()));
+}
+
+pub proof fn lemma_tower_identifications_isomorphic(
+    data: HNNData, k: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        tower_textbook_chain(data, k + 1),
+    ensures
+        crate::normal_form_amalgamated::identifications_isomorphic(tower_afp_data(data, k)),
+{
+    let ng = data.base.num_generators;
+    let afp_data = tower_afp_data(data, k);
+    let kk = afp_data.identifications.len();
+    reveal(presentation_valid);
+
+    assert(kk == data.associations.len());
+    assert forall|w: Word| word_valid(w, kk as nat) implies (
+        equiv_in_presentation(afp_data.p1,
+            apply_embedding(Seq::new(kk, |i: int| afp_data.identifications[i].0), w),
+            empty_word())
+        <==>
+        equiv_in_presentation(afp_data.p2,
+            apply_embedding(Seq::new(kk, |i: int| afp_data.identifications[i].1), w),
+            empty_word()))
+    by {
+        lemma_tower_iso_per_word(data, k, w);
+    }
+}
 
 /// A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
 proof fn lemma_translate_base_pair_trivial(
