@@ -2927,4 +2927,179 @@ proof fn lemma_not_in_subgroup_concat_embed_b(
     }
 }
 
+// --- X.5: Tower injectivity (peeling) ---
+
+/// If w is a word in tower(k) and w ≡ ε in tower(m), then w ≡ ε in tower(k).
+/// (Tower embedding is injective.)
+pub proof fn lemma_tower_injectivity_peel(
+    data: HNNData, k: nat, m: nat, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        k <= m,
+        tower_textbook_chain(data, m),
+        word_valid(w, tower_presentation(data, k).num_generators),
+        equiv_in_presentation(tower_presentation(data, m), w, empty_word()),
+    ensures
+        equiv_in_presentation(tower_presentation(data, k), w, empty_word()),
+    decreases m - k,
+{
+    if k == m {
+    } else {
+        let prev = (m - 1) as nat;
+        assert(tower_textbook_prereqs_at(data, prev));
+        lemma_tower_afp_data_valid(data, prev);
+        lemma_tower_valid(data, prev);
+        lemma_tower_num_generators(data, prev);
+        lemma_tower_num_generators(data, k);
+        reveal(presentation_valid);
+
+        // w is word_valid for tower(k), weaken to tower(prev) since k ≤ prev
+        assert(word_valid(w, tower_presentation(data, prev).num_generators)) by {
+            assert((k + 1) * data.base.num_generators
+                <= (prev + 1) * data.base.num_generators)
+                by(nonlinear_arith) requires k <= prev;
+            assert forall|i: int| 0 <= i < w.len()
+                implies symbol_valid(#[trigger] w[i],
+                    tower_presentation(data, prev).num_generators)
+            by {}
+        }
+
+        // AFP left-injectivity: w ∈ tower(prev) ≡ G₁, w ≡ ε in AFP → w ≡ ε in tower(prev)
+        crate::normal_form_afp_textbook::lemma_afp_injectivity(
+            tower_afp_data(data, prev), w);
+
+        assert(tower_textbook_chain(data, prev)) by {
+            assert forall|k2: nat| k2 < prev
+                implies #[trigger] tower_textbook_prereqs_at(data, k2)
+            by { assert(k2 < m); }
+        }
+        lemma_tower_injectivity_peel(data, k, prev, w);
+    }
+}
+
+// --- X.6: Translate word_valid for the word's own levels ---
+
+/// translate_word_at produces a valid word for tower(m) when the running
+/// levels stay in [0, m].
+proof fn lemma_translate_word_valid_for_level(
+    data: HNNData, w: Word, bl: int, m: nat,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        // All shifted running levels in [0, m]
+        forall|k: int| #![trigger w.subrange(0, k)]
+            0 <= k <= w.len() ==>
+            0 <= bl + net_level(data, w.subrange(0, k)) <= m as int,
+    ensures
+        word_valid(translate_word_at(data, w, bl),
+            tower_presentation(data, m).num_generators),
+    decreases w.len(),
+{
+    let ng = data.base.num_generators;
+    let hp = hnn_presentation(data);
+    lemma_tower_num_generators(data, m);
+    let n_tower = tower_presentation(data, m).num_generators;
+    assert(n_tower == (m + 1) * ng);
+
+    if w.len() == 0 {
+        assert(translate_word_at(data, w, bl) =~= empty_word());
+    } else {
+        let s = w.first();
+        let rest = w.drop_first();
+
+        // rest is word_valid for hp
+        assert(word_valid(rest, hp.num_generators)) by {
+            assert forall|k: int| 0 <= k < rest.len()
+                implies symbol_valid(#[trigger] rest[k], hp.num_generators)
+            by { assert(rest[k] == w[k + 1]); }
+        }
+
+        // Transfer the running level bounds to rest
+        assert forall|k: int| #![trigger rest.subrange(0, k)]
+            0 <= k <= rest.len()
+            implies ({
+                let new_bl = bl + (
+                    if s == Symbol::Gen(ng) { 1int }
+                    else if s == Symbol::Inv(ng) { -1int }
+                    else { 0int }
+                );
+                0 <= new_bl + net_level(data, rest.subrange(0, k)) <= m as int
+            })
+        by {
+            let prefix_rest = rest.subrange(0, k);
+            let prefix_w = w.subrange(0, k + 1);
+            assert(prefix_w.subrange(1, prefix_w.len() as int) =~= prefix_rest);
+            assert(prefix_w =~= Seq::new(1, |_j: int| s) + prefix_rest);
+            lemma_net_level_concat(data, Seq::new(1, |_j: int| s), prefix_rest);
+            lemma_net_level_single(data, s);
+            // net_level(w.subrange(0, k+1)) = net_level([s]) + net_level(rest.subrange(0, k))
+            assert(w.subrange(0, k + 1) =~= prefix_w);
+        }
+
+        if s == Symbol::Gen(ng) {
+            lemma_translate_word_valid_for_level(data, rest, bl + 1, m);
+        } else if s == Symbol::Inv(ng) {
+            lemma_translate_word_valid_for_level(data, rest, bl - 1, m);
+        } else {
+            // Base symbol: translate = [shifted_s] ++ translate(rest)
+            lemma_translate_word_valid_for_level(data, rest, bl, m);
+            let shifted_s = match s {
+                Symbol::Gen(i) => Symbol::Gen((i + bl * ng) as nat),
+                Symbol::Inv(i) => Symbol::Inv((i + bl * ng) as nat),
+            };
+            // shifted_s is valid for tower(m)
+            // generator index = i + bl*ng where i < ng and 0 <= bl <= m
+            // So index < ng + m*ng = (m+1)*ng = n_tower
+            assert(bl >= 0) by {
+                // From the level bounds: bl + net_level(w.subrange(0, 0)) >= 0
+                // net_level(w.subrange(0, 0)) = net_level(ε) = 0
+                assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+            }
+            assert(bl <= m as int) by {
+                assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+            }
+            // shifted_s has index i + bl*ng. Need i + bl*ng < (m+1)*ng.
+            // Since i < ng, bl >= 0, bl <= m: i + bl*ng < ng + m*ng = (m+1)*ng. ✓
+            assert(bl * (ng as int) <= (m as int) * (ng as int))
+                by(nonlinear_arith) requires bl >= 0, bl <= m as int;
+            assert(symbol_valid(shifted_s, n_tower)) by {
+                match s {
+                    Symbol::Gen(i) => {
+                        assert(i < ng);
+                        assert(i as int + bl * (ng as int) >= 0);
+                        assert(i as int + bl * (ng as int)
+                            < (ng as int) + (m as int) * (ng as int));
+                        assert((ng as int) + (m as int) * (ng as int)
+                            == ((m as int) + 1) * (ng as int))
+                            by(nonlinear_arith);
+                    }
+                    Symbol::Inv(i) => {
+                        assert(i < ng);
+                        assert(i as int + bl * (ng as int) >= 0);
+                        assert(i as int + bl * (ng as int)
+                            < (ng as int) + (m as int) * (ng as int));
+                        assert((ng as int) + (m as int) * (ng as int)
+                            == ((m as int) + 1) * (ng as int))
+                            by(nonlinear_arith);
+                    }
+                }
+            }
+            let tw_rest = translate_word_at(data, rest, bl);
+            let tw = translate_word_at(data, w, bl);
+            assert(tw =~= concat(Seq::new(1, |_j: int| shifted_s), tw_rest));
+            assert forall|k: int| 0 <= k < tw.len()
+                implies symbol_valid(#[trigger] tw[k], n_tower)
+            by {
+                if k == 0 {
+                    assert(tw[0] == shifted_s);
+                } else {
+                    assert(tw[k] == tw_rest[k - 1]);
+                }
+            }
+        }
+    }
+}
+
 } // verus!
