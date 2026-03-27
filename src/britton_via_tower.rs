@@ -4585,6 +4585,26 @@ pub open spec fn leading_part(data: HNNData, w: Word) -> Word {
 
 // --- Y.5: Segment properties ---
 
+/// last_stable_pos is in [-1, w.len()-1] and if ≥ 0, w[lsp] is stable.
+proof fn lemma_last_stable_pos_bounds(data: HNNData, w: Word)
+    ensures
+        -1 <= last_stable_pos(data, w) < w.len() as int,
+        last_stable_pos(data, w) >= 0 ==>
+            is_stable(data, w[last_stable_pos(data, w)]),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+    } else {
+        lemma_last_stable_pos_bounds(data, w.drop_last());
+        let lsp_dl = last_stable_pos(data, w.drop_last());
+        assert(last_stable_pos(data, w) == lsp_dl);
+        if lsp_dl >= 0 {
+            assert(w.drop_last()[lsp_dl] == w[lsp_dl]);
+        }
+    }
+}
+
 /// w = leading_part(w) · trailing_segment(w).
 proof fn lemma_segment_partition(data: HNNData, w: Word)
     ensures
@@ -4617,20 +4637,16 @@ proof fn lemma_segment_partition(data: HNNData, w: Word)
             assert(leading_part(data, w) =~= empty_word());
             assert(trailing_segment(data, w) =~= w);
         } else {
+            lemma_last_stable_pos_bounds(data, w);
             let lead = w.subrange(0, lsp + 1);
             let trail = w.subrange(lsp + 1, w.len() as int);
             assert(leading_part(data, w) =~= lead);
             assert(trailing_segment(data, w) =~= trail);
             assert(w =~= concat(lead, trail)) by {
-                assert(concat(lead, trail).len() == w.len());
                 assert forall|k: int| 0 <= k < w.len()
                     implies w[k] == concat(lead, trail)[k]
                 by {
-                    if k < lsp + 1 {
-                        assert(w[k] == lead[k]);
-                    } else {
-                        assert(w[k] == trail[k - (lsp + 1)]);
-                    }
+                    if k <= lsp {} else {}
                 }
             }
         }
@@ -4667,15 +4683,16 @@ proof fn lemma_trailing_no_stable(data: HNNData, w: Word)
                 lemma_no_stable_when_lsp_neg(data, w, k);
             }
         } else {
+            lemma_last_stable_pos_bounds(data, w);
             assert(ts =~= w.subrange(lsp + 1, w.len() as int));
             assert forall|k: int| 0 <= k < ts.len()
                 implies !is_stable(data, #[trigger] ts[k])
             by {
-                let pos = lsp + 1 + k;
-                assert(ts[k] == w[pos]);
+                let pos = (lsp + 1 + k) as int;
+                assert(0 <= pos && pos < w.len());
                 assert(pos > lsp);
-                assert(pos < w.len());
                 lemma_no_stable_after_lsp(data, w, pos);
+                assert(ts[k] == w[pos]);
             }
         }
     }
@@ -4726,6 +4743,46 @@ proof fn lemma_no_stable_after_lsp(data: HNNData, w: Word, pos: int)
     }
 }
 
+/// stable_count distributes over concat.
+proof fn lemma_stable_count_concat(data: HNNData, a: Word, b: Word)
+    ensures stable_count(data, concat(a, b))
+        == stable_count(data, a) + stable_count(data, b),
+    decreases b.len(),
+{
+    if b.len() == 0 {
+        assert(concat(a, b) =~= a);
+    } else {
+        let ab = concat(a, b);
+        // concat(a, b).last() == b.last()
+        assert(ab.last() == b.last()) by {
+            assert(ab[ab.len() - 1] == b[b.len() - 1]);
+        }
+        // concat(a, b).drop_last() =~= concat(a, b.drop_last())
+        assert(ab.drop_last() =~= concat(a, b.drop_last())) by {
+            assert forall|k: int| 0 <= k < concat(a, b.drop_last()).len()
+                implies ab.drop_last()[k] == concat(a, b.drop_last())[k]
+            by { assert(ab.drop_last()[k] == ab[k]); }
+        }
+        lemma_stable_count_concat(data, a, b.drop_last());
+    }
+}
+
+/// A word with no stable letters has stable_count 0.
+proof fn lemma_stable_count_no_stable(data: HNNData, w: Word)
+    requires forall|k: int| 0 <= k < w.len()
+        ==> !is_stable(data, #[trigger] w[k]),
+    ensures stable_count(data, w) == 0,
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        assert(w.last() == w[w.len() - 1]);
+        assert forall|k: int| 0 <= k < w.drop_last().len()
+            implies !is_stable(data, #[trigger] w.drop_last()[k])
+        by { assert(w.drop_last()[k] == w[k]); }
+        lemma_stable_count_no_stable(data, w.drop_last());
+    }
+}
+
 /// If has_stable_letter: leading_part is non-empty and ends with a stable letter.
 /// And stable_count of leading_part.drop_last() = stable_count(w) - 1.
 proof fn lemma_leading_part_props(data: HNNData, w: Word)
@@ -4736,11 +4793,73 @@ proof fn lemma_leading_part_props(data: HNNData, w: Word)
         stable_count(data, leading_part(data, w).drop_last())
             == (stable_count(data, w) - 1) as nat,
 {
-    // has_stable_letter → lsp ≥ 0 → leading_part = w[0..lsp+1], non-empty.
-    // leading_part.last() = w[lsp] which is stable (by definition of lsp).
-    // leading_part.drop_last() = w[0..lsp] which has stable_count = stable_count(w) - 1.
-    // TODO: prove these connections.
-    assert(false); // TODO
+    lemma_last_stable_pos_bounds(data, w);
+    let lsp = last_stable_pos(data, w);
+    assert(lsp >= 0) by {
+        lemma_lsp_ge_zero_when_stable(data, w);
+    }
+    let lp = leading_part(data, w);
+    let ts = trailing_segment(data, w);
+    let lp_drop = lp.drop_last();
+
+    // leading_part = w[0..lsp+1], so lp.last() = w[lsp] (stable)
+    // lp_drop = w[0..lsp]
+
+    // w =~= concat(lp, ts) from partition
+    lemma_segment_partition(data, w);
+
+    // stable_count(concat(lp, ts)) = stable_count(lp) + stable_count(ts)
+    lemma_stable_count_concat(data, lp, ts);
+
+    // trailing has no stable letters → stable_count(ts) = 0
+    assert(stable_count(data, ts) == 0) by {
+        lemma_trailing_no_stable(data, w);
+        lemma_stable_count_no_stable(data, ts);
+    }
+
+    // lp = concat(lp_drop, [w[lsp]])
+    let last_sym = Seq::new(1, |_i: int| w[lsp]);
+    assert(lp =~= concat(lp_drop, last_sym)) by {
+        assert forall|k: int| 0 <= k < lp.len()
+            implies lp[k] == concat(lp_drop, last_sym)[k]
+        by {}
+    }
+
+    // stable_count([w[lsp]]) = 1 (w[lsp] is stable)
+    assert(stable_count(data, last_sym) == 1nat) by {
+        assert(last_sym.len() > 0);
+        assert(last_sym.last() == w[lsp]);
+        assert(is_stable(data, last_sym.last()));
+        // stable_count = 1 + stable_count(drop_last) = 1 + stable_count(ε) = 1
+        assert(last_sym.drop_last() =~= Seq::<Symbol>::empty());
+        assert(last_sym.drop_last().len() == 0);
+    }
+
+    // stable_count(lp) = stable_count(lp_drop) + 1
+    lemma_stable_count_concat(data, lp_drop, last_sym);
+}
+
+/// If w has a stable letter, last_stable_pos ≥ 0.
+proof fn lemma_lsp_ge_zero_when_stable(data: HNNData, w: Word)
+    requires has_stable_letter(data, w),
+    ensures last_stable_pos(data, w) >= 0,
+    decreases w.len(),
+{
+    let witness: int = choose|i: int| 0 <= i < w.len() && is_stable(data, w[i]);
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+    } else {
+        // w.last() not stable. If witness < w.len() - 1: witness is in w.drop_last().
+        // If witness = w.len() - 1: w[witness] is stable but w.last() not stable. Contradiction.
+        if witness == w.len() - 1 {
+        } else {
+            assert(w.drop_last()[witness] == w[witness]);
+            assert(has_stable_letter(data, w.drop_last())) by {
+                assert(is_stable(data, w.drop_last()[witness]));
+            }
+            lemma_lsp_ge_zero_when_stable(data, w.drop_last());
+        }
+    }
 }
 
 /// **Britton's Lemma (Full, Miller Thm 3.10):**

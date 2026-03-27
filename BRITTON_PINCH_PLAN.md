@@ -5,9 +5,22 @@
 
 ## Current Status
 
-**116 verified lemmas, 2 `assert(false)` gaps remaining.**
+**127 verified lemmas, 2 `assert(false)` gaps remaining.**
 
-File: `verus-group-theory/src/britton_via_tower.rs` (Part X)
+File: `verus-group-theory/src/britton_via_tower.rs` (Part X = infrastructure, Part Y = textbook proof)
+
+### What's done (verified):
+- Part X: All infrastructure (116 lemmas) — tower, AFP, subgroups, level analysis, pairs
+- Y.1: textbook_g2_action, textbook_g1_action (always prepend, never merge)
+- Y.2: Length properties (rep ≠ ε → length + 1)
+- Y.3: Agreement with existing one-shots when top has opposite type
+- Y.4: Segment decomposition specs (stable_count, last_stable_pos, trailing_segment, leading_part)
+- Y.5: Segment properties (partition, trailing no stable, last_stable_pos bounds, no_stable helpers)
+- Y.5 partial: lemma_leading_part_props — first two ensures verified (len > 0, last is stable), third needs stable_count connection
+
+### What's next:
+- Finish lemma_leading_part_props: prove stable_count(leading_part.drop_last()) == stable_count(w) - 1
+- Then tasks G, D, H, I, J from the plan below
 
 ## The Textbook Proof (Miller pp.45-49)
 
