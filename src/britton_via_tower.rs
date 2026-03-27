@@ -3310,26 +3310,82 @@ proof fn lemma_not_in_left_subgroup_concat_embed_a(
 
 
 
-// --- X.10: The Full Britton's Lemma Statement ---
-// The proof infrastructure is complete (96 lemmas verified).
-// The main theorem handles both Gen-Inv and Inv-Gen pairs symmetrically,
-// following Miller Thm 3.10 (Lyndon-Schupp Ch. IV Thm 2.1).
-//
-// The remaining proof body requires:
-// 1. Tower setup (bl, m from derivation bounds + word level bounds)
-// 2. translate(w, bl) ≡ ε in tower(m) via lemma_hnn_derivation_to_tower_equiv
-// 3. Peel to tower(L) where L = pair's shifted level
-// 4. At junction (L-1)↔L: act_word on translate(w) from (ε,[]) gives (ε,[])
-//    (from equiv to ε + act_word_deriv)
-// 5. But: the adjacent pair's base word creates a syllable
-//    (Gen-Inv → right syllable from g ∉ B + g2_one_shot;
-//     Inv-Gen → left syllable from g ∉ A + g1_one_shot)
-// 6. Preservation: right_count by G₁ (lemma_act_g1_word_preserves_right_count),
-//    left_count by G₂ (lemma_act_g2_word_preserves_left_count)
-// 7. For multi-visit: inter-visit G₁ not in A (from no-pinch on Inv-Gen pairs)
-//    creates left syllable, preventing G₂ merge
-// 8. Contradiction: syls ≠ [] but (ε,[]) has syls = []
-//
-// TODO: Implement the proof body. All building blocks are verified above.
+// --- X.10: Translate of a Gen·base·Inv segment ---
+
+/// translate(Gen · g · Inv, bl) = shift(g, (bl+1)*ng) where g is a base word.
+/// This is the G₂ segment at junction bl↔(bl+1).
+proof fn lemma_translate_gen_base_inv(data: HNNData, g: Word, bl: int)
+    requires
+        hnn_data_valid(data),
+        word_valid(g, data.base.num_generators),
+        bl >= 0,
+    ensures ({
+        let ng = data.base.num_generators;
+        let gen_sym: Word = Seq::new(1, |_j: int| Symbol::Gen(ng));
+        let inv_sym: Word = Seq::new(1, |_j: int| Symbol::Inv(ng));
+        let segment = concat(gen_sym, concat(g, inv_sym));
+        &&& net_level(data, segment) == 0
+        &&& translate_word_at(data, segment, bl) =~=
+                shift_word(g, ((bl + 1) * ng) as nat)
+    }),
+{
+    let ng = data.base.num_generators;
+    let gen_sym: Word = Seq::new(1, |_j: int| Symbol::Gen(ng));
+    let inv_sym: Word = Seq::new(1, |_j: int| Symbol::Inv(ng));
+    let segment = concat(gen_sym, concat(g, inv_sym));
+
+    // net_level: Gen(+1) + base(0) + Inv(-1) = 0
+    lemma_net_level_concat(data, gen_sym, concat(g, inv_sym));
+    lemma_net_level_single(data, Symbol::Gen(ng));
+    lemma_net_level_concat(data, g, inv_sym);
+    lemma_net_level_single(data, Symbol::Inv(ng));
+    lemma_net_level_base_word(data, g);
+
+    // translate: Gen is skipped (bl→bl+1), g at level bl+1 → shift(g, (bl+1)*ng),
+    // Inv is skipped (bl+1→bl).
+    // translate(segment, bl) = translate(concat(g, inv_sym), bl + 1)
+    //   = concat(translate(g, bl+1), translate(inv_sym, bl+1))
+    //   = concat(shift(g, (bl+1)*ng), translate(Inv, bl+1))
+    //   = concat(shift(g, (bl+1)*ng), ε)   [Inv skipped]
+    //   =~= shift(g, (bl+1)*ng)
+
+    // The translate recursion: first symbol = Gen(ng), skipped, recurse with bl+1.
+    // After Gen: translate(concat(g, inv_sym), bl+1).
+    // g is a base word: translate(g, bl+1) = shift(g, (bl+1)*ng).
+    assert(bl + 1 >= 0);
+    lemma_translate_base_word_at(data, g, (bl + 1) as nat);
+    // Then Inv: translate(inv_sym, bl+1) = translate(ε, bl+1-1) = ε.
+    lemma_translate_empty_at(data, bl);
+
+    // Connect: translate(segment, bl) starts with Gen → skip → translate(concat(g, inv_sym), bl+1)
+    // translate(concat(g, inv_sym), bl+1): by lemma_translate_concat:
+    // = concat(translate(g, bl+1), translate(inv_sym, bl+1 + net_level(g)))
+    // = concat(shift(g, (bl+1)*ng), translate(inv_sym, bl+1))  [net_level(g) = 0]
+    // = concat(shift(g, (bl+1)*ng), ε)
+    lemma_translate_concat(data, g, inv_sym, bl + 1);
+    lemma_net_level_base_word(data, g);
+
+    // Now: translate(inv_sym, bl+1): Inv at bl+1 → skip, translate(ε, bl) = ε.
+    assert(translate_word_at(data, inv_sym, bl + 1) =~= empty_word()) by {
+        // inv_sym = [Inv(ng)]. translate: first sym = Inv(ng) → skip → translate(ε, bl) = ε.
+        assert(inv_sym.first() == Symbol::Inv(ng));
+        assert(inv_sym.drop_first() =~= Seq::<Symbol>::empty());
+    }
+
+    // Combine:
+    // translate(segment, bl):
+    // first sym = Gen(ng) → skip → translate(concat(g, inv_sym), bl+1)
+    // = concat(shift(g, (bl+1)*ng), ε) =~= shift(g, (bl+1)*ng)
+    assert(segment.first() == Symbol::Gen(ng));
+    assert(segment.drop_first() =~= concat(g, inv_sym));
+    assert(concat(shift_word(g, ((bl + 1) * ng) as nat), empty_word())
+        =~= shift_word(g, ((bl + 1) * ng) as nat)) by {
+        let sw = shift_word(g, ((bl + 1) * ng) as nat);
+        assert(concat(sw, empty_word()).len() == sw.len());
+        assert forall|k: int| 0 <= k < sw.len()
+            implies concat(sw, empty_word())[k] == sw[k] by {}
+    }
+}
+
 
 } // verus!
