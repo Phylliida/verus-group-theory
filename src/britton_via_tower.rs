@@ -945,22 +945,22 @@ proof fn lemma_tower_iso_per_word(
 
     // Forward: equiv(p1, embed_a_tower, ε) → equiv(base, embed_a_hnn, ε)
     // Then hnn_iso → equiv(base, embed_b_hnn, ε) =~= equiv(p2, embed_b_tower, ε)
+    // Setup for forward direction (AFP right-injectivity needs these)
+    if k > 0 {
+        assert(tower_textbook_prereqs_at(data, (k - 1) as nat));
+        lemma_tower_afp_data_valid(data, (k - 1) as nat);
+        lemma_tower_valid(data, (k - 1) as nat);
+        lemma_tower_num_generators(data, (k - 1) as nat);
+    }
+
+    // Forward: equiv(p1, embed_a_tower, ε) → equiv(p2, embed_b_tower, ε)
     if equiv_in_presentation(afp_data.p1, embed_a_tower, empty_word()) {
         if k == 0 {
             assert(k * ng == 0) by (nonlinear_arith) requires k == 0;
         } else {
-            assert(tower_textbook_prereqs_at(data, (k - 1) as nat));
-            lemma_tower_afp_data_valid(data, (k - 1) as nat);
-            lemma_tower_valid(data, (k - 1) as nat);
-            lemma_tower_num_generators(data, (k - 1) as nat);
             crate::normal_form_afp_textbook::lemma_afp_injectivity_right(
                 tower_afp_data(data, (k - 1) as nat), embed_a_hnn);
         }
-        // equiv(base, embed_a_hnn, ε) established → hnn_iso → equiv(base, embed_b_hnn, ε)
-        assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word()));
-        assert(equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
-        // afp_data.p2 = data.base, embed_b_tower =~= embed_b_hnn
-        assert(afp_data.p2 == data.base);
     }
 
     // Backward: equiv(p2, embed_b_tower, ε) → equiv(base, embed_a_hnn, ε)
