@@ -6227,7 +6227,7 @@ proof fn lemma_no_shorter_a_rcoset_word_forces_zero(
 }
 
 /// If g is in the subgroup A, then a_rcoset_rep(g) =~= ε.
-proof fn lemma_a_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
+pub proof fn lemma_a_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         presentation_valid(data.p1),
@@ -6302,7 +6302,7 @@ proof fn lemma_in_subgroup_both_reps_eps(data: AmalgamatedData, g: Word)
 }
 
 /// Extract right-A-coset rep properties.
-proof fn lemma_a_rcoset_rep_props(data: AmalgamatedData, g: Word)
+pub proof fn lemma_a_rcoset_rep_props(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         word_valid(g, data.p1.num_generators),
