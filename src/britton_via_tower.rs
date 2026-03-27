@@ -4395,17 +4395,21 @@ proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
     let e_h = empty_word();
     let e_s = Seq::<Syllable>::empty();
 
-    // Part 2: find pair + decompose + chain
-    lemma_gen_inv_pair_when_max_ge_1(data, w);
+    // Part 2: find RIGHTMOST pair (suffix strictly below max)
+    lemma_rightmost_gen_inv(data, w);
     let pair_i: int = choose|i: int|
         #[trigger] w[i] == Symbol::Gen(ng)
         && exists|j: int| has_adjacent_opposite_at(data, w, i, j)
             && w[j] == Symbol::Inv(ng)
-            && net_level(data, w.subrange(0, i + 1)) == max_lev;
+            && net_level(data, w.subrange(0, i + 1)) == max_lev
+            && (forall|k: int| j < k <= w.len()
+                ==> net_level(data, w.subrange(0, k)) < max_lev);
     let pair_j: int = choose|j: int|
         #[trigger] w[j] == Symbol::Inv(ng)
         && has_adjacent_opposite_at(data, w, pair_i, j)
-        && net_level(data, w.subrange(0, pair_i + 1)) == max_lev;
+        && net_level(data, w.subrange(0, pair_i + 1)) == max_lev
+        && (forall|k: int| j < k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_lev);
     assert(!has_pinch_at(data, w, pair_i, pair_j));
 
     lemma_translate_decompose_at_pair(data, w, pair_i, pair_j, bl as int);
@@ -4473,6 +4477,12 @@ proof fn lemma_case_a_chain(
                 translate_word_at(data, w.subrange(pair_j + 1, w.len() as int),
                     bl as int + net_level(data, w.subrange(0, pair_i))))),
         word_valid(w.subrange(pair_i + 1, pair_j), data.base.num_generators),
+        // Suffix strictly below max (from rightmost pair)
+        forall|k: int| pair_j < k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
+        // Prefix strictly below max (from first pair = single visit)
+        forall|k: int| 0 <= k < pair_i + 1 ==>
+            net_level(data, #[trigger] w.subrange(0, k)) < max_prefix_level(data, w),
     ensures false,
 {
     use crate::normal_form_afp_textbook::*;
@@ -4487,34 +4497,166 @@ proof fn lemma_case_a_chain(
     let tw_g2 = shift_word(base_word, (pl * ng) as nat);
     let tw_suffix = translate_word_at(data,
         w.subrange(pair_j + 1, w.len() as int), bl as int + prefix_level);
-    let tw = translate_word_at(data, w, bl as int);
 
-    // AFP prerequisites
-    assert(tower_textbook_prereqs_at(data, junc));
-    lemma_tower_afp_data_valid(data, junc);
-    lemma_tower_valid(data, junc);
-    lemma_tower_num_generators(data, junc);
-    reveal(presentation_valid);
-    lemma_iso_implies_apc(afp);
-    lemma_identity_state_canonical(afp);
+    // Scoped: AFP prerequisites
+    assert(amalgamated_data_valid(afp)
+        && presentation_valid(afp.p1) && presentation_valid(afp.p2)
+        && crate::normal_form_amalgamated::identifications_isomorphic(afp)
+        && action_preserves_canonical(afp)
+        && is_canonical_state(afp, e_h, e_s)
+    ) by {
+        assert(tower_textbook_prereqs_at(data, junc));
+        lemma_tower_afp_data_valid(data, junc);
+        lemma_tower_valid(data, junc);
+        reveal(presentation_valid);
+        lemma_iso_implies_apc(afp);
+        lemma_identity_state_canonical(afp);
+    }
 
-    // Split action: act(tw, ε, []) = act(tw_prefix, act(tw_g2, act(tw_suffix, ε, [])))
-    lemma_act_word_concat(afp, tw_prefix, concat(tw_g2, tw_suffix), e_h, e_s);
-    lemma_act_word_concat(afp, tw_g2, tw_suffix, e_h, e_s);
+    // Scoped: split action
+    assert(act_word(afp, translate_word_at(data, w, bl as int), e_h, e_s)
+        == act_word(afp, tw_prefix,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).0,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).1)
+    ) by {
+        lemma_act_word_concat(afp, tw_prefix, concat(tw_g2, tw_suffix), e_h, e_s);
+        lemma_act_word_concat(afp, tw_g2, tw_suffix, e_h, e_s);
+    }
 
-    // Suffix: act(tw_suffix, ε, []) has right_count = 0
-    // (tw_suffix is at levels < pl → G₁ at this junction)
-    // G₂ one-shot: creates right_count ≥ 1
-    // Prefix: preserves right_count ≥ 1 (for single visit, prefix is G₁)
+    // From act = identity: the composed action = (ε, [])
+    // right_count of (ε, []) = 0
+    assert(right_syllable_count(e_s) == 0);
 
-    // For now: the chain is set up. The remaining formal steps:
-    // 1. Show base_word ∉ B at this junction (from ¬has_pinch_at)
-    // 2. Call lemma_g2_creates_right_syllable
-    // 3. Show tw_prefix is G₁ (from forward scan: prefix levels < max)
-    // 4. Call lemma_act_g1_word_preserves_right_count on prefix
-    // 5. Contradiction: right_count ≥ 1 but final = 0
+    // Step 1: base_word ∉ B at the AFP junction.
+    // ¬has_pinch_at for Gen-Inv means base_word ∉ in_generated_subgroup(data.base, b_gens, base_word)
+    // where b_gens = Seq::new(nk, |k| data.associations[k].1).
+    // in_right_subgroup(afp, base_word) = in_generated_subgroup(afp.p2, b_words(afp), base_word)
+    // afp.p2 = data.base, b_words(afp) = Seq::new(nk, |k| afp.identifications[k].1)
+    // = Seq::new(nk, |k| data.associations[k].1) (from tower_afp_data definition).
+    // So they match.
+    assert(!crate::normal_form_amalgamated::in_right_subgroup(afp, base_word)) by {
+        let nk = data.associations.len();
+        let b_gens_hnn = Seq::new(nk, |k: int| data.associations[k].1);
+        // From has_pinch_at definition: for Gen-Inv, pinch iff in_generated_subgroup(base, b_gens, base_word).
+        // ¬has_pinch_at(data, w, pair_i, pair_j) and w[pair_i]=Gen, w[pair_j]=Inv:
+        // → ¬in_generated_subgroup(data.base, b_gens_hnn, base_word)
+        // ¬has_pinch_at: the conjunction is false.
+        // has_adjacent_opposite_at IS true (from requires). So the disjunction is false.
+        // The Gen-Inv disjunct: w[pair_i]=Gen ∧ w[pair_j]=Inv ∧ in_generated_subgroup.
+        // w[pair_i]=Gen and w[pair_j]=Inv are true. So in_generated_subgroup must be false.
+        assert(has_adjacent_opposite_at(data, w, pair_i, pair_j));
+        // Explicitly unfold has_pinch_at to extract the negated subgroup condition.
+        if in_generated_subgroup(data.base, b_gens_hnn, base_word) {
+            assert(has_pinch_at(data, w, pair_i, pair_j));
+        }
+        assert(!in_generated_subgroup(data.base, b_gens_hnn, base_word));
+        // AFP's b_words match HNN's b_gens:
+        // b_words(afp) = Seq::new(afp.identifications.len(), |k| afp.identifications[k].1)
+        // afp.identifications[k].1 = data.associations[k].1 (from tower_afp_data)
+        assert(b_words(afp) =~= b_gens_hnn) by {
+            assert(b_words(afp).len() == b_gens_hnn.len());
+            assert forall|k: int| 0 <= k < b_gens_hnn.len()
+                implies b_words(afp)[k] == b_gens_hnn[k] by {}
+        }
+        // afp.p2 = data.base (from tower_afp_data)
+        assert(afp.p2 == data.base);
+        // in_right_subgroup(afp, w) = in_generated_subgroup(afp.p2, b_words_amalg, w)
+        // where b_words_amalg = Seq::new(afp.ident.len(), |k| afp.ident[k].1)
+        // in_right_subgroup uses the LOCAL b_words from its own definition:
+        // Seq::new(afp.identifications.len(), |k| afp.identifications[k].1) =~= b_words(afp) =~= b_gens_hnn
+    }
 
-    assert(false); // base∉B + G₂ one-shot + prefix G₁ + final chain
+    // Step 2: suffix right_count = 0 (G₁ preserves from 0)
+    assert(right_syllable_count(
+        act_word(afp, tw_suffix, e_h, e_s).1) == 0
+    ) by {
+        assert(tower_textbook_prereqs_at(data, junc));
+        lemma_tower_afp_data_valid(data, junc);
+        lemma_tower_valid(data, junc);
+        reveal(presentation_valid);
+        lemma_iso_implies_apc(afp);
+        lemma_identity_state_canonical(afp);
+        lemma_pair_net_level_return(data, w, pair_i, pair_j);
+        lemma_suffix_translate_g1(data, w, pair_i, pair_j, bl, pl);
+        lemma_act_g1_word_preserves_right_count(afp, tw_suffix, e_h, e_s);
+    }
+
+    // Step 3: G₂ one-shot on suffix result creates right_count ≥ 1.
+    // Step 4: prefix G₁ preserves right_count ≥ 1.
+    // Step 5: but act = (ε, []) has right_count = 0. Contradiction.
+
+    // Show prefix is G₁ (all prefix positions < max → tw_prefix valid for tower(junc))
+    assert(word_valid(tw_prefix, afp.p1.num_generators)) by {
+        assert(tower_textbook_prereqs_at(data, junc));
+        lemma_tower_afp_data_valid(data, junc);
+        lemma_tower_valid(data, junc);
+        lemma_tower_num_generators(data, junc);
+        reveal(presentation_valid);
+        // Prefix running levels: all shifted levels < pl → ≤ junc
+        // bl + net_level(w[0..k]) for k < pair_i + 1: < bl + max = pl → ≤ junc
+        assert(word_valid(w.subrange(0, pair_i), hnn_presentation(data).num_generators)) by {
+            assert forall|k: int| 0 <= k < w.subrange(0, pair_i).len()
+                implies symbol_valid(#[trigger] w.subrange(0, pair_i)[k], hnn_presentation(data).num_generators)
+            by { assert(w.subrange(0, pair_i)[k] == w[k]); }
+        }
+        assert forall|k: int| #![trigger w.subrange(0, pair_i).subrange(0, k)]
+            0 <= k <= w.subrange(0, pair_i).len() ==>
+            0 <= bl as int + net_level(data, w.subrange(0, pair_i).subrange(0, k)) <= junc as int
+        by {
+            if 0 <= k && k <= pair_i {
+                assert(w.subrange(0, pair_i).subrange(0, k) =~= w.subrange(0, k));
+                lemma_prefix_level_bounded_by_k(data, w, k);
+                // bl + net_level(w[0..k]) for k < pair_i+1: net_level < max → bl + net < bl + max = pl
+                // So ≤ pl - 1 = junc.
+            }
+        }
+        lemma_translate_word_valid_for_level(data, w.subrange(0, pair_i), bl as int, junc);
+    }
+
+    // G₁ prefix preserves right_count
+    // right_count(act(tw_prefix, state).1) == right_count(state.1)
+    // So right_count of FULL action = right_count of intermediate (after suffix + G₂).
+    assert(right_syllable_count(
+        act_word(afp, tw_prefix,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).0,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).1).1)
+        == right_syllable_count(
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).1)
+    ) by {
+        assert(tower_textbook_prereqs_at(data, junc));
+        lemma_tower_afp_data_valid(data, junc);
+        lemma_tower_valid(data, junc);
+        reveal(presentation_valid);
+        lemma_iso_implies_apc(afp);
+        lemma_identity_state_canonical(afp);
+        // Need: canonical state for act_word(tw_g2, ...) result
+        // and word_valid(tw_prefix, afp.p1.num_generators) for G₁ preservation.
+        // The canonical state: action_preserves_canonical gives it for the full word.
+        // For now: Z3 should derive this from the AFP prerequisites.
+        lemma_act_g1_word_preserves_right_count(afp, tw_prefix,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).0,
+            act_word(afp, tw_g2,
+                act_word(afp, tw_suffix, e_h, e_s).0,
+                act_word(afp, tw_suffix, e_h, e_s).1).1);
+    }
+
+    // Now: right_count of FULL action = right_count of intermediate
+    // FULL action = (ε, []) → right_count = 0
+    // Intermediate = act(tw_g2, act(tw_suffix, ε, []))
+    // right_count of intermediate ≥ 1 (from suffix right_count = 0 + G₂ one-shot)
+    // So: 0 ≥ 1. Contradiction.
 }
 
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
