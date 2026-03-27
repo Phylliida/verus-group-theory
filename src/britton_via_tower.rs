@@ -3998,6 +3998,59 @@ proof fn lemma_suffix_net_level(data: HNNData, w: Word, split: int, k: int)
     lemma_net_level_concat(data, prefix, suffix_k);
 }
 
+// --- X.16: Suffix is G₁ at the top junction ---
+
+/// The suffix w[split..] has all shifted running levels ≤ junc (strictly < pair_level).
+/// So translate(suffix) is word_valid for tower(junc) = G₁ at the top junction.
+proof fn lemma_suffix_translate_is_g1(
+    data: HNNData, w: Word, split: int, bl: int, pl: nat,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        0 <= split <= w.len(),
+        bl >= 0,
+        pl >= 1,
+        pl == (bl + max_prefix_level(data, w)) as nat,
+        // All positions after split are strictly below max
+        forall|k: int| split <= k <= w.len()
+            ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
+        // The shifted level at `split` is ≤ junc
+        bl + net_level(data, w.subrange(0, split)) <= (pl - 1) as int,
+    ensures ({
+        let suffix = w.subrange(split, w.len() as int);
+        let junc = (pl - 1) as nat;
+        let bl_suffix = bl + net_level(data, w.subrange(0, split));
+        // Suffix running levels bounded for tower(junc)
+        forall|k: int| #![trigger suffix.subrange(0, k)]
+            0 <= k <= suffix.len() ==>
+            0 <= bl_suffix + net_level(data, suffix.subrange(0, k)) <= junc as int
+    }),
+{
+    let suffix = w.subrange(split, w.len() as int);
+    let junc = (pl - 1) as nat;
+    let bl_suffix = bl + net_level(data, w.subrange(0, split));
+    let max_lev = max_prefix_level(data, w);
+
+    assert forall|k: int| #![trigger suffix.subrange(0, k)]
+        0 <= k <= suffix.len() ==>
+        0 <= bl_suffix + net_level(data, suffix.subrange(0, k)) <= junc as int
+    by {
+        if 0 <= k && k <= suffix.len() {
+            // Connect suffix level to full word level
+            lemma_suffix_net_level(data, w, split, k);
+            // net_level(suffix[0..k]) = net_level(w[0..split+k]) - net_level(w[0..split])
+            // bl_suffix + net_level(suffix[0..k])
+            //   = bl + net_level(w[0..split]) + net_level(w[0..split+k]) - net_level(w[0..split])
+            //   = bl + net_level(w[0..split+k])
+            // This < bl + max_lev = pl (from our requires: net_level(w[0..split+k]) < max_lev).
+            // So bl_suffix + net_level(suffix[0..k]) < pl, i.e., ≤ pl - 1 = junc. ✓
+            // For ≥ 0: bl + net_level(w[0..split+k]) ≥ 0 from general level bounds.
+            lemma_prefix_level_bounded_by_k(data, w, split + k);
+        }
+    }
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
