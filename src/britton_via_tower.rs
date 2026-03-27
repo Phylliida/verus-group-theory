@@ -4323,7 +4323,54 @@ proof fn lemma_g2_creates_right_syllable(
     // right_count of result = 1 + right_count(syls) = 1 + 0 = 1 ≥ 1. ✓
 }
 
-/// Case A: max_prefix_level ≥ 1. Find Gen-Inv pair, set up tower, derive contradiction.
+/// Case A helper part 1: tower + AFP + act = identity.
+proof fn lemma_case_a_act_identity(data: HNNData, w: Word) -> (result: (nat, nat))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+    ensures ({
+        let (bl, pl) = result;
+        let tw = translate_word_at(data, w, bl as int);
+        let junc = (pl - 1) as nat;
+        let afp = tower_afp_data(data, junc);
+        let e = empty_word();
+        let es = Seq::<crate::normal_form_afp_textbook::Syllable>::empty();
+        &&& pl >= 1
+        &&& pl == (bl + max_prefix_level(data, w)) as nat
+        &&& bl >= w.len()
+        &&& tower_textbook_chain(data, pl)
+        &&& word_valid(tw, tower_presentation(data, pl).num_generators)
+        &&& crate::normal_form_afp_textbook::act_word(afp, tw, e, es) == (e, es)
+    }),
+{
+    use crate::normal_form_afp_textbook::*;
+    let (bl, pl) = lemma_tower_setup(data, w);
+    let tw = translate_word_at(data, w, bl as int);
+    let junc = (pl - 1) as nat;
+    let afp = tower_afp_data(data, junc);
+
+    assert(tower_textbook_prereqs_at(data, junc));
+    lemma_tower_afp_data_valid(data, junc);
+    lemma_tower_valid(data, junc);
+    reveal(presentation_valid);
+    lemma_iso_implies_apc(afp);
+    lemma_action_well_defined_proof(afp);
+    lemma_identity_state_canonical(afp);
+
+    let e_h = empty_word();
+    let e_s = Seq::<Syllable>::empty();
+    let d_tw: Derivation = choose|d: Derivation|
+        derivation_valid(tower_presentation(data, pl), d, tw, empty_word());
+    lemma_act_word_deriv(afp, d_tw.steps, tw, empty_word(), e_h, e_s);
+    lemma_act_word_empty(afp, e_h, e_s);
+    (bl, pl)
+}
+
+/// Case A helper part 2: decompose + G₂ one-shot + G₁ prefix → contradiction.
 proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -4340,30 +4387,15 @@ proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
     let ng = data.base.num_generators;
     let max_lev = max_prefix_level(data, w);
 
-    // Tower setup
-    let (bl, pl) = lemma_tower_setup(data, w);
+    // Part 1: tower + act = identity
+    let (bl, pl) = lemma_case_a_act_identity(data, w);
     let tw = translate_word_at(data, w, bl as int);
     let junc = (pl - 1) as nat;
     let afp = tower_afp_data(data, junc);
-
-    // AFP prerequisites
-    assert(tower_textbook_prereqs_at(data, junc));
-    lemma_tower_afp_data_valid(data, junc);
-    lemma_tower_valid(data, junc);
-    reveal(presentation_valid);
-    lemma_iso_implies_apc(afp);
-    lemma_action_well_defined_proof(afp);
-    lemma_identity_state_canonical(afp);
-
-    // act(tw, ε, []) = (ε, [])
     let e_h = empty_word();
     let e_s = Seq::<Syllable>::empty();
-    let d_tw: Derivation = choose|d: Derivation|
-        derivation_valid(tower_presentation(data, pl), d, tw, empty_word());
-    lemma_act_word_deriv(afp, d_tw.steps, tw, empty_word(), e_h, e_s);
-    lemma_act_word_empty(afp, e_h, e_s);
 
-    // Find FIRST Gen-Inv pair at max (prefix all < max → G₁)
+    // Part 2: find pair + decompose + chain
     lemma_gen_inv_pair_when_max_ge_1(data, w);
     let pair_i: int = choose|i: int|
         #[trigger] w[i] == Symbol::Gen(ng)
@@ -4376,34 +4408,22 @@ proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
         && net_level(data, w.subrange(0, pair_i + 1)) == max_lev;
     assert(!has_pinch_at(data, w, pair_i, pair_j));
 
-    // Decompose: tw = tw_prefix · tw_g2 · tw_suffix
     lemma_translate_decompose_at_pair(data, w, pair_i, pair_j, bl as int);
+    lemma_pair_net_level_return(data, w, pair_i, pair_j);
     let prefix_level = net_level(data, w.subrange(0, pair_i));
     let base_word = w.subrange(pair_i + 1, pair_j);
     let tw_prefix = translate_word_at(data, w.subrange(0, pair_i), bl as int);
     let tw_g2 = shift_word(base_word, (pl * ng) as nat);
     let tw_suffix = translate_word_at(data,
         w.subrange(pair_j + 1, w.len() as int), bl as int + prefix_level);
-    lemma_pair_net_level_return(data, w, pair_i, pair_j);
 
-    // Chain: act(tw, ε, []) = act(tw_prefix, act(tw_g2, act(tw_suffix, ε, [])))
+    // Connect: (bl + prefix_level + 1) * ng = pl * ng
+    assert(bl as int + prefix_level + 1 == pl as int);
     assert(tw =~= concat(tw_prefix, concat(tw_g2, tw_suffix)));
-    lemma_act_word_concat(afp, tw_prefix, concat(tw_g2, tw_suffix), e_h, e_s);
-    lemma_act_word_concat(afp, tw_g2, tw_suffix, e_h, e_s);
 
-    // G₂ one-shot creates right_count ≥ 1
-    // Need: base_word ∉ B at the AFP junction.
-    // has_pinch_at is false → base_word ∉ B (for Gen-Inv: ∉ in_generated_subgroup(base, b_gens, base_word))
-    // AFP's B-subgroup: in_right_subgroup(afp, base_word) = in_generated_subgroup(afp.p2, b_words(afp), base_word)
-    // afp.p2 = data.base. b_words(afp) = <data.associations[i].1>.
-    // So in_right_subgroup(afp, base_word) ↔ in_generated_subgroup(data.base, b_gens_hnn, base_word).
-    // The pinch condition uses the same b_gens. So ¬has_pinch → ¬in_right_subgroup(afp, base_word). ✓
-
-    // TODO: formally connect ¬has_pinch_at to ¬in_right_subgroup(afp, base_word)
-    // and call lemma_g2_creates_right_syllable.
-    // Then show tw_prefix is G₁ and call g1_preserves_right_count.
-    // Final: right_count ≥ 1 but act = (ε, []) has right_count = 0. Contradiction.
-    assert(false); // base∉B connection + prefix G₁ + final chain
+    // TODO: Chain act_word_concat + g2_creates_right_syllable + g1_preserves
+    // This requires ~15 more lines in a separate helper to stay under rlimit.
+    assert(false);
 }
 
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
