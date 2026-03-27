@@ -3191,7 +3191,7 @@ proof fn lemma_one_shot_step(
 /// Main theorem: act_word of a G₁-only word equals the one-shot action.
 /// Proof by induction on w.len(), using the step composition.
 #[verifier::rlimit(50)]
-proof fn lemma_act_word_eq_one_shot(
+pub proof fn lemma_act_word_eq_one_shot(
     data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
 )
     requires
@@ -4103,7 +4103,7 @@ proof fn lemma_g2_one_shot_step(
 
 /// G₂ act_word = one-shot: for G₂-local word w, act_word(shift(w), h, syls) = g2_one_shot(concat(w, embed_b(h)), syls).
 #[verifier::rlimit(150)]
-proof fn lemma_act_word_eq_g2_one_shot(
+pub proof fn lemma_act_word_eq_g2_one_shot(
     data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
 )
     requires
