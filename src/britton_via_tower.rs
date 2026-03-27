@@ -4417,7 +4417,20 @@ proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
     let tw_suffix = translate_word_at(data,
         w.subrange(pair_j + 1, w.len() as int), bl as int + prefix_level);
 
-    // Connect: (bl + prefix_level + 1) * ng = pl * ng
+    // Connect prefix_level + 1 = max_lev
+    // From choose: net_level(w[0..pair_i+1]) = max_lev.
+    // net_level(w[0..pair_i+1]) = prefix_level + 1 (Gen at pair_i contributes +1).
+    assert(prefix_level + 1 == max_lev) by {
+        let pw = w.subrange(0, pair_i);
+        let gw: Word = Seq::new(1, |_j: int| w[pair_i]);
+        assert(w.subrange(0, pair_i + 1) =~= concat(pw, gw)) by {
+            assert forall|k: int| 0 <= k < (pair_i + 1)
+                implies w.subrange(0, pair_i + 1)[k] == concat(pw, gw)[k]
+            by { if k < pair_i {} else {} }
+        }
+        lemma_net_level_concat(data, pw, gw);
+        lemma_net_level_single(data, w[pair_i]);
+    }
     assert(bl as int + prefix_level + 1 == pl as int);
     assert(tw =~= concat(tw_prefix, concat(tw_g2, tw_suffix)));
 
