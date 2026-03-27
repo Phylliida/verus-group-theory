@@ -4428,6 +4428,321 @@ proof fn lemma_case_a_act_identity(data: HNNData, w: Word) -> (result: (nat, nat
 }
 
 
+// ============================================================
+// Part Y: Textbook-faithful Britton's Lemma (Miller Thm 3.10)
+// ============================================================
+// The textbook's ψ(p) always PREPENDS when the coset rep is non-trivial.
+// Our existing g2_one_shot_action sometimes MERGES same-type syllables.
+// To match the textbook exactly, we define textbook-faithful actions
+// that always prepend, then connect them to act_word for the contradiction.
+
+// --- Y.1: Textbook-faithful actions ---
+
+/// Textbook's ψ(p): B-coset decompose, ALWAYS prepend when rep ≠ ε.
+/// Matches Miller p.49 Cases 1+2 (prepend) and Case 3 (absorb).
+/// Unlike g2_one_shot_action, this NEVER merges same-type syllables.
+pub open spec fn textbook_g2_action(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
+    let h_new = crate::normal_form_afp_textbook::b_rcoset_h(data, g);
+    if rep =~= empty_word() {
+        (h_new, syls)  // ABSORB (textbook Case 3: trivial coset rep)
+    } else {
+        // PREPEND (textbook Cases 1+2: non-trivial coset rep)
+        (h_new, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
+    }
+}
+
+/// Textbook's ψ(p⁻¹): A-coset decompose, ALWAYS prepend when rep ≠ ε.
+/// Symmetric to textbook_g2_action using A-cosets instead of B-cosets.
+pub open spec fn textbook_g1_action(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
+    let h_new = crate::normal_form_afp_textbook::a_rcoset_h(data, g);
+    if rep =~= empty_word() {
+        (h_new, syls)  // ABSORB
+    } else {
+        // PREPEND
+        (h_new, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
+    }
+}
+
+// --- Y.2: Length properties of textbook actions ---
+
+/// G₂ textbook action: rep ≠ ε → length + 1, rep = ε → length unchanged.
+proof fn lemma_textbook_g2_length(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+)
+    ensures ({
+        let (h_out, syls_out) = textbook_g2_action(data, g, syls);
+        let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
+        if !(rep =~= empty_word()) {
+            syls_out.len() == syls.len() + 1
+        } else {
+            syls_out.len() == syls.len()
+        }
+    }),
+{
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
+    if !(rep =~= empty_word()) {
+        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep });
+        assert((new_syl + syls).len() == 1 + syls.len());
+    }
+}
+
+/// G₁ textbook action: rep ≠ ε → length + 1, rep = ε → length unchanged.
+proof fn lemma_textbook_g1_length(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+)
+    ensures ({
+        let (h_out, syls_out) = textbook_g1_action(data, g, syls);
+        let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
+        if !(rep =~= empty_word()) {
+            syls_out.len() == syls.len() + 1
+        } else {
+            syls_out.len() == syls.len()
+        }
+    }),
+{
+    let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
+    if !(rep =~= empty_word()) {
+        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep });
+        assert((new_syl + syls).len() == 1 + syls.len());
+    }
+}
+
+// --- Y.3: Agreement with existing one-shots ---
+
+/// When top is left or empty: textbook_g2 = g2_one_shot (both prepend right).
+proof fn lemma_textbook_g2_agrees(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+)
+    requires syls.len() == 0 || syls.first().is_left,
+    ensures
+        textbook_g2_action(data, g, syls)
+            == crate::normal_form_afp_textbook::g2_one_shot_action(data, g, syls),
+{
+    // Both check b_rcoset_rep. If ε: both absorb. If ≠ ε: both see left/empty top → prepend.
+    // The prepend branch is identical in both definitions.
+}
+
+/// When top is right or empty: textbook_g1 = g1_one_shot (both prepend left).
+proof fn lemma_textbook_g1_agrees(
+    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
+)
+    requires syls.len() == 0 || !syls.first().is_left,
+    ensures
+        textbook_g1_action(data, g, syls)
+            == crate::normal_form_afp_textbook::g1_one_shot_action(data, g, syls),
+{
+}
+
+// --- Y.4: HNN word segment decomposition ---
+// The textbook's p-expression: g₀·p^{ε₁}·g₁·p^{ε₂}·...·p^{εₘ}·gₘ
+// We formalize this by extracting segments from the flat word.
+
+/// Number of stable letters in w (= m in the textbook's notation).
+pub open spec fn stable_count(data: HNNData, w: Word) -> nat
+    decreases w.len(),
+{
+    if w.len() == 0 { 0 }
+    else if is_stable(data, w.last()) {
+        1 + stable_count(data, w.drop_last())
+    } else {
+        stable_count(data, w.drop_last())
+    }
+}
+
+/// Position of the last stable letter, or -1 if none.
+/// This is where we split: w = leading · [last_stable] · trailing_segment.
+pub open spec fn last_stable_pos(data: HNNData, w: Word) -> int
+    decreases w.len(),
+{
+    if w.len() == 0 { -1 }
+    else if is_stable(data, w[w.len() - 1]) { (w.len() - 1) as int }
+    else { last_stable_pos(data, w.drop_last()) }
+}
+
+/// The trailing base segment: everything after the last stable letter.
+/// If no stable letters: the entire word.
+/// This is gₘ in the textbook's notation.
+pub open spec fn trailing_segment(data: HNNData, w: Word) -> Word {
+    let lsp = last_stable_pos(data, w);
+    if lsp < 0 { w }
+    else { w.subrange(lsp + 1, w.len() as int) }
+}
+
+/// The leading part: everything up to AND including the last stable letter.
+/// If no stable letters: empty.
+/// This is g₀·s₁·g₁·...·sₘ (without gₘ) in the textbook's notation.
+pub open spec fn leading_part(data: HNNData, w: Word) -> Word {
+    let lsp = last_stable_pos(data, w);
+    if lsp < 0 { empty_word() }
+    else { w.subrange(0, lsp + 1) }
+}
+
+// --- Y.5: Segment properties ---
+
+/// w = leading_part(w) · trailing_segment(w).
+proof fn lemma_segment_partition(data: HNNData, w: Word)
+    ensures
+        w =~= concat(leading_part(data, w), trailing_segment(data, w)),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+        // Last symbol is stable. leading = w[0..w.len()], trailing = ε.
+        assert(trailing_segment(data, w) =~= w.subrange(w.len() as int, w.len() as int));
+        assert(leading_part(data, w) =~= w.subrange(0, w.len() as int));
+        assert(w.subrange(0, w.len() as int) =~= w);
+        assert(concat(w, empty_word()) =~= w) by {
+            assert forall|k: int| 0 <= k < w.len()
+                implies concat(w, empty_word())[k] == w[k] by {}
+        }
+    } else {
+        // Last symbol is base. Recurse on w.drop_last().
+        lemma_segment_partition(data, w.drop_last());
+        // trailing_segment(w) = trailing_segment(w.drop_last()) · [w.last()]
+        // or equivalently: w[lsp+1..w.len()] where lsp = last_stable_pos
+        // leading_part(w) = leading_part(w.drop_last())
+        // These follow from last_stable_pos(w) = last_stable_pos(w.drop_last())
+        // when w.last() is not stable.
+        let dl = w.drop_last();
+        assert(last_stable_pos(data, w) == last_stable_pos(data, dl));
+        let lsp = last_stable_pos(data, w);
+        if lsp < 0 {
+            // No stable letters: leading = ε, trailing = w.
+            assert(leading_part(data, w) =~= empty_word());
+            assert(trailing_segment(data, w) =~= w);
+        } else {
+            let lead = w.subrange(0, lsp + 1);
+            let trail = w.subrange(lsp + 1, w.len() as int);
+            assert(leading_part(data, w) =~= lead);
+            assert(trailing_segment(data, w) =~= trail);
+            assert(w =~= concat(lead, trail)) by {
+                assert(concat(lead, trail).len() == w.len());
+                assert forall|k: int| 0 <= k < w.len()
+                    implies w[k] == concat(lead, trail)[k]
+                by {
+                    if k < lsp + 1 {
+                        assert(w[k] == lead[k]);
+                    } else {
+                        assert(w[k] == trail[k - (lsp + 1)]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The trailing segment has no stable letters.
+proof fn lemma_trailing_no_stable(data: HNNData, w: Word)
+    ensures
+        forall|k: int| 0 <= k < trailing_segment(data, w).len()
+            ==> !is_stable(data, #[trigger] trailing_segment(data, w)[k]),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+        // trailing = ε. Vacuously true.
+    } else {
+        lemma_trailing_no_stable(data, w.drop_last());
+        let lsp = last_stable_pos(data, w);
+        let ts = trailing_segment(data, w);
+        if lsp < 0 {
+            // No stable: trailing = w. Each symbol of w... hmm we need word_valid.
+            // Actually: we just need no stable in w. But w might have stable letters
+            // that last_stable_pos missed? No: lsp < 0 means NO stable letters in w.
+            // So: all symbols are non-stable.
+            assert forall|k: int| 0 <= k < ts.len()
+                implies !is_stable(data, #[trigger] ts[k])
+            by {
+                assert(ts[k] == w[k]);
+                // lsp < 0 → no stable in w → w[k] not stable.
+                // Prove: lsp < 0 means forall k: !is_stable(w[k]).
+                // This follows from last_stable_pos recursion: if any stable exists,
+                // lsp ≥ 0.
+                lemma_no_stable_when_lsp_neg(data, w, k);
+            }
+        } else {
+            assert(ts =~= w.subrange(lsp + 1, w.len() as int));
+            assert forall|k: int| 0 <= k < ts.len()
+                implies !is_stable(data, #[trigger] ts[k])
+            by {
+                let pos = lsp + 1 + k;
+                assert(ts[k] == w[pos]);
+                assert(pos > lsp);
+                assert(pos < w.len());
+                lemma_no_stable_after_lsp(data, w, pos);
+            }
+        }
+    }
+}
+
+/// If lsp < 0: no stable letters in w.
+proof fn lemma_no_stable_when_lsp_neg(data: HNNData, w: Word, pos: int)
+    requires
+        last_stable_pos(data, w) < 0,
+        0 <= pos < w.len(),
+    ensures !is_stable(data, w[pos]),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+        // lsp = w.len() - 1 ≥ 0. Contradicts lsp < 0.
+    } else {
+        if pos == w.len() - 1 {
+            // w[pos] = w.last() which is not stable (from the else branch).
+        } else {
+            lemma_no_stable_when_lsp_neg(data, w.drop_last(), pos);
+            assert(w.drop_last()[pos] == w[pos]);
+        }
+    }
+}
+
+/// No stable letters after last_stable_pos.
+proof fn lemma_no_stable_after_lsp(data: HNNData, w: Word, pos: int)
+    requires
+        last_stable_pos(data, w) >= 0,
+        last_stable_pos(data, w) < pos,
+        0 <= pos < w.len(),
+    ensures !is_stable(data, w[pos]),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else if is_stable(data, w[w.len() - 1]) {
+        // lsp = w.len() - 1. pos > lsp → pos > w.len() - 1 → pos ≥ w.len().
+        // But pos < w.len(). Contradiction.
+    } else {
+        // lsp(w) = lsp(w.drop_last()). And w.last() not stable.
+        if pos == w.len() - 1 {
+            // w[pos] = w.last() not stable.
+        } else {
+            lemma_no_stable_after_lsp(data, w.drop_last(), pos);
+            assert(w.drop_last()[pos] == w[pos]);
+        }
+    }
+}
+
+/// If has_stable_letter: leading_part is non-empty and ends with a stable letter.
+/// And stable_count of leading_part.drop_last() = stable_count(w) - 1.
+proof fn lemma_leading_part_props(data: HNNData, w: Word)
+    requires has_stable_letter(data, w),
+    ensures
+        leading_part(data, w).len() > 0,
+        is_stable(data, leading_part(data, w)[leading_part(data, w).len() - 1]),
+        stable_count(data, leading_part(data, w).drop_last())
+            == (stable_count(data, w) - 1) as nat,
+{
+    // has_stable_letter → lsp ≥ 0 → leading_part = w[0..lsp+1], non-empty.
+    // leading_part.last() = w[lsp] which is stable (by definition of lsp).
+    // leading_part.drop_last() = w[0..lsp] which has stable_count = stable_count(w) - 1.
+    // TODO: prove these connections.
+    assert(false); // TODO
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
@@ -4460,7 +4775,7 @@ pub proof fn britton_lemma_full(
 
         if max_lev >= 1 {
             // Case A: max ≥ 1 → contradiction via lemma_case_a_contradiction
-            lemma_case_a_contradiction(data, w);
+            assert(false); // TODO: lemma_case_a_contradiction (task J)
         } else {
             // Case B: max = 0. Use dual (Inv-Gen + left_count) argument.
             lemma_adjacent_opposite_exists(data, w);
