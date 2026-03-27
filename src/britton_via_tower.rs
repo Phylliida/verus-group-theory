@@ -3465,6 +3465,7 @@ proof fn lemma_max_prefix_achieved(data: HNNData, w: Word)
 // --- X.11: Gen-Inv pair when max_prefix_level ≥ 1 ---
 
 /// Forward scan: find first k in [from, bound] achieving max after a drop.
+/// Ensures the pair is at the max prefix level.
 proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: int)
     requires
         hnn_data_valid(data),
@@ -3478,7 +3479,8 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
         exists|i: int, j: int|
             has_adjacent_opposite_at(data, w, i, j)
             && w[i] == Symbol::Gen(data.base.num_generators)
-            && w[j] == Symbol::Inv(data.base.num_generators),
+            && w[j] == Symbol::Inv(data.base.num_generators)
+            && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w),
     decreases bound - from,
 {
     let ng = data.base.num_generators;
@@ -3523,9 +3525,11 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
             lemma_net_level_concat(data, w.subrange(0, from), tail);
             lemma_max_prefix_bounds(data, w, ns + 1);
         } else {
-            // Inv! Gen-Inv pair found.
+            // Inv! Gen-Inv pair found at max level.
             assert(w[ns] == Symbol::Inv(ng));
             assert(has_adjacent_opposite_at(data, w, from - 1, ns));
+            // net_level(w[0..(from-1)+1]) = net_level(w[0..from]) = max ✓
+            assert(w.subrange(0, (from - 1) + 1) =~= w.subrange(0, from));
         }
     } else {
         // from doesn't achieve max. net(w[0..from]) < max (since ≤ max and ≠ max).
@@ -3534,7 +3538,7 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
     }
 }
 
-/// When max_prefix_level ≥ 1, there exists a Gen-Inv adjacent pair.
+/// When max_prefix_level ≥ 1, there exists a Gen-Inv adjacent pair AT the max level.
 proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -3545,7 +3549,8 @@ proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
         exists|i: int, j: int|
             has_adjacent_opposite_at(data, w, i, j)
             && w[i] == Symbol::Gen(data.base.num_generators)
-            && w[j] == Symbol::Inv(data.base.num_generators),
+            && w[j] == Symbol::Inv(data.base.num_generators)
+            && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w),
 {
     lemma_max_prefix_achieved(data, w);
     let any_k: int = choose|k: int| 0 <= k <= w.len()
@@ -3564,6 +3569,183 @@ proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
 // Two cases: max_prefix_level ≥ 1 → Gen-Inv pair → right syllable.
 //            max_prefix_level = 0 → Inv-Gen pair → left syllable.
 // Both give syls ≠ [], contradicting act = (ε, []).
+
+/// Core action argument for Gen-Inv case:
+/// Given a Gen-Inv pair at (pair_i, pair_j) in w with base word g ∉ B,
+/// set up the tower at the pair's level and derive contradiction.
+///
+/// The pair is at max_prefix_level, so the pair's shifted level is the
+/// max shifted level. translate(w) is word_valid at this tower height.
+/// At this junction: the G₂ one-shot creates a right syllable,
+/// G₁ processing preserves it, giving right_count ≥ 1.
+/// But translate(w) ≡ ε → act = (ε, []) → right_count = 0. Contradiction.
+proof fn lemma_gen_inv_action_contradiction(
+    data: HNNData, w: Word, pair_i: int, pair_j: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        !has_pinch(data, w),
+        has_adjacent_opposite_at(data, w, pair_i, pair_j),
+        w[pair_i] == Symbol::Gen(data.base.num_generators),
+        w[pair_j] == Symbol::Inv(data.base.num_generators),
+        net_level(data, w) == 0,
+        // The pair is at the max prefix level
+        net_level(data, w.subrange(0, pair_i + 1)) == max_prefix_level(data, w),
+        max_prefix_level(data, w) >= 1,
+    ensures false,
+{
+    use crate::normal_form_afp_textbook::*;
+
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+
+    // --- Tower setup ---
+    let d: Derivation = choose|d: Derivation|
+        derivation_valid(hp, d, w, empty_word());
+    let min_adj = derivation_min_adj_level(data, d.steps, w);
+    let max_lev = derivation_max_step_level(data, d.steps, w);
+    let bl_deriv: nat = if min_adj >= 0 { 0 } else { (-min_adj) as nat };
+    let max_lev_abs: nat = if max_lev >= 0 { max_lev as nat }
+        else { (-max_lev) as nat };
+
+    // bl large enough for both word levels and derivation
+    let bl: nat = (w.len() + bl_deriv) as nat;
+    // m large enough for both
+    let m: nat = (bl + w.len() as nat + max_lev_abs + 1) as nat;
+
+    assert(bl as int >= -(min_adj));
+    assert(m as int >= max_lev + bl as int);
+
+    assert(word_valid(w, hp.num_generators)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(#[trigger] w[k], hp.num_generators)
+        by {}
+    }
+
+    // --- Translate w → tower(m) ---
+    lemma_derivation_levels_ok_from_bounds(data, m, bl as int, d.steps, w);
+    lemma_hnn_derivation_to_tower_equiv(
+        data, m, bl as int, d.steps, w, empty_word());
+    lemma_translate_empty_at(data, bl as int);
+    let tw = translate_word_at(data, w, bl as int);
+    // tw ≡ ε in tower(m)
+
+    // --- Tower prerequisites ---
+    lemma_tower_textbook_chain_from_hnn_iso(data, m);
+
+    // --- Word-level bounds ---
+    assert forall|k: int| #![trigger w.subrange(0, k)]
+        0 <= k <= w.len() ==>
+        0 <= bl as int + net_level(data, w.subrange(0, k)) <= m as int
+    by {
+        if 0 <= k && k <= w.len() {
+            lemma_prefix_level_bounded_by_k(data, w, k);
+        }
+    }
+    lemma_translate_word_valid_for_level(data, w, bl as int, m);
+    // tw is word_valid for tower(m)
+
+    // --- Pair's shifted level ---
+    // The pair is Gen at pair_i, Inv at pair_j.
+    // Level of base word = net_level(w[0..pair_i]) + 1 (Gen goes up)
+    // Shifted: bl + net_level(w[0..pair_i]) + 1
+    let prefix_level = net_level(data, w.subrange(0, pair_i));
+    let pair_level: nat = (bl as int + prefix_level + 1) as nat;
+
+    // pair_level ≥ 1 (since bl ≥ w.len() ≥ 0 and prefix_level ≥ -w.len())
+    lemma_prefix_level_bounded_by_k(data, w, pair_i);
+    assert(pair_level >= 1);
+    assert(pair_level <= m) by {
+        lemma_max_prefix_bounds(data, w, pair_i + 1);
+        // net_level(w[0..pair_i+1]) = prefix_level + 1 ≤ max_prefix_level
+        // pair_level = bl + prefix_level + 1 ≤ bl + max_prefix_level
+        // ≤ bl + w.len() ≤ m
+        lemma_net_level_subrange_prefix(data, w, pair_i);
+        let tail = w.subrange(pair_i, w.len() as int);
+        lemma_net_level_subrange_prefix(data, tail, 1);
+        assert(tail.subrange(0, 1) =~= Seq::new(1, |_j: int| w[pair_i]));
+        lemma_net_level_single(data, w[pair_i]);
+    }
+
+    // --- Peel down to tower(pair_level) ---
+    // tw is word_valid for tower(m). Need it for tower(pair_level).
+    // pair_level = bl + prefix_level + 1. Max shifted level = bl + max_prefix_level.
+    // Need: pair_level ≥ max shifted level, i.e., prefix_level + 1 ≥ max_prefix_level.
+    // This is true when the Gen-Inv pair is at the max prefix level:
+    // net_level(w[0..pair_i+1]) = prefix_level + 1 = max_prefix_level
+    // (from the forward scan which finds the pair at the max level).
+    // So pair_level = bl + max_prefix_level = max shifted level.
+
+    // For the peel: tw valid for tower(pair_level) requires all generators < (pair_level+1)*ng.
+    // The max shifted level = bl + max_prefix_level = pair_level.
+    // So all generators in tw are at levels ≤ pair_level. ✓
+    // Need to prove: tw is word_valid for tower(pair_level).
+    // Since pair_level ≤ m and tw is valid for tower(m), we need the stronger
+    // bound that tw's generators are ≤ pair_level (not just ≤ m).
+
+    // For this: need net_level(w[0..pair_i+1]) = max_prefix_level.
+    // I.e., prefix_level + 1 = max_prefix_level.
+    // The Gen-Inv pair from lemma_gen_inv_pair_when_max_ge_1 is at the max level.
+    // From the forward scan: the pair is found where level first reaches max.
+    // So net_level(w[0..pair_i+1]) = max_prefix_level. ✓
+    // But we didn't carry this fact through the choose. Let me assert it.
+
+    // Actually, we don't have this assertion from the choose.
+    // The choose just gives us SOME Gen-Inv pair, not necessarily at max level.
+    // We need to either carry the max-level property through, or prove it here.
+
+    // For now: use the fact that pair_level ≤ m and tw valid for tower(m).
+    // Peel from tower(m) to tower(pair_level).
+    // For the peel: need tw valid for tower(pair_level).
+    // This requires ALL generators in tw to be < (pair_level + 1) * ng.
+    // From lemma_translate_word_valid_for_level with m = pair_level:
+    // need all shifted running levels ≤ pair_level.
+    // Shifted running level at position k = bl + net_level(w[0..k]) ≤ bl + max_prefix_level.
+    // We need bl + max_prefix_level ≤ pair_level = bl + prefix_level + 1.
+    // I.e., max_prefix_level ≤ prefix_level + 1.
+    // Since prefix_level + 1 = net_level(w[0..pair_i+1]) ≤ max_prefix_level:
+    // we need max_prefix_level ≤ max_prefix_level. ✓ (equality).
+    // So: prefix_level + 1 = max_prefix_level.
+
+    // I'll need to add this as a precondition or prove it from the pair's properties.
+    // For now, let me add it as a requires and fix the caller.
+
+    // ACTUALLY: lemma_find_gen_inv_forward ensures the pair is at the position where
+    // level first reaches max. From its proof: net_level(w[0..from]) = max at the
+    // position where pair_i = from - 1. So net_level(w[0..pair_i+1]) = max.
+    // But this isn't carried through the choose in britton_lemma_full.
+
+    // To fix: strengthen lemma_gen_inv_pair_when_max_ge_1 to also ensure
+    // net_level(w[0..pair_i+1]) = max_prefix_level. Then carry through choose.
+
+    // For now: let me just add this assertion and see if it verifies.
+    // If not, I'll strengthen the pair-finding lemma.
+
+    // TEMPORARY: assert the max-level property
+    // This should follow from the pair being at the max level.
+    lemma_max_prefix_bounds(data, w, pair_i + 1);
+    // net_level(w[0..pair_i+1]) ≤ max_prefix_level ✓
+    // Need equality. Can't prove without stronger pair-finding ensures.
+
+    // ALTERNATIVE: don't peel. Work at tower(m) directly.
+    // At junction (m-1)↔m: tw is valid. But the pair might not be G₂ at this junction.
+    // The pair is G₂ at junction (pair_level-1)↔pair_level, not at (m-1)↔m.
+
+    // CLEANEST FIX: strengthen the pair-finding ensures.
+    // Add: net_level(w[0..i+1]) == max_prefix_level.
+    // Then pair_level = bl + max_prefix_level.
+    // And tw is valid for tower(pair_level) by the level bounds.
+
+    // For now, I'll restructure to pass the max-level property through.
+    // This requires modifying lemma_gen_inv_pair_when_max_ge_1.
+    // Let me do that.
+
+    // PLACEHOLDER for the rest of the argument
+    assert(false); // Will be replaced after strengthening pair-finding
+}
 
 /// **Britton's Lemma (Full):** If w ≡ ε in G* and w has stable letters, w has a pinch.
 pub proof fn britton_lemma_full(
@@ -3592,19 +3774,15 @@ pub proof fn britton_lemma_full(
             let pair_i: int = choose|i: int|
                 #[trigger] w[i] == Symbol::Gen(data.base.num_generators)
                 && exists|j: int| has_adjacent_opposite_at(data, w, i, j)
-                    && w[j] == Symbol::Inv(data.base.num_generators);
+                    && w[j] == Symbol::Inv(data.base.num_generators)
+                    && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w);
             let pair_j: int = choose|j: int|
                 #[trigger] w[j] == Symbol::Inv(data.base.num_generators)
-                && has_adjacent_opposite_at(data, w, pair_i, j);
+                && has_adjacent_opposite_at(data, w, pair_i, j)
+                && net_level(data, w.subrange(0, pair_i + 1)) == max_prefix_level(data, w);
 
-            // Base word between the pair: not in B (since no pinch, Gen-Inv case)
             assert(!has_pinch_at(data, w, pair_i, pair_j));
-
-            // TODO: Tower setup + decompose translate + show right_count ≥ 1
-            // This is the core textbook argument.
-            // For now, the pair finding is verified.
-            // The action argument will be added next.
-            assert(false); // PLACEHOLDER for the action argument
+            lemma_gen_inv_action_contradiction(data, w, pair_i, pair_j);
         } else {
             // Case B: max = 0 → word only goes down → use Inv-Gen pair + left syllable
             // lemma_adjacent_opposite_exists gives some pair (must be Inv-Gen since no Gen-Inv)
