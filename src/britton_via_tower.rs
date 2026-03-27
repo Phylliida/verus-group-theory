@@ -857,6 +857,18 @@ proof fn lemma_shift_embedding_distributes(
 /// Tower identifications_isomorphic from hnn_associations_isomorphic.
 /// Uses shift-embedding distributivity + AFP right-injectivity + base_at_copy_k_embeds.
 #[verifier::rlimit(300)]
+// lemma_tower_iso_per_word: per-word biconditional for tower isomorphism.
+// Logic complete (forward via AFP right-injectivity + hnn_iso, backward via base_at_copy_k_embeds + hnn_iso).
+// Z3 engineering: needs explicit assertion chain connecting AFP right-injectivity output
+// (equiv(tower_afp_data(k-1).p2, embed_a_hnn, ε)) to equiv(data.base, embed_a_hnn, ε)
+// and shift(embed_a_hnn, k*ng) to embed_a_tower. ~10 more lines of intermediate assertions.
+//
+// All building blocks verified (0 assumes):
+// - lemma_afp_injectivity_right ✓
+// - lemma_base_at_copy_k_embeds ✓ (shift homomorphism)
+// - lemma_shift_embedding_distributes ✓
+// - hnn_associations_isomorphic ✓ (precondition)
+
 /// Helper: per-word proof of the tower isomorphism biconditional.
 #[verifier::rlimit(300)]
 proof fn lemma_tower_iso_per_word(
@@ -922,12 +934,20 @@ proof fn lemma_tower_iso_per_word(
     assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word())
         <==> equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
 
-    // Forward: equiv(tower(k), embed_a_tower, ε) → equiv(base, embed_b_tower, ε)
+    // Key =~= connections
+    assert(b_words_tower =~= b_words_hnn);
+    assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
+
+    // Explicitly trigger hnn_iso biconditional
+    assert(word_valid(w, kk as nat));
+    assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word())
+        <==> equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
+
+    // Forward: equiv(p1, embed_a_tower, ε) → equiv(base, embed_a_hnn, ε)
+    // Then hnn_iso → equiv(base, embed_b_hnn, ε) =~= equiv(p2, embed_b_tower, ε)
     if equiv_in_presentation(afp_data.p1, embed_a_tower, empty_word()) {
-        // embed_a_tower =~= shift(embed_a_hnn, k*ng) ≡ ε in tower(k) → embed_a_hnn ≡ ε in base
         if k == 0 {
             assert(k * ng == 0) by (nonlinear_arith) requires k == 0;
-            // shift by 0 = identity → embed_a_tower =~= embed_a_hnn → equiv(base, embed_a_hnn, ε)
         } else {
             assert(tower_textbook_prereqs_at(data, (k - 1) as nat));
             lemma_tower_afp_data_valid(data, (k - 1) as nat);
@@ -936,20 +956,22 @@ proof fn lemma_tower_iso_per_word(
             crate::normal_form_afp_textbook::lemma_afp_injectivity_right(
                 tower_afp_data(data, (k - 1) as nat), embed_a_hnn);
         }
-        // Now equiv(base, embed_a_hnn, ε) → equiv(base, embed_b_hnn, ε) by hnn_iso
-        // And embed_b_tower =~= embed_b_hnn → equiv(base, embed_b_tower, ε)
+        // equiv(base, embed_a_hnn, ε) established → hnn_iso → equiv(base, embed_b_hnn, ε)
+        assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word()));
+        assert(equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
+        // afp_data.p2 = data.base, embed_b_tower =~= embed_b_hnn
+        assert(afp_data.p2 == data.base);
     }
 
-    // Backward: equiv(base, embed_b_tower, ε) → equiv(tower(k), embed_a_tower, ε)
+    // Backward: equiv(p2, embed_b_tower, ε) → equiv(base, embed_a_hnn, ε)
+    // Then base_at_copy_k → equiv(p1, embed_a_tower, ε)
     if equiv_in_presentation(afp_data.p2, embed_b_tower, empty_word()) {
-        assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
+        // hnn_iso reverse: embed_b ≡ ε → embed_a ≡ ε in base
         assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word()));
         lemma_base_at_copy_k_embeds(data, k, k, embed_a_hnn, empty_word());
+        // shift(embed_a_hnn, k*ng) =~= embed_a_tower
+        assert(afp_data.p1 == tower_presentation(data, k));
     }
-
-    // Assert postcondition explicitly
-    assert(equiv_in_presentation(afp_data.p1, apply_embedding(a_words_tower, w), empty_word())
-        <==> equiv_in_presentation(afp_data.p2, apply_embedding(b_words_tower, w), empty_word()));
 }
 
 pub proof fn lemma_tower_identifications_isomorphic(
