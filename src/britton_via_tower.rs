@@ -4434,9 +4434,87 @@ proof fn lemma_case_a_contradiction(data: HNNData, w: Word)
     assert(bl as int + prefix_level + 1 == pl as int);
     assert(tw =~= concat(tw_prefix, concat(tw_g2, tw_suffix)));
 
-    // TODO: Chain act_word_concat + g2_creates_right_syllable + g1_preserves
-    // This requires ~15 more lines in a separate helper to stay under rlimit.
-    assert(false);
+    // Chain action via separate helper to stay under rlimit
+    lemma_case_a_chain(data, w, pair_i, pair_j, bl, pl);
+}
+
+/// Case A final chain: split action, apply G₂ one-shot, apply G₁ prefix preservation.
+proof fn lemma_case_a_chain(
+    data: HNNData, w: Word, pair_i: int, pair_j: int, bl: nat, pl: nat,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        !has_pinch(data, w),
+        has_adjacent_opposite_at(data, w, pair_i, pair_j),
+        w[pair_i] == Symbol::Gen(data.base.num_generators),
+        w[pair_j] == Symbol::Inv(data.base.num_generators),
+        net_level(data, w.subrange(0, pair_i + 1)) == max_prefix_level(data, w),
+        max_prefix_level(data, w) >= 1,
+        pl >= 1,
+        pl == (bl + max_prefix_level(data, w)) as nat,
+        bl >= w.len(),
+        tower_textbook_chain(data, pl),
+        word_valid(translate_word_at(data, w, bl as int),
+            tower_presentation(data, pl).num_generators),
+        // act = identity
+        crate::normal_form_afp_textbook::act_word(
+            tower_afp_data(data, (pl - 1) as nat),
+            translate_word_at(data, w, bl as int),
+            empty_word(), Seq::<crate::normal_form_afp_textbook::Syllable>::empty())
+            == (empty_word(), Seq::<crate::normal_form_afp_textbook::Syllable>::empty()),
+        // Decomposition
+        net_level(data, w.subrange(0, pair_i)) + 1 == max_prefix_level(data, w),
+        translate_word_at(data, w, bl as int) =~= concat(
+            translate_word_at(data, w.subrange(0, pair_i), bl as int),
+            concat(
+                shift_word(w.subrange(pair_i + 1, pair_j), (pl * data.base.num_generators) as nat),
+                translate_word_at(data, w.subrange(pair_j + 1, w.len() as int),
+                    bl as int + net_level(data, w.subrange(0, pair_i))))),
+        word_valid(w.subrange(pair_i + 1, pair_j), data.base.num_generators),
+    ensures false,
+{
+    use crate::normal_form_afp_textbook::*;
+    let ng = data.base.num_generators;
+    let junc = (pl - 1) as nat;
+    let afp = tower_afp_data(data, junc);
+    let e_h = empty_word();
+    let e_s = Seq::<Syllable>::empty();
+    let prefix_level = net_level(data, w.subrange(0, pair_i));
+    let base_word = w.subrange(pair_i + 1, pair_j);
+    let tw_prefix = translate_word_at(data, w.subrange(0, pair_i), bl as int);
+    let tw_g2 = shift_word(base_word, (pl * ng) as nat);
+    let tw_suffix = translate_word_at(data,
+        w.subrange(pair_j + 1, w.len() as int), bl as int + prefix_level);
+    let tw = translate_word_at(data, w, bl as int);
+
+    // AFP prerequisites
+    assert(tower_textbook_prereqs_at(data, junc));
+    lemma_tower_afp_data_valid(data, junc);
+    lemma_tower_valid(data, junc);
+    lemma_tower_num_generators(data, junc);
+    reveal(presentation_valid);
+    lemma_iso_implies_apc(afp);
+    lemma_identity_state_canonical(afp);
+
+    // Split action: act(tw, ε, []) = act(tw_prefix, act(tw_g2, act(tw_suffix, ε, [])))
+    lemma_act_word_concat(afp, tw_prefix, concat(tw_g2, tw_suffix), e_h, e_s);
+    lemma_act_word_concat(afp, tw_g2, tw_suffix, e_h, e_s);
+
+    // Suffix: act(tw_suffix, ε, []) has right_count = 0
+    // (tw_suffix is at levels < pl → G₁ at this junction)
+    // G₂ one-shot: creates right_count ≥ 1
+    // Prefix: preserves right_count ≥ 1 (for single visit, prefix is G₁)
+
+    // For now: the chain is set up. The remaining formal steps:
+    // 1. Show base_word ∉ B at this junction (from ¬has_pinch_at)
+    // 2. Call lemma_g2_creates_right_syllable
+    // 3. Show tw_prefix is G₁ (from forward scan: prefix levels < max)
+    // 4. Call lemma_act_g1_word_preserves_right_count on prefix
+    // 5. Contradiction: right_count ≥ 1 but final = 0
+
+    assert(false); // base∉B + G₂ one-shot + prefix G₁ + final chain
 }
 
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
