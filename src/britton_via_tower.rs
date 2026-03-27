@@ -3896,7 +3896,107 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
     }
 }
 
-// --- X.14: Full Britton's Lemma (Main Theorem) ---
+// --- X.14: Tower setup for the rightmost Gen-Inv pair ---
+
+/// Set up tower at the max level, get translate ≡ ε, return (bl, pair_level).
+proof fn lemma_tower_setup(data: HNNData, w: Word) -> (result: (nat, nat))
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+        net_level(data, w) == 0,
+        max_prefix_level(data, w) >= 1,
+    ensures ({
+        let (bl, pl) = result;
+        let tw = translate_word_at(data, w, bl as int);
+        &&& pl >= 1
+        &&& pl == (bl + max_prefix_level(data, w)) as nat
+        &&& bl >= w.len()
+        &&& tower_textbook_chain(data, pl)
+        &&& word_valid(tw, tower_presentation(data, pl).num_generators)
+        &&& equiv_in_presentation(tower_presentation(data, pl), tw, empty_word())
+    }),
+{
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+    let max_lev = max_prefix_level(data, w);
+
+    let d: Derivation = choose|d: Derivation|
+        derivation_valid(hp, d, w, empty_word());
+    let min_adj = derivation_min_adj_level(data, d.steps, w);
+    let max_step = derivation_max_step_level(data, d.steps, w);
+    let bl_deriv: nat = if min_adj >= 0 { 0 } else { (-min_adj) as nat };
+    let max_step_abs: nat = if max_step >= 0 { max_step as nat } else { (-max_step) as nat };
+
+    let bl: nat = (w.len() + bl_deriv) as nat;
+    let m: nat = (bl + w.len() as nat + max_step_abs + 1) as nat;
+    let pl: nat = (bl + max_lev) as nat;
+
+    assert(bl as int >= -(min_adj));
+    assert(m as int >= max_step + bl as int);
+    assert(word_valid(w, hp.num_generators)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(#[trigger] w[k], hp.num_generators) by {}
+    }
+
+    lemma_derivation_levels_ok_from_bounds(data, m, bl as int, d.steps, w);
+    lemma_hnn_derivation_to_tower_equiv(data, m, bl as int, d.steps, w, empty_word());
+    lemma_translate_empty_at(data, bl as int);
+    lemma_tower_textbook_chain_from_hnn_iso(data, m);
+
+    // tw valid for tower(pl)
+    assert forall|k: int| #![trigger w.subrange(0, k)]
+        0 <= k <= w.len() ==>
+        0 <= bl as int + net_level(data, w.subrange(0, k)) <= pl as int
+    by {
+        if 0 <= k && k <= w.len() {
+            lemma_prefix_level_bounded_by_k(data, w, k);
+            lemma_max_prefix_bounds(data, w, k);
+        }
+    }
+    lemma_translate_word_valid_for_level(data, w, bl as int, pl);
+
+    // Peel to tower(pl)
+    assert(pl <= m) by {
+        lemma_max_prefix_achieved(data, w);
+        let kk: int = choose|k: int| 0 <= k <= w.len()
+            && net_level(data, w.subrange(0, k)) == max_lev;
+        lemma_prefix_level_bounded_by_k(data, w, kk);
+    }
+    lemma_tower_injectivity_peel(data, pl, m, translate_word_at(data, w, bl as int));
+
+    (bl, pl)
+}
+
+
+// --- X.15: Suffix level bound ---
+
+/// Key lemma: the suffix of w after a concat split has net_level equal to
+/// the difference of the full word's prefix levels.
+/// Specifically: if w = w1 · w2, then net_level(w2[0..k]) = net_level(w[0..w1.len()+k]) - net_level(w1).
+proof fn lemma_suffix_net_level(data: HNNData, w: Word, split: int, k: int)
+    requires
+        0 <= split <= w.len(),
+        0 <= k <= w.len() - split,
+    ensures
+        net_level(data, w.subrange(split, split + k))
+            == net_level(data, w.subrange(0, split + k))
+                - net_level(data, w.subrange(0, split)),
+{
+    let prefix = w.subrange(0, split);
+    let suffix_k = w.subrange(split, split + k);
+    let full = w.subrange(0, split + k);
+    assert(full =~= concat(prefix, suffix_k)) by {
+        assert(full.len() == prefix.len() + suffix_k.len());
+        assert forall|i: int| 0 <= i < full.len()
+            implies full[i] == concat(prefix, suffix_k)[i]
+        by {
+            if i < split {} else { assert(suffix_k[i - split] == w[i]); }
+        }
+    }
+    lemma_net_level_concat(data, prefix, suffix_k);
+}
 
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
@@ -3929,22 +4029,70 @@ pub proof fn britton_lemma_full(
         lemma_max_prefix_bounds(data, w, 0);
 
         if max_lev >= 1 {
-            // Find the rightmost Gen-Inv pair at the max level.
-            lemma_rightmost_gen_inv(data, w);
-            // The pair (i, j) has:
-            // - w[i] = Gen, w[j] = Inv
-            // - net_level(w[0..i+1]) = max_prefix_level
-            // - forall k > j: net_level(w[0..k]) < max_prefix_level
-            // This ensures the suffix after j is strictly below max (= G₁ at the junction).
+            // --- Case A: max ≥ 1 → Gen-Inv pair → right syllable argument ---
+            use crate::normal_form_afp_textbook::*;
+            let ng = data.base.num_generators;
 
-            // The contradiction follows from the action argument.
-            // TODO: implement lemma_gen_inv_action_contradiction_v2
-            // using the rightmost pair + tower setup + decomposition.
-            assert(false); // PLACEHOLDER
+            // Tower setup
+            let (bl, pl) = lemma_tower_setup(data, w);
+            let tw = translate_word_at(data, w, bl as int);
+            let junc = (pl - 1) as nat;
+            let afp = tower_afp_data(data, junc);
+
+            // AFP prerequisites
+            assert(tower_textbook_prereqs_at(data, junc));
+            lemma_tower_afp_data_valid(data, junc);
+            lemma_tower_valid(data, junc);
+            reveal(presentation_valid);
+            lemma_iso_implies_apc(afp);
+            lemma_action_well_defined_proof(afp);
+            lemma_identity_state_canonical(afp);
+
+            // act(tw, ε, []) = (ε, []) from tw ≡ ε
+            let e_h = empty_word();
+            let e_s = Seq::<Syllable>::empty();
+            let d_tw: Derivation = choose|d: Derivation|
+                derivation_valid(tower_presentation(data, pl), d, tw, empty_word());
+            lemma_act_word_deriv(afp, d_tw.steps, tw, empty_word(), e_h, e_s);
+            lemma_act_word_empty(afp, e_h, e_s);
+            assert(act_word(afp, tw, e_h, e_s) == (e_h, e_s));
+            assert(right_syllable_count(e_s) == 0);
+
+            // Find rightmost Gen-Inv pair
+            lemma_rightmost_gen_inv(data, w);
+            let pair_i: int = choose|i: int|
+                #[trigger] w[i] == Symbol::Gen(ng)
+                && exists|j: int| has_adjacent_opposite_at(data, w, i, j)
+                    && w[j] == Symbol::Inv(ng)
+                    && net_level(data, w.subrange(0, i + 1)) == max_lev
+                    && (forall|k: int| j < k <= w.len()
+                        ==> net_level(data, w.subrange(0, k)) < max_lev);
+            let pair_j: int = choose|j: int|
+                #[trigger] w[j] == Symbol::Inv(ng)
+                && has_adjacent_opposite_at(data, w, pair_i, j)
+                && net_level(data, w.subrange(0, pair_i + 1)) == max_lev
+                && (forall|k: int| j < k <= w.len()
+                    ==> net_level(data, w.subrange(0, k)) < max_lev);
+
+            // The no-pinch condition on this pair: base word ∉ B
+            assert(!has_pinch_at(data, w, pair_i, pair_j));
+
+            // The action argument shows right_count ≥ 1.
+            // This contradicts right_count(act(tw, ε, [])) = 0.
+            //
+            // The argument uses:
+            // 1. Suffix after pair_j: levels < max → G₁ → preserves right_count = 0
+            // 2. G₂ one-shot on base word: base ∉ B → prepend right syllable → right_count = 1
+            // 3. Prefix before pair_i: preserves right_count ≥ 1
+            //
+            // TODO: chain these steps formally using lemma_act_word_concat,
+            // lemma_act_g1_word_preserves_right_count, lemma_act_word_eq_g2_one_shot,
+            // and lemma_not_in_subgroup_concat_embed_b.
+            assert(false); // Remaining: action chain (~40 lines)
         } else {
             // Case B: max = 0. Use dual (Inv-Gen + left_count) argument.
             lemma_adjacent_opposite_exists(data, w);
-            assert(false); // PLACEHOLDER
+            assert(false); // PLACEHOLDER: symmetric argument
         }
     }
 }
