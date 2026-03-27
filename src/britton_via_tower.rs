@@ -563,40 +563,36 @@ pub proof fn lemma_translate_hnn_relator(
 /// - FreeReduce/Delete: w = prefix · middle · suffix → w' = prefix · suffix
 /// - FreeExpand/Insert: w = prefix · suffix → w' = prefix · middle · suffix (reverse direction)
 pub proof fn lemma_translate_delete_middle(
-    data: HNNData, m: nat,
+    data: HNNData, m: nat, base_level: int,
     prefix: Word, middle: Word, suffix: Word,
 )
     requires
         hnn_data_valid(data),
         net_level(data, middle) == 0,
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word_at(data, middle, net_level(data, prefix)),
+            translate_word_at(data, middle, base_level + net_level(data, prefix)),
             empty_word()),
         presentation_valid(tower_presentation(data, m)),
-        word_valid(translate_word_at(data, middle, net_level(data, prefix)),
+        word_valid(translate_word_at(data, middle, base_level + net_level(data, prefix)),
             tower_presentation(data, m).num_generators),
     ensures
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word(data, concat(prefix, concat(middle, suffix))),
-            translate_word(data, concat(prefix, suffix))),
+            translate_word_at(data, concat(prefix, concat(middle, suffix)), base_level),
+            translate_word_at(data, concat(prefix, suffix), base_level)),
 {
     let tp = tower_presentation(data, m);
-    let lp = net_level(data, prefix);
+    let lp = base_level + net_level(data, prefix);
 
     // Decompose translate of w = prefix · middle · suffix
-    lemma_translate_concat(data, prefix, concat(middle, suffix), 0);
+    lemma_translate_concat(data, prefix, concat(middle, suffix), base_level);
     lemma_translate_concat(data, middle, suffix, lp);
     lemma_net_level_concat(data, prefix, concat(middle, suffix));
     lemma_net_level_concat(data, middle, suffix);
-    // translate(w) =~= concat(tr(prefix, 0), concat(tr(middle, lp), tr(suffix, lp)))
-    // (since net_level(middle) == 0: suffix starts at level lp + 0 = lp)
 
     // Decompose translate of w' = prefix · suffix
-    lemma_translate_concat(data, prefix, suffix, 0);
-    // translate(w') =~= concat(tr(prefix, 0), tr(suffix, lp))
+    lemma_translate_concat(data, prefix, suffix, base_level);
 
-    // tr(middle, lp) ≡ ε → delete the middle from the translation
-    let tr_prefix = translate_word_at(data, prefix, 0);
+    let tr_prefix = translate_word_at(data, prefix, base_level);
     let tr_middle = translate_word_at(data, middle, lp);
     let tr_suffix = translate_word_at(data, suffix, lp);
 
@@ -606,33 +602,33 @@ pub proof fn lemma_translate_delete_middle(
 /// Reverse direction: translate(prefix · suffix) ≡ translate(prefix · middle · suffix).
 /// Needs symmetry infrastructure.
 pub proof fn lemma_translate_insert_middle(
-    data: HNNData, m: nat,
+    data: HNNData, m: nat, base_level: int,
     prefix: Word, middle: Word, suffix: Word,
 )
     requires
         hnn_data_valid(data),
         net_level(data, middle) == 0,
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word_at(data, middle, net_level(data, prefix)),
+            translate_word_at(data, middle, base_level + net_level(data, prefix)),
             empty_word()),
         presentation_valid(tower_presentation(data, m)),
-        word_valid(translate_word_at(data, middle, net_level(data, prefix)),
+        word_valid(translate_word_at(data, middle, base_level + net_level(data, prefix)),
             tower_presentation(data, m).num_generators),
     ensures
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word(data, concat(prefix, suffix)),
-            translate_word(data, concat(prefix, concat(middle, suffix)))),
+            translate_word_at(data, concat(prefix, suffix), base_level),
+            translate_word_at(data, concat(prefix, concat(middle, suffix)), base_level)),
 {
     let tp = tower_presentation(data, m);
-    let lp = net_level(data, prefix);
+    let lp = base_level + net_level(data, prefix);
 
-    lemma_translate_concat(data, prefix, concat(middle, suffix), 0);
+    lemma_translate_concat(data, prefix, concat(middle, suffix), base_level);
     lemma_translate_concat(data, middle, suffix, lp);
     lemma_net_level_concat(data, prefix, concat(middle, suffix));
     lemma_net_level_concat(data, middle, suffix);
-    lemma_translate_concat(data, prefix, suffix, 0);
+    lemma_translate_concat(data, prefix, suffix, base_level);
 
-    let tr_prefix = translate_word_at(data, prefix, 0);
+    let tr_prefix = translate_word_at(data, prefix, base_level);
     let tr_middle = translate_word_at(data, middle, lp);
     let tr_suffix = translate_word_at(data, suffix, lp);
 
@@ -863,7 +859,7 @@ proof fn lemma_tower_iso_forward_mid(
 )
     requires
         hnn_data_valid(data),
-        tower_textbook_chain(data, k + 1),
+        tower_textbook_chain(data, k),
         word_valid(embed_a_hnn, data.base.num_generators),
         equiv_in_presentation(tower_presentation(data, k),
             shift_word(embed_a_hnn, k * data.base.num_generators), empty_word()),
@@ -923,7 +919,7 @@ proof fn lemma_tower_iso_per_word(
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
-        tower_textbook_chain(data, k + 1),
+        tower_textbook_chain(data, k),
         word_valid(w, data.associations.len() as nat),
     ensures ({
         let afp_data = tower_afp_data(data, k);
@@ -1025,7 +1021,7 @@ pub proof fn lemma_tower_identifications_isomorphic(
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
-        tower_textbook_chain(data, k + 1),
+        tower_textbook_chain(data, k),
     ensures
         crate::normal_form_amalgamated::identifications_isomorphic(tower_afp_data(data, k)),
 {
@@ -1759,17 +1755,17 @@ proof fn lemma_translate_relator_equiv_empty(
 ///
 /// In all cases: translate(w) ≡ translate(w_next) in tower(m).
 pub proof fn lemma_hnn_step_tower_equiv(
-    data: HNNData, m: nat, w: Word, step: DerivationStep,
+    data: HNNData, m: nat, base_level: int, w: Word, step: DerivationStep,
 )
     requires
         hnn_data_valid(data),
         word_valid(w, hnn_presentation(data).num_generators),
         apply_step(hnn_presentation(data), w, step) is Some,
-        step_level_ok(data, m, w, step),
+        step_level_ok(data, m, base_level, w, step),
     ensures
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word(data, w),
-            translate_word(data, apply_step(hnn_presentation(data), w, step).unwrap())),
+            translate_word_at(data, w, base_level),
+            translate_word_at(data, apply_step(hnn_presentation(data), w, step).unwrap(), base_level)),
 {
     let p = hnn_presentation(data);
     let tp = tower_presentation(data, m);
@@ -1793,14 +1789,13 @@ pub proof fn lemma_hnn_step_tower_equiv(
             assert(middle =~= concat(Seq::new(1, |_j: int| s),
                                       Seq::new(1, |_j: int| inverse_symbol(s))));
 
-            let level = net_level(data, prefix);
+            let level = base_level + net_level(data, prefix);
 
-            // s is valid for hnn_presentation because w is word_valid
             assert(symbol_valid(s, p.num_generators));
 
             lemma_pair_translate_equiv_empty(data, m, s, level);
 
-            lemma_translate_delete_middle(data, m, prefix, middle, suffix);
+            lemma_translate_delete_middle(data, m, base_level, prefix, middle, suffix);
         },
         DerivationStep::FreeExpand { position, symbol } => {
             let pos = position;
@@ -1812,10 +1807,10 @@ pub proof fn lemma_hnn_step_tower_equiv(
             assert(w =~= concat(prefix, suffix));
             assert(w_next =~= concat(prefix, concat(middle, suffix)));
 
-            let level = net_level(data, prefix);
+            let level = base_level + net_level(data, prefix);
             lemma_pair_translate_equiv_empty(data, m, symbol, level);
 
-            lemma_translate_insert_middle(data, m, prefix, middle, suffix);
+            lemma_translate_insert_middle(data, m, base_level, prefix, middle, suffix);
         },
         DerivationStep::RelatorDelete { position, relator_index, inverted } => {
             let pos = position;
@@ -1828,12 +1823,12 @@ pub proof fn lemma_hnn_step_tower_equiv(
             assert(w =~= concat(prefix, concat(middle, suffix)));
             assert(w_next =~= concat(prefix, suffix));
 
-            let level = net_level(data, prefix);
+            let level = base_level + net_level(data, prefix);
 
             lemma_translate_relator_equiv_empty(data, m, relator_index, inverted, level);
             lemma_translate_relator_valid(data, m, relator_index, inverted, level);
 
-            lemma_translate_delete_middle(data, m, prefix, middle, suffix);
+            lemma_translate_delete_middle(data, m, base_level, prefix, middle, suffix);
         },
         DerivationStep::RelatorInsert { position, relator_index, inverted } => {
             let pos = position;
@@ -1845,12 +1840,12 @@ pub proof fn lemma_hnn_step_tower_equiv(
             assert(w =~= concat(prefix, suffix));
             assert(w_next =~= concat(prefix, concat(middle, suffix)));
 
-            let level = net_level(data, prefix);
+            let level = base_level + net_level(data, prefix);
 
             lemma_translate_relator_equiv_empty(data, m, relator_index, inverted, level);
             lemma_translate_relator_valid(data, m, relator_index, inverted, level);
 
-            lemma_translate_insert_middle(data, m, prefix, middle, suffix);
+            lemma_translate_insert_middle(data, m, base_level, prefix, middle, suffix);
         },
     }
 }
@@ -1880,9 +1875,9 @@ pub open spec fn step_is_hnn_relator(data: HNNData, step: DerivationStep) -> boo
 }
 
 /// Level condition for a single step applied to word w.
-pub open spec fn step_level_ok(data: HNNData, m: nat, w: Word, step: DerivationStep) -> bool {
+pub open spec fn step_level_ok(data: HNNData, m: nat, base_level: int, w: Word, step: DerivationStep) -> bool {
     let pos = step_position(step);
-    let level = net_level(data, w.subrange(0, pos));
+    let level = net_level(data, w.subrange(0, pos)) + base_level;
     &&& 0 <= level <= m as int
     &&& (step_is_hnn_relator(data, step) ==> level >= 1)
 }
@@ -1890,7 +1885,7 @@ pub open spec fn step_level_ok(data: HNNData, m: nat, w: Word, step: DerivationS
 /// A full derivation from w producing w', where every step has valid levels.
 /// Returns the final word (should equal w') when the derivation is valid.
 pub open spec fn derivation_levels_ok(
-    data: HNNData, m: nat,
+    data: HNNData, m: nat, base_level: int,
     steps: Seq<DerivationStep>, start: Word,
 ) -> bool
     decreases steps.len(),
@@ -1901,29 +1896,29 @@ pub open spec fn derivation_levels_ok(
         let p = hnn_presentation(data);
         match apply_step(p, start, steps.first()) {
             Some(next) => {
-                step_level_ok(data, m, start, steps.first())
-                && derivation_levels_ok(data, m, steps.drop_first(), next)
+                step_level_ok(data, m, base_level, start, steps.first())
+                && derivation_levels_ok(data, m, base_level, steps.drop_first(), next)
             },
             None => false,
         }
     }
 }
 
-/// Main induction: if all steps in a derivation have valid levels,
-/// then translate(start) ≡ translate(end) in tower(m).
+/// Main induction: if all steps in a derivation have valid (shifted) levels,
+/// then translate_at(start, base_level) ≡ translate_at(end, base_level) in tower(m).
 pub proof fn lemma_hnn_derivation_to_tower_equiv(
-    data: HNNData, m: nat,
+    data: HNNData, m: nat, base_level: int,
     steps: Seq<DerivationStep>, start: Word, end: Word,
 )
     requires
         hnn_data_valid(data),
         word_valid(start, hnn_presentation(data).num_generators),
         derivation_produces(hnn_presentation(data), steps, start) == Some(end),
-        derivation_levels_ok(data, m, steps, start),
+        derivation_levels_ok(data, m, base_level, steps, start),
     ensures
         equiv_in_presentation(tower_presentation(data, m),
-            translate_word(data, start),
-            translate_word(data, end)),
+            translate_word_at(data, start, base_level),
+            translate_word_at(data, end, base_level)),
     decreases steps.len(),
 {
     let p = hnn_presentation(data);
@@ -1931,26 +1926,26 @@ pub proof fn lemma_hnn_derivation_to_tower_equiv(
 
     if steps.len() == 0 {
         assert(start == end);
-        lemma_equiv_refl(tp, translate_word(data, start));
+        lemma_equiv_refl(tp, translate_word_at(data, start, base_level));
     } else {
         let step = steps.first();
         let mid = apply_step(p, start, step).unwrap();
 
         // Per-step: translate(start) ≡ translate(mid)
-        lemma_hnn_step_tower_equiv(data, m, start, step);
+        lemma_hnn_step_tower_equiv(data, m, base_level, start, step);
 
         // mid is word_valid (step preserves word_valid)
         crate::britton_proof::lemma_hnn_presentation_valid(data);
         crate::presentation::lemma_step_preserves_word_valid_pres(p, start, step, mid);
 
         // Inductive: translate(mid) ≡ translate(end)
-        lemma_hnn_derivation_to_tower_equiv(data, m, steps.drop_first(), mid, end);
+        lemma_hnn_derivation_to_tower_equiv(data, m, base_level, steps.drop_first(), mid, end);
 
         // Chain: translate(start) ≡ translate(end)
         lemma_equiv_transitive(tp,
-            translate_word(data, start),
-            translate_word(data, mid),
-            translate_word(data, end));
+            translate_word_at(data, start, base_level),
+            translate_word_at(data, mid, base_level),
+            translate_word_at(data, end, base_level));
     }
 }
 
@@ -1970,13 +1965,13 @@ pub proof fn britton_lemma(
         hnn_data_valid(data),
         word_valid(w, data.base.num_generators),
         equiv_in_presentation(hnn_presentation(data), w, empty_word()),
-        // The derivation fits within tower height m
+        // The derivation fits within tower height m (at base_level 0)
         ({
             let d: Derivation = choose|d: Derivation|
                 derivation_valid(hnn_presentation(data), d, w, empty_word());
-            derivation_levels_ok(data, m, d.steps, w)
+            derivation_levels_ok(data, m, 0, d.steps, w)
         }),
-        // Tower textbook prerequisites (from hnn_associations_isomorphic in principle)
+        // Tower textbook prerequisites
         tower_textbook_chain(data, m),
     ensures
         equiv_in_presentation(data.base, w, empty_word()),
@@ -1985,6 +1980,258 @@ pub proof fn britton_lemma(
     let d: Derivation = choose|d: Derivation|
         derivation_valid(hp, d, w, empty_word());
 
+    assert(word_valid(w, hp.num_generators)) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies symbol_valid(#[trigger] w[k], hp.num_generators)
+        by {}
+    }
+
+    lemma_hnn_derivation_to_tower_equiv(data, m, 0, d.steps, w, empty_word());
+
+    lemma_translate_base_word(data, w);
+    lemma_translate_empty(data);
+
+    lemma_g0_embeds_in_tower_textbook(data, m, w);
+}
+
+// ============================================================
+// Part S: Derivation level bounds for shifted translation
+// ============================================================
+
+/// Minimum "adjusted" step level across a derivation.
+/// For HNN relator steps, returns level - 1 (since they need level >= 1).
+/// For other steps, returns level (since they need level >= 0).
+/// Shift >= -derivation_min_adj_level ensures all shifted levels are valid.
+pub open spec fn derivation_min_adj_level(
+    data: HNNData, steps: Seq<DerivationStep>, start: Word,
+) -> int
+    decreases steps.len(),
+{
+    let hp = hnn_presentation(data);
+    if steps.len() == 0 { 0 }
+    else {
+        match apply_step(hp, start, steps.first()) {
+            Some(next) => {
+                let pos = step_position(steps.first());
+                let level = net_level(data, start.subrange(0, pos));
+                let adj = if step_is_hnn_relator(data, steps.first()) { level - 1 } else { level };
+                let rest_min = derivation_min_adj_level(data, steps.drop_first(), next);
+                if adj < rest_min { adj } else { rest_min }
+            }
+            None => 0
+        }
+    }
+}
+
+/// Maximum step level across a derivation.
+pub open spec fn derivation_max_step_level(
+    data: HNNData, steps: Seq<DerivationStep>, start: Word,
+) -> int
+    decreases steps.len(),
+{
+    let hp = hnn_presentation(data);
+    if steps.len() == 0 { 0 }
+    else {
+        match apply_step(hp, start, steps.first()) {
+            Some(next) => {
+                let pos = step_position(steps.first());
+                let level = net_level(data, start.subrange(0, pos));
+                let rest_max = derivation_max_step_level(data, steps.drop_first(), next);
+                if level > rest_max { level } else { rest_max }
+            }
+            None => 0
+        }
+    }
+}
+
+/// If base_level >= -min_adj and m >= max_level + base_level,
+/// then derivation_levels_ok holds.
+proof fn lemma_derivation_levels_ok_from_bounds(
+    data: HNNData, m: nat, base_level: int,
+    steps: Seq<DerivationStep>, start: Word,
+)
+    requires
+        derivation_produces(hnn_presentation(data), steps, start) is Some,
+        base_level >= -derivation_min_adj_level(data, steps, start),
+        m as int >= derivation_max_step_level(data, steps, start) + base_level,
+    ensures
+        derivation_levels_ok(data, m, base_level, steps, start),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {} else {
+        let hp = hnn_presentation(data);
+        let step = steps.first();
+        let next = apply_step(hp, start, step).unwrap();
+        let pos = step_position(step);
+        let level = net_level(data, start.subrange(0, pos));
+        let adj = if step_is_hnn_relator(data, step) { level - 1 } else { level };
+
+        // adj >= derivation_min_adj_level, so base_level >= -adj, so level + base_level >= 0 (or >= 1)
+        assert(adj >= derivation_min_adj_level(data, steps, start));
+        // level <= derivation_max_step_level, so level + base_level <= m
+        assert(level <= derivation_max_step_level(data, steps, start));
+
+        // Recurse: rest_min >= whole_min and rest_max <= whole_max
+        let rest_min = derivation_min_adj_level(data, steps.drop_first(), next);
+        let rest_max = derivation_max_step_level(data, steps.drop_first(), next);
+        assert(rest_min >= derivation_min_adj_level(data, steps, start)) by {
+            if adj < rest_min {} else {}
+        }
+        assert(rest_max <= derivation_max_step_level(data, steps, start)) by {
+            if level > rest_max {} else {}
+        }
+
+        lemma_derivation_levels_ok_from_bounds(data, m, base_level, steps.drop_first(), next);
+    }
+}
+
+// ============================================================
+// Part T: Tower textbook chain from HNN associations
+// ============================================================
+
+/// Derive tower_textbook_chain from hnn_associations_isomorphic by induction.
+pub proof fn lemma_tower_textbook_chain_from_hnn_iso(data: HNNData, m: nat)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+    ensures
+        tower_textbook_chain(data, m),
+    decreases m,
+{
+    if m == 0 {
+        assert forall|k: nat| k < 0nat
+            implies #[trigger] tower_textbook_prereqs_at(data, k) by {}
+    } else {
+        // IH: tower_textbook_chain(data, m-1)
+        lemma_tower_textbook_chain_from_hnn_iso(data, (m - 1) as nat);
+
+        let k = (m - 1) as nat;
+        let afp_data = tower_afp_data(data, k);
+
+        // Prove identifications_isomorphic at level k
+        lemma_tower_identifications_isomorphic(data, k);
+
+        // Prove action_preserves_canonical at level k
+        lemma_tower_afp_data_valid(data, k);
+        lemma_tower_valid(data, k);
+        reveal(presentation_valid);
+        crate::normal_form_afp_textbook::lemma_iso_implies_apc(afp_data);
+
+        assert(tower_textbook_prereqs_at(data, k));
+
+        assert forall|j: nat| j < m
+            implies #[trigger] tower_textbook_prereqs_at(data, j)
+        by {
+            if j < k {} // from IH
+        }
+    }
+}
+
+// ============================================================
+// Part U: Copy-s tower embedding
+// ============================================================
+
+/// Generalized tower embedding: if shift(w, s*ng) ≡ ε in tower(m) where s <= m,
+/// then w ≡ ε in base. Uses AFP left-injectivity to peel from tower(m) down to
+/// tower(s), then AFP right-injectivity at level s-1.
+pub proof fn lemma_copy_s_embeds(data: HNNData, m: nat, s: nat, w: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, data.base.num_generators),
+        s <= m,
+        tower_textbook_chain(data, m),
+        equiv_in_presentation(tower_presentation(data, m),
+            shift_word(w, s * data.base.num_generators), empty_word()),
+    ensures
+        equiv_in_presentation(data.base, w, empty_word()),
+    decreases m,
+{
+    let ng = data.base.num_generators;
+    if m == 0 {
+        assert(s == 0);
+        assert(s * ng == 0) by (nonlinear_arith) requires s == 0;
+        assert(shift_word(w, 0nat) =~= w);
+    } else if s == m {
+        // shift(w, m*ng) is in the G₂ part of AFP at level m-1
+        let prev = (m - 1) as nat;
+        assert(tower_textbook_prereqs_at(data, prev));
+        lemma_tower_afp_data_valid(data, prev);
+        lemma_tower_valid(data, prev);
+        lemma_tower_num_generators(data, prev);
+        reveal(presentation_valid);
+        crate::normal_form_afp_textbook::lemma_afp_injectivity_right(
+            tower_afp_data(data, prev), w);
+    } else {
+        // s < m: shift(w, s*ng) is a tower(m-1) word
+        let prev = (m - 1) as nat;
+        assert(tower_textbook_prereqs_at(data, prev));
+        lemma_tower_afp_data_valid(data, prev);
+        lemma_tower_valid(data, prev);
+        lemma_tower_num_generators(data, prev);
+        reveal(presentation_valid);
+
+        lemma_shift_word_valid_for_tower(data, w, s, prev);
+        crate::normal_form_afp_textbook::lemma_afp_injectivity(
+            tower_afp_data(data, prev), shift_word(w, s * ng));
+
+        assert(tower_textbook_chain(data, prev)) by {
+            assert forall|k: nat| k < prev
+                implies #[trigger] tower_textbook_prereqs_at(data, k)
+            by { assert(k < m); }
+        }
+        lemma_copy_s_embeds(data, prev, s, w);
+    }
+}
+
+// ============================================================
+// Part V: Translation of base word at shifted level
+// ============================================================
+
+/// translate_word_at(data, ε, base_level) = ε for any base_level.
+proof fn lemma_translate_empty_at(data: HNNData, base_level: int)
+    ensures
+        translate_word_at(data, empty_word(), base_level) =~= empty_word(),
+{}
+
+/// **Britton's Lemma (Unconditional, Lyndon-Schupp Ch. IV):**
+/// If w is a base word and w ≡ ε in the HNN extension G*, then w ≡ ε in G.
+///
+/// No additional assumptions beyond hnn_data_valid and hnn_associations_isomorphic.
+/// The tower textbook prerequisites are derived from hnn_associations_isomorphic,
+/// and the derivation levels are handled by shifting to a non-negative base level.
+pub proof fn britton_lemma_unconditional(
+    data: HNNData, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, data.base.num_generators),
+        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
+    ensures
+        equiv_in_presentation(data.base, w, empty_word()),
+{
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+
+    // Get the derivation
+    let d: Derivation = choose|d: Derivation|
+        derivation_valid(hp, d, w, empty_word());
+
+    // Compute shift amount from derivation bounds
+    let min_adj = derivation_min_adj_level(data, d.steps, w);
+    let max_lev = derivation_max_step_level(data, d.steps, w);
+    // base_level >= -min_adj ensures shifted levels are valid
+    let base_level: nat = if min_adj >= 0 { 0 } else { (-min_adj) as nat };
+    // m >= max_lev + base_level and m >= base_level (since max_lev >= 0 for base word derivations)
+    // Use base_level + max_lev.abs() + 1 as a safe upper bound
+    let max_lev_abs: nat = if max_lev >= 0 { max_lev as nat } else { (-max_lev) as nat };
+    let m: nat = (base_level + max_lev_abs + 1) as nat;
+
+    // base_level <= m (since m = base_level + max_lev_abs + 1 > base_level)
+    assert(base_level <= m);
+    // m >= max_lev + base_level (since m = base_level + |max_lev| + 1 >= base_level + max_lev)
+    assert(m as int >= max_lev + base_level as int);
+
     // word_valid(w, hp.num_generators) — weaken from ng to ng+1
     assert(word_valid(w, hp.num_generators)) by {
         assert forall|k: int| 0 <= k < w.len()
@@ -1992,17 +2239,22 @@ pub proof fn britton_lemma(
         by {}
     }
 
-    // Step 1: translate derivation to tower equiv
-    lemma_hnn_derivation_to_tower_equiv(data, m, d.steps, w, empty_word());
-    // equiv(tower(m), translate(w), translate(ε))
+    // Step 1: Levels are OK with the chosen base_level
+    lemma_derivation_levels_ok_from_bounds(data, m, base_level as int, d.steps, w);
 
-    // Step 2: translate(w) = w, translate(ε) = ε
-    lemma_translate_base_word(data, w);
-    lemma_translate_empty(data);
-    // equiv(tower(m), w, ε)
+    // Step 2: Translate derivation to tower equivalence
+    lemma_hnn_derivation_to_tower_equiv(data, m, base_level as int, d.steps, w, empty_word());
 
-    // Step 3: tower embedding → w ≡ ε in base
-    lemma_g0_embeds_in_tower_textbook(data, m, w);
+    // Step 3: translate_at(w, base_level) = shift_word(w, base_level * ng)
+    lemma_translate_base_word_at(data, w, base_level);
+    // Step 3b: translate_at(ε, base_level) = ε
+    lemma_translate_empty_at(data, base_level as int);
+
+    // Step 4: Tower textbook chain from hnn_associations_isomorphic
+    lemma_tower_textbook_chain_from_hnn_iso(data, m);
+
+    // Step 5: Copy-s tower embedding → w ≡ ε in base
+    lemma_copy_s_embeds(data, m, base_level, w);
 }
 
 } // verus!
