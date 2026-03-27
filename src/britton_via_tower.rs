@@ -4037,16 +4037,37 @@ proof fn lemma_suffix_translate_is_g1(
         0 <= bl_suffix + net_level(data, suffix.subrange(0, k)) <= junc as int
     by {
         if 0 <= k && k <= suffix.len() {
-            // Connect suffix level to full word level
+            // suffix.subrange(0, k) == w.subrange(split, split + k)
+            // (extensionally equal, which for Seq means ==)
+            assert(suffix.subrange(0, k) =~= w.subrange(split, split + k)) by {
+                assert(suffix.subrange(0, k).len() == k);
+                assert(w.subrange(split, split + k).len() == k);
+                assert forall|i: int| 0 <= i < k
+                    implies suffix.subrange(0, k)[i] == w.subrange(split, split + k)[i]
+                by {}
+            }
+            // Use lemma_suffix_net_level on the w.subrange form
             lemma_suffix_net_level(data, w, split, k);
-            // net_level(suffix[0..k]) = net_level(w[0..split+k]) - net_level(w[0..split])
-            // bl_suffix + net_level(suffix[0..k])
-            //   = bl + net_level(w[0..split]) + net_level(w[0..split+k]) - net_level(w[0..split])
-            //   = bl + net_level(w[0..split+k])
-            // This < bl + max_lev = pl (from our requires: net_level(w[0..split+k]) < max_lev).
-            // So bl_suffix + net_level(suffix[0..k]) < pl, i.e., ≤ pl - 1 = junc. ✓
-            // For ≥ 0: bl + net_level(w[0..split+k]) ≥ 0 from general level bounds.
+            // This gives: net_level(w.subrange(split, split+k))
+            //   = net_level(w[0..split+k]) - net_level(w[0..split])
+            // We need the same for suffix.subrange(0, k).
+            // Since suffix.subrange(0,k) =~= w.subrange(split, split+k),
+            // their net_levels are equal. But Z3 needs help.
+            // Let's just assert the key arithmetic directly.
+            let w_sub = w.subrange(split, split + k);
+            assert(net_level(data, w_sub)
+                == net_level(data, w.subrange(0, split + k))
+                    - net_level(data, w.subrange(0, split)));
+            // Upper: net_level(w[0..split+k]) < max_lev (from requires, since split+k > split... wait, split+k could be split when k=0)
+            // For k = 0: net_level(suffix[0..0]) = 0. bl_suffix + 0 = bl_suffix ≤ junc (from requires). ✓
+            // For k > 0: split + k > split. From requires: net_level(w[0..split+k]) < max_lev.
+            if k > 0 {
+                assert(split + k > split);
+                // net_level(w[0..split+k]) < max_lev (from requires, split+k ≤ split + suffix.len() = w.len())
+            }
             lemma_prefix_level_bounded_by_k(data, w, split + k);
+            // bl + net_level(w[0..split+k]) ≥ 0 and < bl + max_lev = pl
+            // So bl_suffix + net_level(w_sub) = bl + net_level(w[0..split+k]) ∈ [0, junc]
         }
     }
 }
