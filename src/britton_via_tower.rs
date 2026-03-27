@@ -3564,202 +3564,73 @@ proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
     lemma_find_gen_inv_forward(data, w, 1, any_k);
 }
 
-// --- X.12: Full Britton's Lemma ---
-// Textbook approach (Miller Thm 3.10): the permutation representation on
-// normal forms shows that a p-reduced word with stable letters ≠ 1.
-// The inductive argument processes the HNN word one stable letter at a time,
-// building up syllables in the AFP normal form. Each stable letter adds
-// exactly one syllable (left or right), and they alternate, so no merging
-// occurs. After ≥ 1 stable letters: ≥ 1 syllable → non-trivial → ≠ ε.
-//
-// The formal proof follows translate_word_at's recursion on w:
-// - Base symbol: G₁ or G₂ at the junction. G₁ preserves right_count,
-//   G₂ preserves left_count.
-// - Gen: level increases. The following base word becomes G₂.
-//   G₂ one-shot with product ∉ B (no pinch) → right syllable.
-// - Inv: level decreases. The following base word was G₁.
-//   G₁ one-shot with product ∉ A (no pinch) → left syllable.
-//
-// All building blocks verified (102 lemmas). The remaining ~80 lines
-// implement the inductive step and the main theorem assembly.
+// --- X.12: Last max-level position ---
 
-/// Inductive helper: process w right-to-left, tracking that after the LAST
-/// Gen-Inv pair's G₂ segment, right_count ≥ 1 and is preserved.
-///
-/// Processes translate(w, bl) at junction (pair_level-1)↔pair_level.
-/// Tracks right_syllable_count through the act_word recursion.
-///
-/// The key invariant: once a right syllable is created by a G₂ one-shot
-/// (from a Gen-Inv pair with base ∉ B), it is preserved by all subsequent
-/// G₁ processing (lemma_act_g1_word_preserves_right_count).
-///
-/// For multi-visit: the G₂ segments from other max-level pairs alternate
-/// with G₁ inter-visit segments. The G₁ creates left syllables (from
-/// Inv-Gen no-pinch: base ∉ A), making the top LEFT. So the next G₂
-/// PREPENDS (never merges). Right_count only increases.
-///
-/// This IS the textbook normal form argument (Miller p.49).
-proof fn lemma_nopinch_gives_right_syllable(
-    data: HNNData, w: Word, bl: nat, pair_level: nat,
-    h: Word, syls: Seq<Syllable>,
-)
+/// Given a position achieving max, find the LAST such position (scanning forward).
+/// Everything after is strictly below max.
+proof fn lemma_last_max_position(data: HNNData, w: Word, pos: int)
     requires
-        hnn_data_valid(data),
-        hnn_associations_isomorphic(data),
-        word_valid(w, hnn_presentation(data).num_generators),
-        !has_pinch(data, w),
-        has_stable_letter(data, w),
-        net_level(data, w) == 0,
-        max_prefix_level(data, w) >= 1,
-        pair_level >= 1,
-        pair_level == (bl + max_prefix_level(data, w)) as nat,
-        bl >= w.len(),
-        tower_textbook_chain(data, pair_level),
-        word_valid(translate_word_at(data, w, bl as int),
-            tower_presentation(data, pair_level).num_generators),
-        crate::normal_form_afp_textbook::is_canonical_state(
-            tower_afp_data(data, (pair_level - 1) as nat), h, syls),
-    ensures ({
-        let afp = tower_afp_data(data, (pair_level - 1) as nat);
-        let tw = translate_word_at(data, w, bl as int);
-        right_syllable_count(
-            crate::normal_form_afp_textbook::act_word(afp, tw, h, syls).1)
-            >= right_syllable_count(syls) + 1
-    }),
+        0 <= pos <= w.len(),
+        net_level(data, w.subrange(0, pos)) == max_prefix_level(data, w),
+    ensures
+        exists|k: int|
+            #![trigger w.subrange(0, k)]
+            pos <= k <= w.len()
+            && net_level(data, w.subrange(0, k)) == max_prefix_level(data, w)
+            && (forall|k2: int| k < k2 <= w.len()
+                ==> net_level(data, #[trigger] w.subrange(0, k2))
+                    < max_prefix_level(data, w)),
+    decreases w.len() - pos,
 {
-    // This is the core textbook argument, to be proved by induction on w.
-    // Process w right-to-left. At each Gen-Inv pair's G₂ segment:
-    // right_count increases. G₁ segments preserve right_count.
-    //
-    // The induction tracks the "syllable budget" through the word.
-    // Each Gen reaching max level followed by base ∉ B followed by Inv
-    // from max level contributes +1 to right_count.
-    //
-    // Between consecutive visits: the G₁ one-shot creates a left syllable
-    // (base ∉ A from Inv-Gen no-pinch), making the top LEFT.
-    // So the next G₂ PREPENDS (never merges).
-    //
-    // This alternation ensures right_count is monotonically non-decreasing.
-
-    assert(false); // TODO: implement the induction
+    let max_lev = max_prefix_level(data, w);
+    if pos >= w.len() as int {
+        // pos = w.len(). k = pos works. No k2 > pos ≤ w.len() exists.
+    } else {
+        lemma_max_prefix_bounds(data, w, pos + 1);
+        if net_level(data, w.subrange(0, pos + 1)) == max_lev {
+            lemma_last_max_position(data, w, pos + 1);
+        } else {
+            // pos+1 is < max. Scan forward for any later achiever.
+            lemma_last_max_scan(data, w, pos, pos + 1);
+        }
+    }
 }
 
-/// **Britton's Lemma (Full, Miller Thm 3.10):**
-/// If w ≡ ε in G* and w has stable letters, then w has a pinch.
-pub proof fn britton_lemma_full(
-    data: HNNData, w: Word,
-)
+/// Scan forward: either find a later achiever, or confirm last_known is the last.
+proof fn lemma_last_max_scan(data: HNNData, w: Word, last_known: int, from: int)
     requires
-        hnn_data_valid(data),
-        hnn_associations_isomorphic(data),
-        word_valid(w, hnn_presentation(data).num_generators),
-        equiv_in_presentation(hnn_presentation(data), w, empty_word()),
-        has_stable_letter(data, w),
+        0 <= last_known < from <= w.len(),
+        net_level(data, w.subrange(0, last_known)) == max_prefix_level(data, w),
+        forall|k: int| last_known < k < from
+            ==> net_level(data, #[trigger] w.subrange(0, k))
+                < max_prefix_level(data, w),
     ensures
-        has_pinch(data, w),
+        exists|k: int|
+            #![trigger w.subrange(0, k)]
+            last_known <= k <= w.len()
+            && net_level(data, w.subrange(0, k)) == max_prefix_level(data, w)
+            && (forall|k2: int| k < k2 <= w.len()
+                ==> net_level(data, #[trigger] w.subrange(0, k2))
+                    < max_prefix_level(data, w)),
+    decreases w.len() - from,
 {
-    if !has_pinch(data, w) {
-        use crate::normal_form_afp_textbook::*;
-
-        // Step 1: net_level = 0
-        lemma_equiv_net_level_zero(data, w);
-
-        // Step 2: max_prefix_level
-        let max_lev = max_prefix_level(data, w);
-        lemma_max_prefix_bounds(data, w, 0);
-
-        if max_lev >= 1 {
-            // Case A: Gen-Inv pair exists at max level
-            // Set up tower, get translate ≡ ε, derive contradiction.
-            let hp = hnn_presentation(data);
-            let ng = data.base.num_generators;
-
-            // Tower setup (same as before)
-            let d: Derivation = choose|d: Derivation|
-                derivation_valid(hp, d, w, empty_word());
-            let min_adj = derivation_min_adj_level(data, d.steps, w);
-            let max_step = derivation_max_step_level(data, d.steps, w);
-            let bl_deriv: nat = if min_adj >= 0 { 0 } else { (-min_adj) as nat };
-            let max_step_abs: nat = if max_step >= 0 { max_step as nat }
-                else { (-max_step) as nat };
-
-            let bl: nat = (w.len() + bl_deriv) as nat;
-            let m: nat = (bl + w.len() as nat + max_step_abs + 1) as nat;
-            let pair_level: nat = (bl + max_lev) as nat;
-
-            assert(bl as int >= -(min_adj));
-            assert(m as int >= max_step + bl as int);
-            assert(word_valid(w, hp.num_generators)) by {
-                assert forall|k: int| 0 <= k < w.len()
-                    implies symbol_valid(#[trigger] w[k], hp.num_generators) by {}
-            }
-
-            // Translate to tower(m)
-            lemma_derivation_levels_ok_from_bounds(data, m, bl as int, d.steps, w);
-            lemma_hnn_derivation_to_tower_equiv(data, m, bl as int, d.steps, w, empty_word());
-            lemma_translate_empty_at(data, bl as int);
-            lemma_tower_textbook_chain_from_hnn_iso(data, m);
-
-            // Word-level bounds → translate valid for tower(pair_level)
-            assert forall|k: int| #![trigger w.subrange(0, k)]
-                0 <= k <= w.len() ==>
-                0 <= bl as int + net_level(data, w.subrange(0, k)) <= pair_level as int
-            by {
-                if 0 <= k && k <= w.len() {
-                    lemma_prefix_level_bounded_by_k(data, w, k);
-                    lemma_max_prefix_bounds(data, w, k);
-                }
-            }
-            lemma_translate_word_valid_for_level(data, w, bl as int, pair_level);
-
-            // Peel to tower(pair_level)
-            assert(pair_level <= m) by {
-                lemma_max_prefix_achieved(data, w);
-                let kk: int = choose|k: int| 0 <= k <= w.len()
-                    && net_level(data, w.subrange(0, k)) == max_lev;
-                lemma_prefix_level_bounded_by_k(data, w, kk);
-            }
-            let tw = translate_word_at(data, w, bl as int);
-            lemma_tower_injectivity_peel(data, pair_level, m, tw);
-            // tw ≡ ε in tower(pair_level)
-
-            // AFP at junction
-            let junc = (pair_level - 1) as nat;
-            let afp = tower_afp_data(data, junc);
-            assert(tower_textbook_prereqs_at(data, junc));
-            lemma_tower_afp_data_valid(data, junc);
-            lemma_tower_valid(data, junc);
-            lemma_tower_num_generators(data, junc);
-            reveal(presentation_valid);
-            lemma_iso_implies_apc(afp);
-            lemma_action_well_defined_proof(afp);
-            lemma_identity_state_canonical(afp);
-
-            // act(tw, ε, []) = (ε, [])
-            let e_h = empty_word();
-            let e_s = Seq::<Syllable>::empty();
-            let d_tw: Derivation = choose|d: Derivation|
-                derivation_valid(tower_presentation(data, pair_level), d, tw, empty_word());
-            lemma_act_word_deriv(afp, d_tw.steps, tw, empty_word(), e_h, e_s);
-            lemma_act_word_empty(afp, e_h, e_s);
-            assert(act_word(afp, tw, e_h, e_s) == (e_h, e_s));
-
-            // But: right_count ≥ 1 from the inductive argument
-            lemma_nopinch_gives_right_syllable(data, w, bl, pair_level, e_h, e_s);
-            // right_count(act(tw, ε, []).1) ≥ 0 + 1 = 1.
-            // But act(tw, ε, []) = (ε, []) → right_count = 0. Contradiction.
+    let max_lev = max_prefix_level(data, w);
+    if from >= w.len() as int {
+        lemma_max_prefix_bounds(data, w, w.len() as int);
+        if net_level(data, w.subrange(0, w.len() as int)) == max_lev {
+            // w.len() is a later achiever. It's the last (nothing after).
+            assert(w.subrange(0, w.len() as int) =~= w);
         } else {
-            // Case B: max = 0 → use Inv-Gen pair + left syllable argument
-            // (Symmetric to Case A, using left_count and lemma_act_g2_word_preserves_left_count)
-            //
-            // When max_prefix_level = 0: the word only goes negative.
-            // By symmetry with min_prefix_level, there's an Inv-Gen pair
-            // at the min level. The dual argument uses left_count.
-            //
-            // TODO: Implement the symmetric argument.
-            // For now, Case A covers the max ≥ 1 case.
-            lemma_adjacent_opposite_exists(data, w);
-            assert(false); // PLACEHOLDER: Case B (max = 0)
+            // last_known is the last achiever.
+        }
+    } else {
+        lemma_max_prefix_bounds(data, w, from);
+        if net_level(data, w.subrange(0, from)) == max_lev {
+            // from achieves max. Update last_known and continue scanning.
+            lemma_last_max_scan(data, w, from, from + 1);
+        } else {
+            // from doesn't achieve max. Continue.
+            lemma_last_max_scan(data, w, last_known, from + 1);
         }
     }
 }
