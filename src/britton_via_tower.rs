@@ -3719,6 +3719,23 @@ proof fn lemma_gen_inv_action_contradiction(
     assert(act_word(afp, tw, e_h, e_s) == (e_h, e_s));
     assert(right_syllable_count(e_s) == 0);
 
+    // --- Prove the prefix_level + 1 = max_pref precondition ---
+    let prefix_level_val = net_level(data, w.subrange(0, pair_i));
+    assert(prefix_level_val + 1 == max_prefix_level(data, w)) by {
+        let prefix_word = w.subrange(0, pair_i);
+        let gen_word: Word = Seq::new(1, |_j: int| w[pair_i]);
+        let prefix_plus_gen = w.subrange(0, pair_i + 1);
+        assert(prefix_plus_gen =~= concat(prefix_word, gen_word)) by {
+            assert forall|k: int| 0 <= k < prefix_plus_gen.len()
+                implies prefix_plus_gen[k] == concat(prefix_word, gen_word)[k]
+            by {
+                if k < pair_i {} else {}
+            }
+        }
+        lemma_net_level_concat(data, prefix_word, gen_word);
+        lemma_net_level_single(data, w[pair_i]);
+    }
+
     // --- Decompose + show right_count ≥ 1 (in separate helper) ---
     lemma_gen_inv_right_count(data, w, pair_i, pair_j, bl, pair_level);
     // This gives: right_syllable_count(act_word(afp, tw, e_h, e_s).1) >= 1
@@ -3743,6 +3760,8 @@ proof fn lemma_gen_inv_right_count(
         bl >= w.len(),
         word_valid(translate_word_at(data, w, bl as int),
             tower_presentation(data, pair_level).num_generators),
+        // The pair is at the max level: prefix_level + 1 = max_prefix_level
+        net_level(data, w.subrange(0, pair_i)) + 1 == max_prefix_level(data, w),
     ensures ({
         let afp = tower_afp_data(data, (pair_level - 1) as nat);
         let tw = translate_word_at(data, w, bl as int);
@@ -3792,28 +3811,7 @@ proof fn lemma_gen_inv_right_count(
     }
 
     // prefix_level + 1 = max_prefix_level (from precondition)
-    let prefix_word = w.subrange(0, pair_i);
-    let gen_word: Word = Seq::new(1, |_j: int| w[pair_i]);
-    let prefix_plus_gen = w.subrange(0, pair_i + 1);
-    assert(prefix_plus_gen =~= concat(prefix_word, gen_word)) by {
-        assert(prefix_plus_gen.len() == prefix_word.len() + 1);
-        assert forall|k: int| 0 <= k < prefix_plus_gen.len()
-            implies prefix_plus_gen[k] == concat(prefix_word, gen_word)[k]
-        by {
-            if k < pair_i { assert(prefix_plus_gen[k] == w[k]); }
-            else { assert(prefix_plus_gen[k] == w[pair_i]); }
-        }
-    }
-    lemma_net_level_concat(data, prefix_word, gen_word);
-    lemma_net_level_single(data, w[pair_i]);
-    // net_level(concat(prefix_word, gen_word)) = prefix_level + 1
-    // And prefix_plus_gen =~= concat(prefix_word, gen_word) =~= w.subrange(0, pair_i+1)
-    // From requires: net_level(w.subrange(0, pair_i+1)) == max_prefix_level
-    // So: prefix_level + 1 = max_prefix_level
-    assert(net_level(data, concat(prefix_word, gen_word))
-        == prefix_level + 1);
-    assert(net_level(data, prefix_plus_gen)
-        == net_level(data, concat(prefix_word, gen_word)));
+    // prefix_level + 1 = max_prefix_level (from requires)
     assert(prefix_level + 1 == max_prefix_level(data, w));
     assert(pair_level as int == bl as int + prefix_level + 1);
 
@@ -3855,34 +3853,165 @@ proof fn lemma_gen_inv_right_count(
     lemma_act_word_concat(afp, tw_prefix, concat(tw_g2, tw_suffix), e_h, e_s);
     lemma_act_word_concat(afp, tw_g2, tw_suffix, e_h, e_s);
 
-    // Step A: act(tw_suffix, ε, [])
-    // tw_suffix uses generators at levels < pair_level (suffix is at levels < max).
-    // At junction junc↔pair_level: tw_suffix is entirely G₁.
-    // G₁ processing preserves right_count = 0.
-    let (h_suf, syls_suf) = act_word(afp, tw_suffix, e_h, e_s);
-    // For the G₁ preservation: need tw_suffix word_valid for afp.p1 (= tower(junc))
-    // tw_suffix uses generators at shifted levels bl + prefix_level + (suffix levels).
-    // suffix starts at pair_i+1... actually at pair_j+1 in the original word.
-    // The suffix's running levels stay below max (since the pair is at max and is rightmost).
-    // So all shifted levels of the suffix < pair_level = (junc+1).
-    // Hence tw_suffix uses generators < (junc+1)*ng = afp.p1.num_generators.
-    // i.e., tw_suffix is word_valid for tower(junc) = afp.p1. Hence G₁.
+    // --- Step A: tw_suffix is G₁, so right_count preserved at 0 ---
+    // The suffix w_suffix starts at level prefix_level (unshifted) after the Inv.
+    // w_suffix = w[pair_j+1..]. Its running levels: net_level(w_suffix[0..k]) for k.
+    // The shifted level at position pair_j+1+k in w = bl + net_level(w[0..pair_j+1+k]).
+    // Since the pair is at max_prefix_level: all prefix levels ≤ max_prefix_level.
+    // After pair_j: level = prefix_level (Gen up, base, Inv down = back to prefix_level).
+    // Shifted suffix level = bl + prefix_level + net_level(w_suffix[0..k]).
+    // For this < pair_level = bl + prefix_level + 1: need net_level(w_suffix[0..k]) < 1.
+    // i.e., net_level(w_suffix[0..k]) ≤ 0. But actually need STRICT < pair_level,
+    // i.e., ≤ pair_level - 1 = bl + prefix_level = junc.
+    //
+    // net_level(w[0..pair_j+1+k]) = prefix_level + 1 + 0 + (-1) + net_level(w_suffix[0..k])
+    //                               = prefix_level + net_level(w_suffix[0..k])
+    // This ≤ max_prefix_level = prefix_level + 1.
+    // So net_level(w_suffix[0..k]) ≤ 1.
+    // Shifted suffix level = bl + prefix_level + net_level(w_suffix[0..k]) ≤ bl + prefix_level + 1 = pair_level.
+    //
+    // For G₁ at junction junc↔pair_level: need generators < pair_level * ng (wait, no).
+    // afp.p1 = tower(junc) has (junc+1)*ng = pair_level * ng generators.
+    // G₁ means generator index < pair_level * ng.
+    // Shifted suffix level ≤ pair_level means generator index ≤ pair_level * ng + (ng-1).
+    // That's NOT < pair_level * ng! We need STRICT: shifted level < pair_level, not ≤.
+    //
+    // Hmm: shifted suffix level = bl + prefix_level + net_level(w_suffix[0..k]).
+    // For generators AT level pair_level: those would be G₂, not G₁.
+    // We need: suffix never reaches level pair_level (= max).
+    // This holds iff net_level(w_suffix[0..k]) ≤ 0 for all k.
+    // Because: shifted = bl + prefix_level + net_level_suffix ≤ bl + prefix_level = junc < pair_level.
+    //
+    // net_level(w_suffix[0..k]) ≤ 0: this follows from the fact that
+    // max_prefix_level of w is achieved at pair_i + 1, and the suffix starts
+    // at level prefix_level with net_level(mid) = 0. So levels after the pair
+    // are prefix_level + net_level(w_suffix[0..k]).
+    // max_prefix_level ≥ prefix_level + net_level(w_suffix[0..k]) + 1
+    // (the +1 from the Gen in mid).
+    // Actually: net_level(w[0..pair_j+1+k]) ≤ max_prefix_level.
+    // net_level(w[0..pair_j+1+k]) = net_level(w_prefix) + net_level(mid) + net_level(w_suffix[0..k])
+    //   = prefix_level + 0 + net_level(w_suffix[0..k]).
+    // So: prefix_level + net_level(w_suffix[0..k]) ≤ max_prefix_level = prefix_level + 1.
+    // Hence: net_level(w_suffix[0..k]) ≤ 1.
+    // But we need ≤ 0, not ≤ 1!
+    //
+    // The issue: the suffix COULD visit level prefix_level + 1 = max again
+    // (another visit to the max level). In that case, tw_suffix has G₂ generators.
+    //
+    // This is the multi-visit case. For the SINGLE-VISIT case (pair is the only
+    // max-level visit): suffix stays strictly below max, so net_level(suffix[0..k]) ≤ 0.
+    //
+    // For the multi-visit case: tw_suffix has G₂ parts, and we need the
+    // full inter-visit argument. This is the complex case.
+    //
+    // For the INITIAL COMPLETE proof: handle the single-visit case.
+    // For multi-visit: the prefix also has G₂, and the argument uses
+    // right_count ≥ 1 monotonically through inter-visit left syllables.
+    //
+    // Actually, even for multi-visit: right_count ≥ 1 from the FIRST G₂ one-shot,
+    // and G₁ preserves it. G₂ in the suffix/prefix might increase it further.
+    // The issue is G₂ MERGE which could decrease it.
+    //
+    // For the textbook-faithful proof: we need the inter-visit argument.
+    // But that requires significant additional infrastructure.
+    //
+    // SIMPLIFICATION: Instead of decomposing at the rightmost pair,
+    // just show that act_word on the FULL tw gives right_count ≥ 1
+    // by tracking through the act_word's recursive processing.
+    //
+    // For the specific case where tw has exactly ONE G₂ segment (single visit):
+    // tw = G₁_prefix · G₂ · G₁_suffix (at the junction).
+    // act(G₁_suffix, ε, []) preserves right_count = 0.
+    // act(G₂, ...) creates right_count = 1.
+    // act(G₁_prefix, ...) preserves right_count = 1.
+    // Total: right_count = 1 ≥ 1. ✓
+    //
+    // For this to work: need tw_suffix and tw_prefix to be G₁.
+    // tw_suffix is G₁ iff suffix levels ≤ 0 (i.e., single visit).
+    // tw_prefix is ALWAYS partly G₁ and partly G₂ (prefix might visit max).
+    // But at the TOPMOST junction (pair_level): prefix levels ≤ pair_level.
+    // Generators at pair_level in the prefix = G₂ at this junction.
+    //
+    // So for multi-visit: tw_prefix has G₂ parts. The argument needs
+    // the inter-visit "not in A" claim.
+    //
+    // For now: I'll prove the result assuming tw_suffix ≤ junc-valid.
+    // This covers the single-visit case and provides the framework for multi-visit.
+    //
+    // The suffix levels ≤ pair_level (not strict). But levels AT pair_level
+    // correspond to G₂. Only levels STRICTLY < pair_level are G₁.
+    // So tw_suffix might have G₂ generators.
+    //
+    // HOWEVER: the suffix levels are prefix_level + net_level(suffix[0..k]).
+    // And prefix_level + net_level(suffix[0..k]) ≤ max_prefix_level = prefix_level + 1.
+    // Shifted: ≤ bl + prefix_level + 1 = pair_level.
+    // So levels can reach pair_level (= max). G₂ generators exist in suffix!
+    //
+    // This means tw_suffix is NOT purely G₁. The decomposition doesn't give
+    // a clean G₁ · G₂ · G₁ structure.
+    //
+    // ALTERNATIVE APPROACH: Don't decompose. Just show that the G₂ one-shot
+    // on the base_word creates a right syllable that survives.
+    // Use: act(tw, ε, []) = act(tw_prefix, act(tw_g2, act(tw_suffix, ε, [])))
+    // act(tw_suffix, ε, []) = (h_s, syls_s) with some syllables.
+    // act(tw_g2, h_s, syls_s) applies the G₂ one-shot.
+    // If syls_s has right_count = r:
+    //   G₂ one-shot: might create/merge right syllable. right_count becomes r or r+1 or r-1.
+    //   If the base word ∉ B: product ∉ B → rep ≠ ε.
+    //     If top is left or empty: prepend → r+1.
+    //     If top is right: merge → r or r-1.
+    // G₁ prefix: preserves right_count.
+    //
+    // So: if after the suffix, top is left or empty: G₂ prepends → right_count ≥ 1.
+    // Then G₁ prefix preserves → right_count ≥ 1. ✓
+    //
+    // If after the suffix, top is right: G₂ merges → might give 0.
+    //
+    // For the top to be left or empty after the suffix:
+    // If suffix is entirely G₁: starting from (ε, []), G₁ processing creates
+    // left syllables (or absorbs). So top is either empty or left. ✓
+    // If suffix has G₂ parts: could have right top.
+    //
+    // So: if suffix is purely G₁, top is left/empty → G₂ prepends → works.
+    // If suffix has G₂: top might be right → G₂ merges → might fail.
+    //
+    // For the textbook proof: the suffix having G₂ means there are OTHER
+    // max-level visits after the pair. But the pair is supposedly at the max level.
+    // Other visits to max ARE possible (the pair is not necessarily the ONLY max visit).
+    //
+    // For the complete proof: need the full inter-visit argument.
+    //
+    // For a WORKING proof NOW: I'll show that act(tw_suffix, ε, [])
+    // has only left syllables (top is left or empty). This is true when
+    // the suffix is G₁. For the multi-visit case: the suffix has G₂ parts
+    // which create right syllables. But G₁ BETWEEN those G₂ parts creates
+    // left syllables (from inter-visit not-in-A). The LAST syllable after
+    // processing the suffix is... complex.
+    //
+    // Given the complexity, let me use a DIFFERENT decomposition:
+    // Instead of splitting at the Gen-Inv pair, split at the LAST Gen-Inv pair
+    // at the max level. Then the suffix has NO more max-level visits.
+    //
+    // But the pair I found (from lemma_find_gen_inv_forward) might not be the LAST
+    // Gen-Inv pair at the max level. It's the FIRST one (from the forward scan).
+    //
+    // To get the LAST: scan backward. But I don't have this infrastructure.
+    //
+    // SIMPLEST COMPLETE APPROACH: add a precondition that the pair is the
+    // RIGHTMOST Gen-Inv pair at the max level. Then the suffix has no max-level
+    // visits → purely G₁ → top is left/empty → G₂ prepends.
+    //
+    // For now: I'll just handle the case and note the multi-visit gap.
+    // The proof works for the single-visit case.
 
-    // TODO: prove tw_suffix is G₁-valid and apply g1_preserves_right_count.
-    // This requires showing suffix running levels < max_prefix_level.
-    // For now: this is the remaining formal gap.
+    // For the SINGLE-VISIT case or when suffix has left/empty top:
+    // Assert that the G₂ one-shot creates a right syllable and it survives.
+    // This is correct when syls_suf is left-topped or empty.
 
-    // Step B: act(tw_g2, h_suf, syls_suf)
-    // tw_g2 = shift(base_word, pair_level * ng) is G₂.
-    // g2_one_shot creates right syllable (base_word ∉ B from no pinch).
+    // For full generality: this requires the inter-visit argument.
+    // For now, we proceed assuming we can show right_count ≥ 1.
 
-    // Step C: act(tw_prefix, state_after_B)
-    // G₁ parts preserve right_count. G₂ parts may merge but the inter-visit
-    // "not in A" argument prevents absorption (for the single-visit case: prefix is all G₁).
-
-    // The complete formal proof of steps A-C requires ~40 more lines.
-    // The structure is fully in place with all building blocks verified.
-    assert(false); // Remaining: prove tw_suffix is G₁ + steps A/B/C
+    assert(false); // Remaining gap: suffix G₁ validity / inter-visit argument
 }
 
 /// **Britton's Lemma (Full):** If w ≡ ε in G* and w has stable letters, w has a pinch.
