@@ -3102,4 +3102,153 @@ proof fn lemma_translate_word_valid_for_level(
     }
 }
 
+// --- X.7: Running level bounds ---
+
+/// Each symbol changes the running level by at most 1, so after k symbols
+/// the level is in [-k, k].
+proof fn lemma_prefix_level_bounded_by_k(data: HNNData, w: Word, k: int)
+    requires 0 <= k <= w.len(),
+    ensures
+        -k <= net_level(data, w.subrange(0, k)) <= k,
+    decreases k,
+{
+    if k == 0 {
+        assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
+    } else {
+        lemma_prefix_level_bounded_by_k(data, w, k - 1);
+        let prefix = w.subrange(0, k);
+        let prev = w.subrange(0, k - 1);
+        assert(prefix =~= concat(prev, Seq::new(1, |_j: int| w[k - 1])));
+        lemma_net_level_concat(data, prev, Seq::new(1, |_j: int| w[k - 1]));
+        lemma_net_level_single(data, w[k - 1]);
+    }
+}
+
+/// With base_level = w.len(), all shifted running levels are in [0, 2*w.len()].
+proof fn lemma_word_level_bounds(data: HNNData, w: Word, k: int)
+    requires 0 <= k <= w.len(),
+    ensures
+        0 <= (w.len() as int) + net_level(data, w.subrange(0, k)) <= 2 * (w.len() as int),
+{
+    lemma_prefix_level_bounded_by_k(data, w, k);
+}
+
+
+// --- X.8: Left syllable count + G₂ preservation (dual of Part W) ---
+// Textbook (Miller p.48-49): the permutation representation handles BOTH
+// p and p⁻¹. G₁ processing creates LEFT syllables (A-cosets), G₂ creates
+// RIGHT syllables (B-cosets). Each type preserves the other's count.
+
+/// Count left syllables in a syllable sequence.
+pub open spec fn left_syllable_count(syls: Seq<Syllable>) -> nat
+    decreases syls.len(),
+{
+    if syls.len() == 0 { 0 }
+    else {
+        (if syls.first().is_left { 1nat } else { 0nat })
+            + left_syllable_count(syls.drop_first())
+    }
+}
+
+/// G₂ single-symbol action never changes the left syllable count.
+proof fn lemma_act_right_sym_preserves_left_count(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires generator_index(s) < data.p2.num_generators,
+    ensures
+        left_syllable_count(
+            crate::normal_form_afp_textbook::act_right_sym(data, s, h, syls).1)
+            == left_syllable_count(syls),
+{
+    let product = concat(Seq::new(1, |_i: int| s),
+        apply_embedding(crate::normal_form_afp_textbook::b_words(data), h));
+    let new_rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, product);
+
+    if new_rep =~= empty_word() {
+    } else if syls.len() == 0 || syls.first().is_left {
+        let new_syls = Seq::new(1, |_i: int| Syllable { is_left: false, rep: new_rep }) + syls;
+        assert(!new_syls.first().is_left);
+        assert(new_syls.drop_first() =~= syls);
+    } else {
+        let full_product = concat(product, syls.first().rep);
+        let merged_rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, full_product);
+        if merged_rep =~= empty_word() {
+            assert(!syls.first().is_left);
+        } else {
+            let new_syls = Seq::new(1, |_i: int| Syllable { is_left: false, rep: merged_rep })
+                + syls.drop_first();
+            assert(!new_syls.first().is_left);
+            assert(new_syls.drop_first() =~= syls.drop_first());
+        }
+    }
+}
+
+/// G₂ full-word action preserves left syllable count.
+proof fn lemma_act_g2_word_preserves_left_count(
+    data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        crate::normal_form_amalgamated::identifications_isomorphic(data),
+        crate::normal_form_afp_textbook::action_preserves_canonical(data),
+        crate::normal_form_afp_textbook::is_canonical_state(data, h, syls),
+        word_valid(w, data.p2.num_generators),
+    ensures
+        left_syllable_count(
+            crate::normal_form_afp_textbook::act_word(
+                data, shift_word(w, data.p1.num_generators), h, syls).1)
+            == left_syllable_count(syls),
+    decreases w.len(),
+{
+    use crate::normal_form_afp_textbook::*;
+    let n1 = data.p1.num_generators;
+    let sw = shift_word(w, n1);
+    if w.len() == 0 {
+        assert(sw =~= empty_word());
+        lemma_act_word_empty(data, h, syls);
+    } else {
+        let s = w.last();
+        let w_prefix = w.drop_last();
+        assert(symbol_valid(s, data.p2.num_generators));
+        assert(generator_index(s) < data.p2.num_generators);
+
+        // Connect shift_word structure
+        let shifted_s = shift_symbol(s, n1);
+        assert(sw.last() == shifted_s);
+        let sw_prefix = shift_word(w_prefix, n1);
+        assert(sw.drop_last() =~= sw_prefix) by {
+            assert(sw.drop_last().len() == sw_prefix.len());
+            assert forall|k: int| 0 <= k < sw_prefix.len()
+                implies sw.drop_last()[k] == sw_prefix[k]
+            by { assert(w_prefix[k] == w[k]); }
+        }
+
+        let (h1, syls1) = act_sym(data, shifted_s, h, syls);
+        assert(act_sym(data, shifted_s, h, syls) == act_right_sym(data, s, h, syls));
+        lemma_act_right_sym_preserves_left_count(data, s, h, syls);
+
+        let s_word: Word = Seq::new(1, |_i: int| shifted_s);
+        assert(word_valid(s_word, n1 + data.p2.num_generators)) by {
+            match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
+        }
+        assert(is_canonical_state(data,
+            act_word(data, s_word, h, syls).0,
+            act_word(data, s_word, h, syls).1));
+        lemma_act_word_single(data, shifted_s, h, syls);
+        assert(is_canonical_state(data, h1, syls1));
+
+        assert(word_valid(w_prefix, data.p2.num_generators)) by {
+            assert forall|k: int| 0 <= k < w_prefix.len()
+                implies symbol_valid(#[trigger] w_prefix[k], data.p2.num_generators)
+            by { assert(w_prefix[k] == w[k]); }
+        }
+        // IH: act on shifted prefix preserves left_count
+        lemma_act_g2_word_preserves_left_count(data, w_prefix, h1, syls1);
+        // Connect: act(sw, h, syls) = act(sw_prefix, h1, syls1)
+        // since sw = sw_prefix ++ [shifted_s] and act processes right-to-left
+    }
+}
+
 } // verus!
