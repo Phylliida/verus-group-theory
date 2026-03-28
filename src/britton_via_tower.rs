@@ -5339,6 +5339,76 @@ proof fn lemma_psi_p_inv_output_in_B(data: HNNData, h: Word)
         afp.p2, crate::normal_form_afp_textbook::b_words(afp), h_id);
 }
 
+/// Recursive predicate: no ψ step in textbook_act_hnn(w, h, syls) triggers COLLAPSE.
+/// When this holds, every ψ step PREPENDs, so syllable count increases by exactly stable_count.
+pub open spec fn textbook_no_collapse(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+) -> bool
+    decreases w.len(),
+{
+    if w.len() == 0 { true }
+    else {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        let afp = tower_afp_data(data, 0);
+        if s == Symbol::Gen(ng) {
+            let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            let is_collapse = rep =~= empty_word() && syls.len() > 0 && syls.first().is_left;
+            !is_collapse && {
+                let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+                textbook_no_collapse(data, w.drop_last(), h_new, syls_new)
+            }
+        } else if s == Symbol::Inv(ng) {
+            let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            let is_collapse = rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left;
+            !is_collapse && {
+                let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
+                textbook_no_collapse(data, w.drop_last(), h_new, syls_new)
+            }
+        } else {
+            let new_h = concat(Seq::new(1, |_i: int| s), h);
+            textbook_no_collapse(data, w.drop_last(), new_h, syls)
+        }
+    }
+}
+
+/// When no collapse happens, textbook_act_hnn adds exactly stable_count syllables.
+proof fn lemma_no_collapse_gives_m(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        textbook_no_collapse(data, w, h, syls),
+    ensures
+        textbook_act_hnn(data, w, h, syls).1.len()
+            == syls.len() + stable_count(data, w),
+    decreases w.len(),
+{
+    if w.len() == 0 {
+    } else {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        if s == Symbol::Gen(ng) {
+            // ψ(p): no collapse → PREPEND → +1 syllable
+            lemma_textbook_psi_p_length(data, h, syls);
+            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+            // syls_new.len() == syls.len() + 1 (PREPEND, not collapse)
+            lemma_textbook_act_single_stable(data, s, h, syls);
+            // stable_count(w) = 1 + stable_count(w.drop_last())
+            // Recurse
+            lemma_no_collapse_gives_m(data, w.drop_last(), h_new, syls_new);
+        } else if s == Symbol::Inv(ng) {
+            lemma_textbook_psi_p_inv_length(data, h, syls);
+            let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
+            lemma_no_collapse_gives_m(data, w.drop_last(), h_new, syls_new);
+        } else {
+            // Base symbol: no ψ, no syllable change
+            let new_h = concat(Seq::new(1, |_i: int| s), h);
+            lemma_no_collapse_gives_m(data, w.drop_last(), new_h, syls);
+        }
+    }
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
