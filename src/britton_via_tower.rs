@@ -5232,6 +5232,113 @@ proof fn lemma_textbook_base_case(data: HNNData, w: Word)
     lemma_textbook_base_only(data, w, empty_word(), Seq::<Syllable>::empty());
 }
 
+/// Witness-free: b_rcoset_h is word_valid for k_size.
+/// Chain: rep_props → same_b_rcoset → in_generated_subgroup → subgroup_to_k_word → witness → decomposition.
+proof fn lemma_b_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p2),
+        word_valid(g, data.p2.num_generators),
+    ensures
+        word_valid(crate::normal_form_afp_textbook::b_rcoset_h(data, g),
+            crate::normal_form_afp_textbook::k_size(data)),
+{
+    use crate::normal_form_afp_textbook::*;
+    lemma_b_rcoset_rep_props(data, g);
+    let rep = b_rcoset_rep(data, g);
+    // same_b_rcoset(data, g, rep) → in_right_subgroup(data, concat(g, inv(rep)))
+    // → in_generated_subgroup(p2, b_words, concat(g, inv(rep)))
+    let target = concat(g, inverse_word(rep));
+    crate::word::lemma_inverse_word_valid(rep, data.p2.num_generators);
+    crate::word::lemma_concat_word_valid(g, inverse_word(rep), data.p2.num_generators);
+    // Extract k-word witness
+    lemma_subgroup_to_k_word(data.p2, b_words(data), target);
+    let h_w: Word = choose|hw: Word|
+        word_valid(hw, b_words(data).len())
+        && equiv_in_presentation(data.p2, apply_embedding(b_words(data), hw), target);
+    assert(b_words(data).len() == k_size(data));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(data, g, h_w);
+}
+
+/// Witness-free: a_rcoset_h is word_valid for k_size.
+proof fn lemma_a_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        word_valid(g, data.p1.num_generators),
+    ensures
+        word_valid(crate::normal_form_afp_textbook::a_rcoset_h(data, g),
+            crate::normal_form_afp_textbook::k_size(data)),
+{
+    use crate::normal_form_afp_textbook::*;
+    lemma_a_rcoset_rep_props(data, g);
+    let rep = a_rcoset_rep(data, g);
+    let target = concat(g, inverse_word(rep));
+    crate::word::lemma_inverse_word_valid(rep, data.p1.num_generators);
+    crate::word::lemma_concat_word_valid(g, inverse_word(rep), data.p1.num_generators);
+    lemma_subgroup_to_k_word(data.p1, a_words(data), target);
+    let h_w: Word = choose|hw: Word|
+        word_valid(hw, a_words(data).len())
+        && equiv_in_presentation(data.p1, apply_embedding(a_words(data), hw), target);
+    assert(a_words(data).len() == k_size(data));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(data, g, h_w);
+}
+
+/// After ψ(p), the new h is in the A-subgroup.
+/// h_new = apply_embedding(a_words, b_rcoset_h(h)) ∈ A.
+proof fn lemma_psi_p_output_in_A(data: HNNData, h: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(h, data.base.num_generators),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        let (h_new, _) = textbook_psi_p(data, h, Seq::<Syllable>::empty());
+        crate::normal_form_amalgamated::in_left_subgroup(afp, h_new)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    crate::tower::lemma_tower_afp_data_valid(data, 0);
+    crate::tower::lemma_tower_valid(data, 0);
+    // b_rcoset_h(afp, h) is word_valid for k_size
+    lemma_b_rcoset_h_word_valid(afp, h);
+    let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    // apply_embedding(a_words, h_id) is in the A-generated subgroup
+    assert forall|i: int| 0 <= i < crate::normal_form_afp_textbook::a_words(afp).len()
+        implies word_valid(
+            #[trigger] crate::normal_form_afp_textbook::a_words(afp)[i],
+            afp.p1.num_generators)
+    by {
+        crate::tower::lemma_tower_num_generators(data, 0);
+    }
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup(
+        afp.p1, crate::normal_form_afp_textbook::a_words(afp), h_id);
+}
+
+/// After ψ(p⁻¹), the new h is in the B-subgroup.
+proof fn lemma_psi_p_inv_output_in_B(data: HNNData, h: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(h, data.base.num_generators),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        let (h_new, _) = textbook_psi_p_inv(data, h, Seq::<Syllable>::empty());
+        crate::normal_form_amalgamated::in_right_subgroup(afp, h_new)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    crate::tower::lemma_tower_afp_data_valid(data, 0);
+    crate::tower::lemma_tower_valid(data, 0);
+    lemma_a_rcoset_h_word_valid(afp, h);
+    let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    assert forall|i: int| 0 <= i < crate::normal_form_afp_textbook::b_words(afp).len()
+        implies word_valid(
+            #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i],
+            afp.p2.num_generators)
+    by {}
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup_g2(
+        afp.p2, crate::normal_form_afp_textbook::b_words(afp), h_id);
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///

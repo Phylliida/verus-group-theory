@@ -8346,7 +8346,7 @@ proof fn lemma_inverse_pair_g1_subcase_a(
 
 /// Right-coset decomposition identity: embed_a(a_rcoset_h(g)) · a_rcoset_rep(g) ≡ g.
 /// This is the textbook identity g = h·c at the word level.
-proof fn lemma_rcoset_decomposition(
+pub proof fn lemma_rcoset_decomposition(
     data: AmalgamatedData, g: Word, h_witness: Word,
 )
     requires
@@ -10565,7 +10565,7 @@ pub proof fn lemma_apply_embedding_in_subgroup_g2(
 }
 
 /// Right B-coset decomposition identity: embed_b(h)·rep ≡ g (textbook g = h·c for G₂).
-proof fn lemma_b_rcoset_decomposition(
+pub proof fn lemma_b_rcoset_decomposition(
     data: AmalgamatedData, g: Word, h_witness: Word,
 )
     requires
