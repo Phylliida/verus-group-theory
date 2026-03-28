@@ -4557,6 +4557,91 @@ proof fn lemma_textbook_g1_prepend_length(
 // The exact connection between the textbook action's collapse condition and
 // has_pinch in the HNN word will be established in the main inductive lemma.
 
+// --- Y.3b: Miller's θ⋆ψ representation (operates on HNN words directly) ---
+//
+// Miller's permutation representation processes the HNN word directly:
+//   θ(g): base element g LEFT-multiplies the leading coefficient
+//   ψ(p): B-coset decompose leading coefficient, PREPEND or COLLAPSE
+//   ψ(p⁻¹): A-coset decompose, PREPEND or COLLAPSE
+//
+// State: (h, syls) where h is a BASE GROUP word (leading coefficient)
+// and syls stores the syllable sequence with coset representatives.
+//
+// Processing is right-to-left (textbook's left-action convention).
+// This matches act_word's right-to-left processing of the translate.
+
+/// Miller's ψ(p): B-coset decompose base word h, then PREPEND or COLLAPSE.
+/// Operates on a base word h (not an AFP identification-index word).
+/// Returns (new_base_word, new_syls).
+pub open spec fn textbook_psi_p(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let afp = tower_afp_data(data, 0);
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    // φ⁻¹(b): map B-part to A via identification
+    let phi_inv_h = apply_embedding(
+        crate::normal_form_afp_textbook::a_words(afp), h_id);
+    if rep =~= empty_word() && syls.len() > 0 && syls.first().is_left {
+        // COLLAPSE (Miller Case 3): h ∈ B, top is p⁻¹
+        // New leading = φ⁻¹(h) · first_rep
+        (concat(phi_inv_h, syls.first().rep), syls.drop_first())
+    } else {
+        // PREPEND (Miller Cases 1+2 + m=0)
+        // New leading = φ⁻¹(b) where h = b·z₀
+        (phi_inv_h, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
+    }
+}
+
+/// Miller's ψ(p⁻¹): A-coset decompose base word h, then PREPEND or COLLAPSE.
+pub open spec fn textbook_psi_p_inv(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>) {
+    let afp = tower_afp_data(data, 0);
+    let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    // φ(a): map A-part to B via identification
+    let phi_h = apply_embedding(
+        crate::normal_form_afp_textbook::b_words(afp), h_id);
+    if rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left {
+        // COLLAPSE: h ∈ A, top is p (right)
+        (concat(phi_h, syls.first().rep), syls.drop_first())
+    } else {
+        // PREPEND
+        (phi_h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
+    }
+}
+
+/// Miller's θ⋆ψ: process HNN word right-to-left.
+/// Base symbols: θ (left-multiply leading coefficient).
+/// Gen (t): ψ(p) (B-coset decompose + prepend/collapse).
+/// Inv (t⁻¹): ψ(p⁻¹) (A-coset decompose + prepend/collapse).
+pub open spec fn textbook_act_hnn(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+) -> (Word, Seq<Syllable>)
+    decreases w.len(),
+{
+    if w.len() == 0 {
+        (h, syls)
+    } else {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        if s == Symbol::Gen(ng) {
+            // ψ(p): apply to current state, then process rest
+            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+            textbook_act_hnn(data, w.drop_last(), h_new, syls_new)
+        } else if s == Symbol::Inv(ng) {
+            // ψ(p⁻¹)
+            let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
+            textbook_act_hnn(data, w.drop_last(), h_new, syls_new)
+        } else {
+            // θ(s): left-multiply leading coefficient
+            let new_h = concat(Seq::new(1, |_i: int| s), h);
+            textbook_act_hnn(data, w.drop_last(), new_h, syls)
+        }
+    }
+}
+
 // --- Y.4: HNN word segment decomposition ---
 // The textbook's p-expression: g₀·p^{ε₁}·g₁·p^{ε₂}·...·p^{εₘ}·gₘ
 // We formalize this by extracting segments from the flat word.
@@ -4879,6 +4964,168 @@ proof fn lemma_lsp_ge_zero_when_stable(data: HNNData, w: Word)
                 assert(is_stable(data, w.drop_last()[witness]));
             }
             lemma_lsp_ge_zero_when_stable(data, w.drop_last());
+        }
+    }
+}
+
+// ============================================================
+// Part Y.6: Miller's θ⋆ψ gives m syllables for p-reduced words
+// ============================================================
+
+/// On a base-only word (no stable letters), textbook_act_hnn just accumulates h.
+proof fn lemma_textbook_base_only(data: HNNData, w: Word, h: Word, syls: Seq<Syllable>)
+    requires
+        hnn_data_valid(data),
+        forall|k: int| 0 <= k < w.len() ==> !is_stable(data, #[trigger] w[k]),
+    ensures
+        textbook_act_hnn(data, w, h, syls) == (concat(w, h), syls),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        assert(!is_stable(data, s));
+        assert(s != Symbol::Gen(ng) && s != Symbol::Inv(ng));
+        let new_h = concat(Seq::new(1, |_i: int| s), h);
+        assert forall|k: int| 0 <= k < w.drop_last().len()
+            implies !is_stable(data, #[trigger] w.drop_last()[k])
+        by { assert(w.drop_last()[k] == w[k]); }
+        lemma_textbook_base_only(data, w.drop_last(), new_h, syls);
+        // Need: concat(w, h) =~= concat(w.drop_last(), concat([s], h))
+        assert(concat(w, h) =~= concat(w.drop_last(), concat(Seq::new(1, |_i: int| s), h))) by {
+            assert forall|k: int| 0 <= k < concat(w, h).len()
+                implies concat(w, h)[k]
+                    == concat(w.drop_last(), concat(Seq::new(1, |_i: int| s), h))[k]
+            by {
+                if k < w.drop_last().len() as int {
+                } else if k == w.drop_last().len() as int {
+                    assert(concat(w, h)[k] == w[k]);
+                    assert(w[k] == s);
+                } else {
+                }
+            }
+        }
+    } else {
+        assert(concat(w, h) =~= h) by {
+            assert forall|k: int| 0 <= k < h.len()
+                implies concat(w, h)[k] == h[k] by {}
+        }
+    }
+}
+
+/// Composition: textbook_act_hnn(concat(a, b)) = textbook_act_hnn(a, textbook_act_hnn(b, ...)).
+/// Right-to-left processing: b (rightmost) is processed first, then a.
+proof fn lemma_textbook_act_concat(
+    data: HNNData, a: Word, b: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires hnn_data_valid(data),
+    ensures ({
+        let (h_b, syls_b) = textbook_act_hnn(data, b, h, syls);
+        textbook_act_hnn(data, concat(a, b), h, syls)
+            == textbook_act_hnn(data, a, h_b, syls_b)
+    }),
+    decreases b.len(),
+{
+    if b.len() == 0 {
+        assert(concat(a, b) =~= a);
+    } else {
+        let s = b.last();
+        let ng = data.base.num_generators;
+        let ab = concat(a, b);
+        // ab.last() == b.last()
+        assert(ab.last() == b.last()) by {
+            assert(ab[ab.len() - 1] == b[b.len() - 1]);
+        }
+        // ab.drop_last() =~= concat(a, b.drop_last())
+        assert(ab.drop_last() =~= concat(a, b.drop_last())) by {
+            assert forall|k: int| 0 <= k < concat(a, b.drop_last()).len()
+                implies ab.drop_last()[k] == concat(a, b.drop_last())[k]
+            by { assert(ab.drop_last()[k] == ab[k]); }
+        }
+        // Now unfold textbook_act_hnn on both sides and apply IH
+        if s == Symbol::Gen(ng) {
+            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+            lemma_textbook_act_concat(data, a, b.drop_last(), h_new, syls_new);
+        } else if s == Symbol::Inv(ng) {
+            let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
+            lemma_textbook_act_concat(data, a, b.drop_last(), h_new, syls_new);
+        } else {
+            let new_h = concat(Seq::new(1, |_i: int| s), h);
+            lemma_textbook_act_concat(data, a, b.drop_last(), new_h, syls);
+        }
+    }
+}
+
+/// Decompose textbook_act_hnn at the last stable letter.
+/// w = leading_part.drop_last() · [w[lsp]] · trailing_segment
+/// Processing: trailing (base) → ψ at w[lsp] → recurse on prefix.
+proof fn lemma_textbook_act_decompose(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        has_stable_letter(data, w),
+    ensures ({
+        let lsp = last_stable_pos(data, w);
+        let ts = trailing_segment(data, w);
+        let lp = leading_part(data, w);
+        let stable_sym = Seq::new(1, |_i: int| w[lsp]);
+        // Step 1: trailing segment accumulates into h
+        let h_after_trailing = concat(ts, h);
+        // Step 2: stable letter applies ψ
+        let (h_after_psi, syls_after_psi) =
+            textbook_act_hnn(data, stable_sym, h_after_trailing, syls);
+        // Step 3: prefix processes recursively
+        textbook_act_hnn(data, w, h, syls)
+            == textbook_act_hnn(data, lp.drop_last(), h_after_psi, syls_after_psi)
+    }),
+{
+    lemma_lsp_ge_zero_when_stable(data, w);
+    lemma_last_stable_pos_bounds(data, w);
+    let lsp = last_stable_pos(data, w);
+    let ts = trailing_segment(data, w);
+    let lp = leading_part(data, w);
+
+    // w =~= concat(lp, ts) by partition
+    lemma_segment_partition(data, w);
+
+    // lp = concat(lp.drop_last(), [w[lsp]])
+    let stable_sym = Seq::new(1, |_i: int| w[lsp]);
+    assert(lp =~= concat(lp.drop_last(), stable_sym)) by {
+        assert forall|k: int| 0 <= k < lp.len()
+            implies lp[k] == concat(lp.drop_last(), stable_sym)[k]
+        by {}
+    }
+
+    // So w =~= concat(concat(lp.drop_last(), stable_sym), ts)
+    //       =~= concat(lp.drop_last(), concat(stable_sym, ts))
+    // By composition: textbook_act(w) = textbook_act(lp.drop_last(), textbook_act(concat(stable_sym, ts)))
+
+    // First: textbook_act(concat(stable_sym, ts)) by composition
+    lemma_textbook_act_concat(data, lp.drop_last(), concat(stable_sym, ts), h, syls);
+
+    // Second: textbook_act(concat(stable_sym, ts)) = textbook_act(stable_sym, textbook_act(ts))
+    lemma_textbook_act_concat(data, stable_sym, ts, h, syls);
+
+    // Third: textbook_act(ts) on base-only word = (concat(ts, h), syls)
+    assert forall|k: int| 0 <= k < ts.len()
+        implies !is_stable(data, #[trigger] ts[k])
+    by { lemma_trailing_no_stable(data, w); }
+    lemma_textbook_base_only(data, ts, h, syls);
+
+    // Combine: w =~= concat(lp.drop_last(), concat(stable_sym, ts))
+    assert(w =~= concat(lp.drop_last(), concat(stable_sym, ts))) by {
+        // w =~= concat(lp, ts) =~= concat(concat(lp_drop, [s]), ts) =~= concat(lp_drop, concat([s], ts))
+        assert forall|k: int| 0 <= k < w.len()
+            implies w[k] == concat(lp.drop_last(), concat(stable_sym, ts))[k]
+        by {
+            assert(w[k] == concat(lp, ts)[k]);
+            if k < lp.drop_last().len() as int {
+            } else {
+                let offset = (k - lp.drop_last().len()) as int;
+                if offset < concat(stable_sym, ts).len() as int {
+                } else {}
+            }
         }
     }
 }
