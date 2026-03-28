@@ -5409,6 +5409,177 @@ proof fn lemma_no_collapse_gives_m(
     }
 }
 
+/// A prefix of a p-reduced word is also p-reduced.
+/// has_pinch_at(w.drop_last(), i, j) → has_pinch_at(w, i, j) since all indices are valid.
+/// A prefix of a p-reduced word is also p-reduced.
+proof fn lemma_no_pinch_prefix(data: HNNData, w: Word)
+    requires w.len() > 0, !has_pinch(data, w),
+    ensures !has_pinch(data, w.drop_last()),
+{
+    let dl = w.drop_last();
+    // Prove: forall i,j: !has_pinch_at(dl, i, j)
+    // Equivalent to !has_pinch(dl).
+    assert forall|i: int, j: int| !has_pinch_at(data, dl, i, j) by {
+        if has_pinch_at(data, dl, i, j) {
+            // has_pinch_at(dl, i, j) → has_adjacent_opposite_at(dl, i, j) → j < dl.len()
+            // Elements: dl[k] == w[k] for k < dl.len()
+            assert(has_adjacent_opposite_at(data, w, i, j)) by {
+                assert(dl[i] == w[i]);
+                assert(dl[j] == w[j]);
+                assert forall|k: int| i < k < j
+                    implies !is_stable(data, #[trigger] w[k])
+                by { assert(w[k] == dl[k]); }
+            }
+            assert(w.subrange(i + 1, j) =~= dl.subrange(i + 1, j)) by {
+                assert forall|k: int| 0 <= k < w.subrange(i + 1, j).len()
+                    implies #[trigger] w.subrange(i + 1, j)[k]
+                        == dl.subrange(i + 1, j)[k]
+                by {}
+            }
+            assert(has_pinch_at(data, w, i, j));
+            assert(has_pinch(data, w));
+            assert(false);
+        }
+    }
+}
+
+/// Concat associativity: concat(a, concat(b, c)) =~= concat(concat(a, b), c).
+proof fn lemma_concat_assoc(a: Word, b: Word, c: Word)
+    ensures concat(a, concat(b, c)) =~= concat(concat(a, b), c),
+{
+    assert forall|k: int| 0 <= k < concat(a, concat(b, c)).len()
+        implies concat(a, concat(b, c))[k] == concat(concat(a, b), c)[k]
+    by {
+        if k < a.len() as int {
+        } else if k < a.len() + b.len() {
+        } else {
+        }
+    }
+}
+
+/// Invariant for the textbook's normal form conversion (Lemma 3.9):
+/// After each ψ step, the output h is in the correct subgroup.
+/// This ensures concat(next_base_segment, h) ∉ subgroup for opposite-type pairs.
+pub open spec fn psi_output_invariant(
+    data: HNNData, h_sub: Word, syls: Seq<Syllable>,
+) -> bool {
+    let afp = tower_afp_data(data, 0);
+    syls.len() == 0 || (
+        (!syls.first().is_left ==>
+            crate::normal_form_amalgamated::in_left_subgroup(afp, h_sub))
+        && (syls.first().is_left ==>
+            crate::normal_form_amalgamated::in_right_subgroup(afp, h_sub))
+    )
+}
+
+/// For p-reduced words, no ψ step collapses. (Miller Lemma 3.9 argument.)
+///
+/// Ghost parameter h_sub: the ψ output from the most recent stable letter.
+/// h = concat(base_accum, h_sub) where base_accum is accumulated base symbols.
+///
+/// At each ψ step:
+/// - Same-type top → collapse needs opposite → impossible.
+/// - Opposite-type top → base_accum = base word between adjacent opposite pair.
+///   p-reduced → base_accum ∉ subgroup. h_sub ∈ subgroup (invariant).
+///   concat(∉sub, ∈sub) ∉ sub → rep ≠ ε → PREPEND, not collapse.
+/// - Empty syls → collapse impossible.
+proof fn lemma_p_reduced_no_collapse(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+    h_sub: Word,
+)
+    requires
+        hnn_data_valid(data),
+        !has_pinch(data, w),
+        word_valid(w, hnn_presentation(data).num_generators),
+        word_valid(h, data.base.num_generators),
+        word_valid(h_sub, data.base.num_generators),
+        psi_output_invariant(data, h_sub, syls),
+        exists|base_accum: Word|
+            #[trigger] concat(base_accum, h_sub) =~= h
+            && word_valid(base_accum, data.base.num_generators),
+    ensures
+        textbook_no_collapse(data, w, h, syls),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        let afp = tower_afp_data(data, 0);
+        if s == Symbol::Gen(ng) {
+            // ψ(p) step. Three sub-cases for no-collapse:
+            let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            if syls.len() == 0 {
+                // (a) syls empty → collapse impossible ✓
+            } else if !syls.first().is_left {
+                // (b) top is right (same type as Gen) → collapse needs opposite → impossible ✓
+            } else {
+                // (c) top is left (opposite). Need: h ∉ B → rep ≠ ε.
+                // From invariant: top is left → h_sub ∈ B (in_right_subgroup).
+                // h = concat(base_accum, h_sub). base_accum ∉ B from p-reduced.
+                // concat(∉B, ∈B) ∉ B → h ∉ B → rep ≠ ε.
+                //
+                // TODO: need to connect base_accum to has_pinch_at condition
+                // and invoke lemma_not_in_subgroup_concat_embed_b.
+                // This requires identifying which adjacent pair in w corresponds
+                // to the current Gen and the previous Inv.
+                //
+                // For now, this case needs more infrastructure.
+                // Specifically: the base_accum between this Gen and the Inv that
+                // created the left top syllable corresponds to a has_pinch_at pair
+                // in the original word, giving base_accum ∉ B.
+                assert(!(rep =~= empty_word())) by {
+                    // Key argument: h = concat(base_accum, h_sub).
+                    // h_sub ∈ B (from invariant). base_accum ∉ B (from p-reduced).
+                    // By lemma: concat(∉B, ∈B) ∉ B. So h ∉ B. rep ≠ ε.
+                    //
+                    // The connection base_accum ∉ B comes from:
+                    // this Gen and the previous Inv are adjacent opposite stable letters
+                    // in w, with base_accum between them. has_pinch_at would require
+                    // base_accum ∈ B for a Gen-Inv pinch. ¬has_pinch → base_accum ∉ B.
+                    //
+                    // Formalizing this connection requires tracking positions,
+                    // which we defer to a helper lemma.
+                    assert(false); // PLACEHOLDER — need position tracking helper
+                }
+            }
+            // After ψ(p): h_new ∈ A (from lemma_psi_p_output_in_A)
+            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+            // Recurse on w.drop_last() with updated state
+            // New h_sub = h_new (the ψ output, ∈ A)
+            // base_accum resets to ε: h_new = concat(ε, h_new)
+            lemma_no_pinch_prefix(data, w);
+            lemma_p_reduced_no_collapse(
+                data, w.drop_last(), h_new, syls_new, h_new);
+        } else if s == Symbol::Inv(ng) {
+            // ψ(p⁻¹) step. Symmetric to Gen case.
+            let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            if syls.len() == 0 {
+            } else if syls.first().is_left {
+                // Same type (left) → no collapse ✓
+            } else {
+                // Opposite (right top). h ∉ A from p-reduced.
+                assert(!(rep =~= empty_word())) by {
+                    assert(false); // PLACEHOLDER — symmetric to Gen case
+                }
+            }
+            let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
+            lemma_no_pinch_prefix(data, w);
+            lemma_p_reduced_no_collapse(
+                data, w.drop_last(), h_new, syls_new, h_new);
+        } else {
+            // Base symbol: accumulate into h. h_sub unchanged.
+            let new_h = concat(Seq::new(1, |_i: int| s), h);
+            // new_h = concat([s], h) = concat([s], concat(base_accum, h_sub))
+            //       = concat(concat([s], base_accum), h_sub) [by assoc]
+            // So the new base_accum = concat([s], base_accum). h_sub unchanged.
+            // Invariant preserved (syls unchanged, h_sub unchanged).
+            lemma_no_pinch_prefix(data, w);
+            lemma_p_reduced_no_collapse(
+                data, w.drop_last(), new_h, syls, h_sub);
+        }
+    }
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
