@@ -4436,33 +4436,70 @@ proof fn lemma_case_a_act_identity(data: HNNData, w: Word) -> (result: (nat, nat
 // To match the textbook exactly, we define textbook-faithful actions
 // that always prepend, then connect them to act_word for the contradiction.
 
-// --- Y.1: Textbook-faithful actions ---
+// --- Y.1: Textbook-faithful actions (Miller p.49) ---
+//
+// Miller's ψ(p) on normal form g₀·p^{ε₁}·g₁·...·p^{εₘ}·gₘ:
+//   Write g₀ = b·z₀ (B-coset: b ∈ B, z₀ ∈ Z transversal)
+//   Let a = φ⁻¹(b).
+//   PREPEND when: ε₁ = +1, OR z₀ ≠ 1, OR m = 0
+//     Result: a·p·z₀·p^{ε₁}·g₁·...·gₘ
+//   COLLAPSE when: z₀ = 1 AND ε₁ = -1 AND m > 0
+//     Result: (a·g₁)·p^{ε₂}·...·gₘ
+//
+// In our (h, syls) model:
+//   rep = b_rcoset_rep(g) plays the role of z₀
+//   h_new = b_rcoset_h(g) — identification-index word for b
+//   Syllable is_left=true corresponds to p⁻¹ (ε = -1)
+//   Syllable is_left=false corresponds to p (ε = +1)
+//
+// ψ(p) creates RIGHT (is_left=false) syllables.
+// COLLAPSE happens when rep = ε AND top is LEFT (opposite type = p⁻¹).
+//
+// For p-reduced words: COLLAPSE never triggers (would require a pinch).
+// So every stable letter PREPENDs → exactly m syllables after processing.
 
-/// Textbook's ψ(p): B-coset decompose, ALWAYS prepend when rep ≠ ε.
-/// Matches Miller p.49 Cases 1+2 (prepend) and Case 3 (absorb).
-/// Unlike g2_one_shot_action, this NEVER merges same-type syllables.
+/// Textbook's ψ(p): Miller p.49 exact 3-case action.
+/// PREPEND when rep ≠ ε OR top is same-type (right) or empty.
+/// COLLAPSE when rep = ε AND top is opposite-type (left) AND syls non-empty.
 pub open spec fn textbook_g2_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
     let h_new = crate::normal_form_afp_textbook::b_rcoset_h(data, g);
-    if rep =~= empty_word() {
-        (h_new, syls)  // ABSORB (textbook Case 3: trivial coset rep)
+    if rep =~= empty_word() && syls.len() > 0 && syls.first().is_left {
+        // COLLAPSE (Miller Case 3): z₀ = 1 AND ε₁ = -1
+        // φ⁻¹(g) = embed_a(h_new), combine with first syllable's rep
+        let phi_inv = apply_embedding(
+            crate::normal_form_afp_textbook::a_words(data), h_new);
+        let new_leading = concat(phi_inv, syls.first().rep);
+        // The new leading coefficient is new_leading in G₁
+        // Store as identification-index word via A-coset decomposition
+        let collapsed_h = crate::normal_form_afp_textbook::a_rcoset_h(
+            data, new_leading);
+        (collapsed_h, syls.drop_first())
     } else {
-        // PREPEND (textbook Cases 1+2: non-trivial coset rep)
+        // PREPEND (Miller Cases 1+2 + implicit m=0 case)
+        // This covers: rep ≠ ε, OR rep = ε with same-type/empty top
         (h_new, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
     }
 }
 
-/// Textbook's ψ(p⁻¹): A-coset decompose, ALWAYS prepend when rep ≠ ε.
-/// Symmetric to textbook_g2_action using A-cosets instead of B-cosets.
+/// Textbook's ψ(p⁻¹): Miller p.49 symmetric 3-case action.
+/// PREPEND when rep ≠ ε OR top is same-type (left) or empty.
+/// COLLAPSE when rep = ε AND top is opposite-type (right) AND syls non-empty.
 pub open spec fn textbook_g1_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
     let h_new = crate::normal_form_afp_textbook::a_rcoset_h(data, g);
-    if rep =~= empty_word() {
-        (h_new, syls)  // ABSORB
+    if rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left {
+        // COLLAPSE: y₀ = 1 AND ε₁ = +1 (opposite type for p⁻¹)
+        let phi = apply_embedding(
+            crate::normal_form_afp_textbook::b_words(data), h_new);
+        let new_leading = concat(phi, syls.first().rep);
+        let collapsed_h = crate::normal_form_afp_textbook::b_rcoset_h(
+            data, new_leading);
+        (collapsed_h, syls.drop_first())
     } else {
         // PREPEND
         (h_new, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
@@ -4470,74 +4507,55 @@ pub open spec fn textbook_g1_action(
 }
 
 // --- Y.2: Length properties of textbook actions ---
+// With Miller's 3-case action:
+//   PREPEND (not collapse): syls.len() + 1
+//   COLLAPSE: syls.len() - 1
 
-/// G₂ textbook action: rep ≠ ε → length + 1, rep = ε → length unchanged.
-proof fn lemma_textbook_g2_length(
+/// G₂ textbook PREPEND case: when not collapsing, length increases by 1.
+proof fn lemma_textbook_g2_prepend_length(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 )
-    ensures ({
-        let (h_out, syls_out) = textbook_g2_action(data, g, syls);
-        let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
-        if !(rep =~= empty_word()) {
-            syls_out.len() == syls.len() + 1
-        } else {
-            syls_out.len() == syls.len()
-        }
-    }),
+    requires
+        // NOT in collapse case
+        !(crate::normal_form_afp_textbook::b_rcoset_rep(data, g) =~= empty_word()
+          && syls.len() > 0 && syls.first().is_left),
+    ensures
+        textbook_g2_action(data, g, syls).1.len() == syls.len() + 1,
 {
     let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
-    if !(rep =~= empty_word()) {
-        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep });
-        assert((new_syl + syls).len() == 1 + syls.len());
-    }
+    let new_syl = Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep });
+    assert((new_syl + syls).len() == 1 + syls.len());
 }
 
-/// G₁ textbook action: rep ≠ ε → length + 1, rep = ε → length unchanged.
-proof fn lemma_textbook_g1_length(
+/// G₁ textbook PREPEND case: when not collapsing, length increases by 1.
+proof fn lemma_textbook_g1_prepend_length(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 )
-    ensures ({
-        let (h_out, syls_out) = textbook_g1_action(data, g, syls);
-        let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
-        if !(rep =~= empty_word()) {
-            syls_out.len() == syls.len() + 1
-        } else {
-            syls_out.len() == syls.len()
-        }
-    }),
+    requires
+        // NOT in collapse case
+        !(crate::normal_form_afp_textbook::a_rcoset_rep(data, g) =~= empty_word()
+          && syls.len() > 0 && !syls.first().is_left),
+    ensures
+        textbook_g1_action(data, g, syls).1.len() == syls.len() + 1,
 {
     let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
-    if !(rep =~= empty_word()) {
-        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep });
-        assert((new_syl + syls).len() == 1 + syls.len());
-    }
+    let new_syl = Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep });
+    assert((new_syl + syls).len() == 1 + syls.len());
 }
 
-// --- Y.3: Agreement with existing one-shots ---
-
-/// When top is left or empty: textbook_g2 = g2_one_shot (both prepend right).
-proof fn lemma_textbook_g2_agrees(
-    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
-)
-    requires syls.len() == 0 || syls.first().is_left,
-    ensures
-        textbook_g2_action(data, g, syls)
-            == crate::normal_form_afp_textbook::g2_one_shot_action(data, g, syls),
-{
-    // Both check b_rcoset_rep. If ε: both absorb. If ≠ ε: both see left/empty top → prepend.
-    // The prepend branch is identical in both definitions.
-}
-
-/// When top is right or empty: textbook_g1 = g1_one_shot (both prepend left).
-proof fn lemma_textbook_g1_agrees(
-    data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
-)
-    requires syls.len() == 0 || !syls.first().is_left,
-    ensures
-        textbook_g1_action(data, g, syls)
-            == crate::normal_form_afp_textbook::g1_one_shot_action(data, g, syls),
-{
-}
+// --- Y.3: No-collapse for p-reduced words ---
+// For p-reduced words, the COLLAPSE case of ψ(p) / ψ(p⁻¹) never triggers.
+// This is because COLLAPSE requires rep = ε (base word ∈ subgroup) AND
+// opposite-type top, which together would form a pinch.
+//
+// More precisely:
+// - ψ(p) COLLAPSE: rep = ε means g ∈ B, and top is left (p⁻¹).
+//   This forms t·(g∈B)·t⁻¹ = pinch. Contradicts ¬has_pinch.
+// - ψ(p⁻¹) COLLAPSE: rep = ε means g ∈ A, and top is right (p).
+//   This forms t⁻¹·(g∈A)·t = pinch. Contradicts ¬has_pinch.
+//
+// The exact connection between the textbook action's collapse condition and
+// has_pinch in the HNN word will be established in the main inductive lemma.
 
 // --- Y.4: HNN word segment decomposition ---
 // The textbook's p-expression: g₀·p^{ε₁}·g₁·p^{ε₂}·...·p^{εₘ}·gₘ
