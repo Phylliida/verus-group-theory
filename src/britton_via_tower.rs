@@ -4783,6 +4783,15 @@ proof fn lemma_stable_count_no_stable(data: HNNData, w: Word)
     }
 }
 
+/// A length-1 word with a stable letter has stable_count 1.
+proof fn lemma_stable_count_single(data: HNNData, w: Word)
+    requires w.len() == 1, is_stable(data, w[0]),
+    ensures stable_count(data, w) == 1,
+{
+    reveal_with_fuel(stable_count, 2);
+    assert(w.last() == w[0]);
+}
+
 /// If has_stable_letter: leading_part is non-empty and ends with a stable letter.
 /// And stable_count of leading_part.drop_last() = stable_count(w) - 1.
 proof fn lemma_leading_part_props(data: HNNData, w: Word)
@@ -4826,14 +4835,8 @@ proof fn lemma_leading_part_props(data: HNNData, w: Word)
     }
 
     // stable_count([w[lsp]]) = 1 (w[lsp] is stable)
-    assert(stable_count(data, last_sym) == 1nat) by {
-        assert(last_sym.len() > 0);
-        assert(last_sym.last() == w[lsp]);
-        assert(is_stable(data, last_sym.last()));
-        // stable_count = 1 + stable_count(drop_last) = 1 + stable_count(ε) = 1
-        assert(last_sym.drop_last() =~= Seq::<Symbol>::empty());
-        assert(last_sym.drop_last().len() == 0);
-    }
+    assert(last_sym[0] == w[lsp]);
+    lemma_stable_count_single(data, last_sym);
 
     // stable_count(lp) = stable_count(lp_drop) + 1
     lemma_stable_count_concat(data, lp_drop, last_sym);
