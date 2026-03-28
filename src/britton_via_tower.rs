@@ -5130,6 +5130,108 @@ proof fn lemma_textbook_act_decompose(
     }
 }
 
+/// ψ(p) length: PREPEND gives +1, COLLAPSE gives -1.
+proof fn lemma_textbook_psi_p_length(data: HNNData, h: Word, syls: Seq<Syllable>)
+    requires hnn_data_valid(data),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+        let (_, syls_new) = textbook_psi_p(data, h, syls);
+        if rep =~= empty_word() && syls.len() > 0 && syls.first().is_left {
+            syls_new.len() == syls.len() - 1
+        } else {
+            syls_new.len() == syls.len() + 1
+        }
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    if !(rep =~= empty_word() && syls.len() > 0 && syls.first().is_left) {
+        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep });
+        assert((new_syl + syls).len() == 1 + syls.len());
+    }
+}
+
+/// ψ(p⁻¹) length: PREPEND gives +1, COLLAPSE gives -1.
+proof fn lemma_textbook_psi_p_inv_length(data: HNNData, h: Word, syls: Seq<Syllable>)
+    requires hnn_data_valid(data),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+        let (_, syls_new) = textbook_psi_p_inv(data, h, syls);
+        if rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left {
+            syls_new.len() == syls.len() - 1
+        } else {
+            syls_new.len() == syls.len() + 1
+        }
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    if !(rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left) {
+        let new_syl = Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep });
+        assert((new_syl + syls).len() == 1 + syls.len());
+    }
+}
+
+/// Single stable letter through textbook_act_hnn = ψ(p) or ψ(p⁻¹).
+proof fn lemma_textbook_act_single_stable(
+    data: HNNData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        is_stable(data, s),
+    ensures
+        textbook_act_hnn(data, Seq::new(1, |_i: int| s), h, syls)
+            == if s == Symbol::Gen(data.base.num_generators) {
+                textbook_psi_p(data, h, syls)
+            } else {
+                textbook_psi_p_inv(data, h, syls)
+            },
+{
+    let w: Word = Seq::new(1, |_i: int| s);
+    reveal_with_fuel(textbook_act_hnn, 2);
+    assert(w.last() == s);
+    assert(w.drop_last().len() == 0);
+}
+
+/// stable_count = 0 implies no stable letters in w.
+proof fn lemma_stable_count_zero_no_stable(data: HNNData, w: Word, pos: int)
+    requires
+        stable_count(data, w) == 0,
+        0 <= pos < w.len(),
+    ensures !is_stable(data, w[pos]),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        if is_stable(data, w.last()) {
+            // stable_count ≥ 1, contradiction with = 0
+        } else {
+            if pos == w.len() - 1 {
+                assert(w[pos] == w.last());
+            } else {
+                assert(w.drop_last()[pos] == w[pos]);
+                lemma_stable_count_zero_no_stable(data, w.drop_last(), pos);
+            }
+        }
+    }
+}
+
+/// Base case: stable_count = 0 → textbook_act_hnn gives 0 syllables.
+proof fn lemma_textbook_base_case(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        stable_count(data, w) == 0,
+    ensures
+        textbook_act_hnn(data, w, empty_word(),
+            Seq::<Syllable>::empty()).1.len() == 0,
+{
+    assert forall|k: int| 0 <= k < w.len()
+        implies !is_stable(data, #[trigger] w[k])
+    by { lemma_stable_count_zero_no_stable(data, w, k); }
+    lemma_textbook_base_only(data, w, empty_word(), Seq::<Syllable>::empty());
+}
+
 /// **Britton's Lemma (Full, Miller Thm 3.10):**
 /// If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
