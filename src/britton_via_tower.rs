@@ -6093,6 +6093,70 @@ proof fn lemma_act_hnn_respects_base_equiv(
     }
 }
 
+/// shift_word(w, 0) =~= w: shifting by 0 is identity.
+proof fn lemma_shift_word_zero(w: Word)
+    ensures shift_word(w, 0) =~= w,
+{
+    assert forall|k: int| 0 <= k < w.len()
+        implies shift_word(w, 0)[k] == w[k]
+    by {
+        match w[k] {
+            Symbol::Gen(j) => {}
+            Symbol::Inv(j) => {}
+        }
+    }
+}
+
+/// textbook_psi_p output h is word_valid for the base group.
+/// Generalization of lemma_psi_p_h_valid to arbitrary syls.
+proof fn lemma_psi_p_h_valid_general(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(h, data.base.num_generators),
+        //  Syllable reps are word_valid (if any syllables exist and COLLAPSE triggers)
+        (syls.len() > 0 && syls.first().is_left) ==>
+            word_valid(syls.first().rep, data.base.num_generators),
+    ensures
+        word_valid(textbook_psi_p(data, h, syls).0, data.base.num_generators),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    assert(a_ws.len() == ks);
+    //  Get h_id word_valid
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::b_rcoset_rep(afp, h), ng);
+    crate::word::lemma_concat_word_valid(h,
+        inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h)), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h,
+            inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h))));
+    assert(b_ws.len() == ks);
+    let hw: Word = choose|hw: Word| word_valid(hw, ks)
+        && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h,
+                inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h))));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw);
+    //  word_valid(h_id, ks)
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id, ng);
+    //  word_valid(embed_a(h_id), ng)
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let is_collapse = rep =~= empty_word() && syls.len() > 0 && syls.first().is_left;
+    if is_collapse {
+        //  COLLAPSE: output h = concat(embed_a(h_id), syls.first().rep)
+        crate::word::lemma_concat_word_valid(
+            apply_embedding(a_ws, h_id), syls.first().rep, ng);
+    }
+    //  PREPEND: output h = embed_a(h_id) — already word_valid
+}
+
 /// Group right cancellation: if a·c ≡ b·c then a ≡ b.
 /// Used in conjugation relation and iso transfer chains.
 proof fn lemma_group_cancel_right(p: Presentation, a: Word, b: Word, c: Word)
@@ -6915,6 +6979,14 @@ proof fn lemma_hnn_relator_preserves(
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
         word_valid(h, data.base.num_generators),
+        //  Miller's Ω: syllable rep validity + canonicity
+        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
+        (syls.len() > 0 && syls.first().is_left) ==> ({
+            let afp = tower_afp_data(data, 0);
+            &&& !(syls.first().rep =~= empty_word())
+            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
+                    =~= syls.first().rep
+        }),
     ensures ({
         let r = hnn_relator(data, i);
         &&& textbook_act_hnn(data, r, h, syls).1 == syls
@@ -6939,6 +7011,8 @@ proof fn lemma_hnn_conjugation_chain(
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
         word_valid(h, data.base.num_generators),
+        //  Syllable rep validity (for COLLAPSE case)
+        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
     ensures ({
         let afp = tower_afp_data(data, 0);
         let (a_i, b_i) = data.associations[i];
@@ -7041,20 +7115,15 @@ proof fn lemma_hnn_conjugation_chain(
     lemma_iso_transfer_b_to_a(data, h_id2, concat(k_inv, h_id));
     crate::benign::lemma_apply_embedding_concat(a_ws, k_inv, h_id);
     //  embed_a(h_id2) ≡ embed_a(concat(k_inv, h_id)) =~= concat(embed_a(k_inv), embed_a(h_id))
-    //  Need: embed_a(k_inv) =~= inv_ai. At level 0: a_ws[j] = shift_word(a_j, 0) =~= a_j.
-    assert forall|k: int| 0 <= k < a_i.len()
-        implies shift_symbol(a_i[k], 0) == a_i[k]
-    by {
-        match a_i[k] {
-            Symbol::Gen(j) => {}
-            Symbol::Inv(j) => {}
-        }
+    //  a_ws[i] = shift_word(a_i, 0) =~= a_i (shift by 0 is identity)
+    lemma_shift_word_zero(a_i);
+    assert(a_ws[i as int] =~= a_i);
+    //  apply_embedding(a_ws, k_inv) =~= inv_ai
+    assert(apply_embedding(a_ws, k_inv) =~= inv_ai) by {
+        reveal_with_fuel(apply_embedding, 2);
+        lemma_shift_word_zero(a_i);
     }
-    assert(a_ws[i as int] =~= a_i) by {
-        //  a_ws[i] = shift_word(a_i, 0) =~= a_i
-        assert forall|k: int| 0 <= k < a_ws[i as int].len()
-            implies a_ws[i as int][k] == a_i[k] by {}
-    }
+    //  So embed_a(concat(k_inv, h_id)) =~= concat(inv_ai, embed_a(h_id)) ✓
 
     //  Step 3: Cancellation — concat(a_i, embed_a(h_id2)) ≡ embed_a(h_id)
     crate::word::lemma_concat_word_valid(a_i, apply_embedding(a_ws, h_id2), ng);
@@ -7071,8 +7140,98 @@ proof fn lemma_hnn_conjugation_chain(
     lemma_concat_identity_left(data.base, apply_embedding(a_ws, h_id));
     lemma_concat_assoc(a_i, inv_ai, apply_embedding(a_ws, h_id));
     //  concat(a_i, concat(inv_ai, embed_a(h_id))) =~= concat(concat(a_i, inv_ai), embed_a(h_id)) ≡ embed_a(h_id)
-    //  Chain: concat(a_i, embed_a(h_id2)) ≡ ... ≡ embed_a(h_id) = ψ(p)(h).0 [PREPEND]
-    //  or ≡ part of ψ(p)(h).0 [COLLAPSE] — Z3 handles both via definition unfolding
+    //  Establish: concat(a_i, embed_a(h_id2)) ≡ embed_a(h_id) via explicit transitive chain.
+    //  Step A: concat(a_i, embed_a(h_id2)) ≡ concat(a_i, concat(inv_ai, embed_a(h_id)))
+    //          (from equiv_concat_right above)
+    //  Step B: concat(a_i, concat(inv_ai, X)) =~= concat(concat(a_i, inv_ai), X) (assoc)
+    //  Step C: concat(concat(a_i, inv_ai), X) ≡ concat(ε, X) ≡ X (cancel + id)
+    crate::word::lemma_concat_word_valid(concat(a_i, inv_ai), apply_embedding(a_ws, h_id), ng);
+    lemma_equiv_transitive(data.base,
+        concat(concat(a_i, inv_ai), apply_embedding(a_ws, h_id)),
+        concat(empty_word(), apply_embedding(a_ws, h_id)),
+        apply_embedding(a_ws, h_id));
+    //  concat(concat(a_i, inv_ai), embed_a(h_id)) ≡ embed_a(h_id)
+    //  =~= concat(a_i, concat(inv_ai, embed_a(h_id))) (by assoc)
+    //  So: concat(a_i, embed_a(h_id2)) ≡ concat(a_i, concat(inv_ai, embed_a(h_id))) ≡ embed_a(h_id)
+    lemma_equiv_transitive(data.base,
+        concat(a_i, apply_embedding(a_ws, h_id2)),
+        concat(a_i, concat(inv_ai, apply_embedding(a_ws, h_id))),
+        apply_embedding(a_ws, h_id));
+
+    //  Now connect to psi_p output. Case split on PREPEND/COLLAPSE.
+    let h_psi_conj = textbook_psi_p(data, h_prime, syls).0;
+    let h_psi_orig = textbook_psi_p(data, h, syls).0;
+    let psi_rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    if !(psi_rep =~= empty_word() && syls.len() > 0 && syls.first().is_left) {
+        //  PREPEND: h_psi_conj = embed_a(h_id2), h_psi_orig = embed_a(h_id)
+        //  concat(a_i, embed_a(h_id2)) ≡ embed_a(h_id) ✓ (from chain above)
+    } else {
+        //  COLLAPSE: h_psi_conj = concat(embed_a(h_id2), top_rep),
+        //            h_psi_orig = concat(embed_a(h_id), top_rep)
+        //  concat(a_i, concat(embed_a(h_id2), top_rep))
+        //    =~= concat(concat(a_i, embed_a(h_id2)), top_rep)  [assoc]
+        //    ≡ concat(embed_a(h_id), top_rep)  [equiv_concat_left from above]
+        let top_rep = syls.first().rep;
+        lemma_concat_assoc(a_i, apply_embedding(a_ws, h_id2), top_rep);
+        crate::word::lemma_concat_word_valid(a_i, apply_embedding(a_ws, h_id2), ng);
+        lemma_equiv_concat_left(data.base,
+            concat(a_i, apply_embedding(a_ws, h_id2)),
+            apply_embedding(a_ws, h_id), top_rep);
+    }
+}
+
+/// Decomposition helper: shows act(hnn_relator(i), h, syls) == ψ(p⁻¹)(concat(a_i, ψ(p)(h', syls).0), ψ(p)(h', syls).1)
+/// where h' = concat(inv(b_i), h).
+proof fn lemma_hnn_relator_decompose(
+    data: HNNData, i: int, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        0 <= i < data.associations.len(),
+        word_valid(h, data.base.num_generators),
+    ensures ({
+        let (a_i, b_i) = data.associations[i];
+        let h_prime = concat(inverse_word(b_i), h);
+        let (h_psi, syls_psi) = textbook_psi_p(data, h_prime, syls);
+        let h2 = concat(a_i, h_psi);
+        textbook_act_hnn(data, hnn_relator(data, i), h, syls)
+            == textbook_psi_p_inv(data, h2, syls_psi)
+    }),
+{
+    let ng = data.base.num_generators;
+    let (a_i, b_i) = data.associations[i];
+    let inv_bi = inverse_word(b_i);
+    let r = hnn_relator(data, i);
+    let t_word: Word = Seq::new(1, |_j: int| stable_letter(data));
+    let t_inv_word: Word = Seq::new(1, |_j: int| stable_letter_inv(data));
+    let h_prime = concat(inv_bi, h);
+
+    crate::word::lemma_inverse_word_valid(b_i, ng);
+    crate::word::lemma_concat_word_valid(inv_bi, h, ng);
+
+    assert forall|k: int| 0 <= k < inv_bi.len()
+        implies !is_stable(data, #[trigger] inv_bi[k])
+    by { assert(generator_index(inv_bi[k]) < ng); }
+    assert forall|k: int| 0 <= k < a_i.len()
+        implies !is_stable(data, #[trigger] a_i[k])
+    by { assert(generator_index(a_i[k]) < ng); }
+
+    //  r = ((t_inv_word + a_i) + t_word) + inv_bi
+    assert(r =~= concat(concat(concat(t_inv_word, a_i), t_word), inv_bi));
+
+    lemma_textbook_base_only(data, inv_bi, h, syls);
+    lemma_textbook_act_concat(data,
+        concat(concat(t_inv_word, a_i), t_word), inv_bi, h, syls);
+    lemma_textbook_act_concat(data,
+        concat(t_inv_word, a_i), t_word, h_prime, syls);
+    let (h_psi, syls_psi) = textbook_psi_p(data, h_prime, syls);
+    lemma_textbook_base_only(data, a_i, h_psi, syls_psi);
+    lemma_textbook_act_concat(data, t_inv_word, a_i, h_psi, syls_psi);
+    //  act(t_inv_word, (concat(a_i, h_psi), syls_psi)) = psi_p_inv(concat(a_i, h_psi), syls_psi)
+    //  Help Z3 see: act([Inv(ng)], h, syls) = psi_p_inv(h, syls)
+    let h2 = concat(a_i, h_psi);
+    assert(textbook_act_hnn(data, t_inv_word, h2, syls_psi)
+        == textbook_psi_p_inv(data, h2, syls_psi));
 }
 
 /// Inner helper: assembles the relator proof using the conjugation chain + Lemma 0b + Tier 1b.
@@ -7084,6 +7243,13 @@ proof fn lemma_hnn_relator_preserves_inner(
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
         word_valid(h, data.base.num_generators),
+        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
+        (syls.len() > 0 && syls.first().is_left) ==> ({
+            let afp = tower_afp_data(data, 0);
+            &&& !(syls.first().rep =~= empty_word())
+            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
+                    =~= syls.first().rep
+        }),
     ensures ({
         let r = hnn_relator(data, i);
         &&& textbook_act_hnn(data, r, h, syls).1 == syls
@@ -7102,42 +7268,29 @@ proof fn lemma_hnn_relator_preserves_inner(
     let h_prime = concat(inv_bi, h);
     crate::word::lemma_concat_word_valid(inv_bi, h, ng);
 
-    //  Conjugation chain: same syls + concat(a_i, h_conj) ≡ h_orig
+    //  Step 1: Decompose act(r, h, syls) = ψ(p⁻¹)(h2, syls_psi_conj)
+    lemma_hnn_relator_decompose(data, i, h, syls);
+    let (h_psi_conj, syls_psi_conj) = textbook_psi_p(data, h_prime, syls);
+    let h2 = concat(a_i, h_psi_conj);
+
+    //  Step 2: Conjugation chain: same syls + h2 ≡ h_psi_orig
     lemma_hnn_conjugation_chain(data, i, h, syls);
     let (h_psi_orig, syls_psi_orig) = textbook_psi_p(data, h, syls);
-    let (h_psi_conj, syls_psi_conj) = textbook_psi_p(data, h_prime, syls);
-    //  syls_psi_conj == syls_psi_orig, concat(a_i, h_psi_conj) ≡ h_psi_orig
 
-    //  Decompose relator via act_concat
-    let t_word: Word = Seq::new(1, |_j: int| stable_letter(data));
-    let t_inv_word: Word = Seq::new(1, |_j: int| stable_letter_inv(data));
-    assert forall|k: int| 0 <= k < inv_bi.len()
-        implies !is_stable(data, #[trigger] inv_bi[k])
-    by { assert(generator_index(inv_bi[k]) < ng); }
-    assert forall|k: int| 0 <= k < a_i.len()
-        implies !is_stable(data, #[trigger] a_i[k])
-    by { assert(generator_index(a_i[k]) < ng); }
-
-    lemma_textbook_base_only(data, inv_bi, h, syls);
-    lemma_textbook_act_concat(data,
-        concat(t_inv_word, concat(a_i, t_word)), inv_bi, h, syls);
-    lemma_textbook_act_concat(data,
-        concat(t_inv_word, a_i), t_word, h_prime, syls);
-    lemma_textbook_base_only(data, a_i, h_psi_conj, syls_psi_conj);
-    lemma_textbook_act_concat(data, t_inv_word, a_i, h_psi_conj, syls_psi_conj);
-    //  act(r, h, syls) = ψ(p⁻¹)(concat(a_i, h_psi_conj), syls_psi_conj)
-
-    let h2 = concat(a_i, h_psi_conj);
+    //  Step 3: word_valid for psi outputs + h2
+    lemma_psi_p_h_valid_general(data, h_prime, syls);
+    lemma_psi_p_h_valid_general(data, h, syls);
     crate::word::lemma_concat_word_valid(a_i, h_psi_conj, ng);
-    //  h2 ≡ h_psi_orig (from conjugation chain)
-    //  syls_psi_conj == syls_psi_orig
 
-    //  By Lemma 0b: ψ(p⁻¹)(h2, syls_psi_conj) == ψ(p⁻¹)(h_psi_orig, syls_psi_orig)
-    //  (since h2 ≡ h_psi_orig and syls match)
-    //  Need word_valid(h2, ng) — already established
-    //  Need word_valid(h_psi_orig, ng) — from psi_p output
-    //  TODO: establish word_valid for psi outputs and invoke 0b + 1b
-    lemma_equiv_refl(data.base, h);  //  placeholder for final wiring
+    //  Step 4: Lemma 0b → ψ(p⁻¹)(h2, syls_conj) == ψ(p⁻¹)(h_orig, syls_orig)
+    lemma_psi_p_inv_respects_base_equiv(data, h2, h_psi_orig, syls_psi_orig);
+
+    //  Step 5: Tier 1b round-trip → ψ(p⁻¹)(ψ(p)(h, syls)).1 == syls, .0 ≡ h
+    lemma_stable_pair_inv_gen(data, h, syls);
+
+    //  Chain: act(r, h, syls) == ψ(p⁻¹)(h2, syls_conj) [decompose]
+    //                          == ψ(p⁻¹)(h_orig, syls_orig) [Lemma 0b]
+    //                          has .1 == syls, .0 ≡ h [Tier 1b]
 }
 
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
