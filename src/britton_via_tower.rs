@@ -7462,6 +7462,78 @@ proof fn lemma_hnn_dual_conjugation_chain(
     }
 }
 
+/// Decompose inverse relator via act_concat.
+proof fn lemma_hnn_relator_inverse_decompose(
+    data: HNNData, i: int, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        0 <= i < data.associations.len(),
+        word_valid(h, data.base.num_generators),
+        (syls.len() > 0 && syls.first().is_left) ==>
+            word_valid(syls.first().rep, data.base.num_generators),
+    ensures ({
+        let (a_i, b_i) = data.associations[i];
+        let (h1, syls1) = textbook_psi_p(data, h, syls);
+        let h_mid = concat(inverse_word(a_i), h1);
+        let (h2, syls2) = textbook_psi_p_inv(data, h_mid, syls1);
+        textbook_act_hnn(data, inverse_word(hnn_relator(data, i)), h, syls)
+            == (concat(b_i, h2), syls2)
+    }),
+{
+    let ng = data.base.num_generators;
+    let (a_i, b_i) = data.associations[i];
+    let inv_ai = inverse_word(a_i);
+    let t_word: Word = Seq::new(1, |_j: int| stable_letter(data));
+    let t_inv_word: Word = Seq::new(1, |_j: int| stable_letter_inv(data));
+    crate::word::lemma_inverse_word_valid(a_i, ng);
+    crate::word::lemma_inverse_word_valid(b_i, ng);
+
+    //  r_inv =~= concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)))
+    crate::word::lemma_inverse_concat(
+        concat(concat(t_inv_word, a_i), t_word), inverse_word(b_i));
+    crate::word::lemma_inverse_concat(concat(t_inv_word, a_i), t_word);
+    crate::word::lemma_inverse_concat(t_inv_word, a_i);
+    crate::word::lemma_inverse_involution(b_i);
+
+    assert forall|k: int| 0 <= k < b_i.len()
+        implies !is_stable(data, #[trigger] b_i[k])
+    by { assert(generator_index(b_i[k]) < ng); }
+    assert forall|k: int| 0 <= k < inv_ai.len()
+        implies !is_stable(data, #[trigger] inv_ai[k])
+    by { assert(generator_index(inv_ai[k]) < ng); }
+
+    lemma_textbook_act_concat(data, b_i,
+        concat(t_inv_word, concat(inv_ai, t_word)), h, syls);
+    lemma_textbook_act_concat(data, t_inv_word,
+        concat(inv_ai, t_word), h, syls);
+    lemma_textbook_act_concat(data, inv_ai, t_word, h, syls);
+    assert(textbook_act_hnn(data, t_word, h, syls)
+        == textbook_psi_p(data, h, syls)) by {
+        reveal_with_fuel(textbook_act_hnn, 2);
+    }
+    let (h1, syls1) = textbook_psi_p(data, h, syls);
+    lemma_psi_p_h_valid_general(data, h, syls);
+    lemma_textbook_base_only(data, inv_ai, h1, syls1);
+    let h_mid = concat(inv_ai, h1);
+    crate::word::lemma_concat_word_valid(inv_ai, h1, ng);
+    assert(textbook_act_hnn(data, t_inv_word, h_mid, syls1)
+        == textbook_psi_p_inv(data, h_mid, syls1)) by {
+        reveal_with_fuel(textbook_act_hnn, 2);
+    }
+    let (h2, syls2) = textbook_psi_p_inv(data, h_mid, syls1);
+    lemma_textbook_base_only(data, b_i, h2, syls2);
+
+    //  Help Z3: inverse_word(hnn_relator) =~= right-associated concat
+    let r_inv = inverse_word(hnn_relator(data, i));
+    assert(r_inv =~= concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)))) by {
+        assert(r_inv.len() == b_i.len() + 1 + inv_ai.len() + 1);
+        assert forall|k: int| 0 <= k < r_inv.len()
+            implies r_inv[k] == concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)))[k]
+        by {}
+    }
+}
+
 /// Inverse HNN relator preserves action (dual of lemma_hnn_relator_preserves).
 proof fn lemma_hnn_relator_inverse_preserves(
     data: HNNData, i: int, h: Word, syls: Seq<Syllable>,
@@ -7471,11 +7543,19 @@ proof fn lemma_hnn_relator_inverse_preserves(
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
         word_valid(h, data.base.num_generators),
-        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
+        //  Miller's Ω: all syllable reps are word_valid, non-empty, and canonical
+        forall|j: int| 0 <= j < syls.len() ==>
+            word_valid(#[trigger] syls[j].rep, data.base.num_generators),
         (syls.len() > 0 && syls.first().is_left) ==> ({
             let afp = tower_afp_data(data, 0);
             &&& !(syls.first().rep =~= empty_word())
             &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
+                    =~= syls.first().rep
+        }),
+        (syls.len() > 0 && !syls.first().is_left) ==> ({
+            let afp = tower_afp_data(data, 0);
+            &&& !(syls.first().rep =~= empty_word())
+            &&& crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls.first().rep)
                     =~= syls.first().rep
         }),
     ensures ({
@@ -7485,51 +7565,36 @@ proof fn lemma_hnn_relator_inverse_preserves(
                 textbook_act_hnn(data, r_inv, h, syls).0, h)
     }),
 {
-    //  Dual of lemma_hnn_relator_preserves_inner:
-    //  inv(r) = b_i · t⁻¹ · inv(a_i) · t
-    //  Processes R→L as: ψ(p) → θ(inv(a_i)) → ψ(p⁻¹) → θ(b_i)
-    //  = θ(b_i) ∘ ψ(p⁻¹) ∘ θ(inv(a_i)) ∘ ψ(p)
-    //
-    //  Step 1: ψ(p)(h, syls) = (h1, syls1)
-    //  Step 2: Dual conjugation: ψ(p⁻¹)(concat(inv(a_i), h1), syls1) has
-    //          same syls as ψ(p⁻¹)(h1, syls1) and concat(b_i, .0) ≡ ψ(p⁻¹)(h1, syls1).0
-    //  Step 3: θ(b_i) cancels the b_i, giving ≡ ψ(p⁻¹)(h1, syls1).0
-    //  Step 4: By Lemma 0a + Tier 1a: ψ(p)(ψ(p⁻¹)⁻¹(h, syls)) restores syls, h ≡ h
-
     let ng = data.base.num_generators;
     let (a_i, b_i) = data.associations[i];
+    let inv_ai = inverse_word(a_i);
     lemma_tower_afp_data_valid(data, 0);
     crate::word::lemma_inverse_word_valid(a_i, ng);
     crate::word::lemma_inverse_word_valid(b_i, ng);
 
-    //  Step 1: ψ(p)(h, syls)
+    //  Decompose: act(r_inv, h, syls) = (concat(b_i, h2), syls2)
+    lemma_hnn_relator_inverse_decompose(data, i, h, syls);
     let (h1, syls1) = textbook_psi_p(data, h, syls);
+    let h_mid = concat(inv_ai, h1);
+    let (h2, syls2) = textbook_psi_p_inv(data, h_mid, syls1);
 
-    //  Step 2: Dual conjugation
+    //  Dual conjugation
     lemma_psi_p_h_valid_general(data, h, syls);
-    lemma_hnn_dual_conjugation_chain(data, i, h1, syls1);
-    let (h_psi_orig, syls_psi_orig) = textbook_psi_p_inv(data, h1, syls1);
-
-    //  Step 3: word_valid + Lemma 0a
-    let inv_ai = inverse_word(a_i);
-    let h_psi_conj = textbook_psi_p_inv(data, concat(inv_ai, h1), syls1).0;
     crate::word::lemma_concat_word_valid(inv_ai, h1, ng);
-    lemma_psi_p_h_valid_general(data, concat(inv_ai, h1), syls1);
-    lemma_psi_p_h_valid_general(data, h1, syls1);
-    let h2 = concat(b_i, h_psi_conj);
-    crate::word::lemma_concat_word_valid(b_i, h_psi_conj, ng);
-    //  h2 = concat(b_i, h_psi_conj) ≡ h_psi_orig (from dual conjugation)
-    //  By Lemma 0a: ψ(p)(h2, syls_psi_conj) == ψ(p)(h_psi_orig, syls_psi_orig)
-    lemma_psi_p_respects_base_equiv(data, h2, h_psi_orig, syls_psi_orig);
+    assert(syls1.len() > 0 ==> word_valid(syls1.first().rep, ng)) by {
+        let rep = crate::normal_form_afp_textbook::b_rcoset_rep(
+            tower_afp_data(data, 0), h);
+        if !(rep =~= empty_word() && syls.len() > 0 && syls.first().is_left) {
+            crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(
+                tower_afp_data(data, 0), h);
+        } else {
+            if syls1.len() > 0 { assert(syls1.first() == syls[1]); }
+        }
+    }
+    lemma_hnn_dual_conjugation_chain(data, i, h1, syls1);
 
-    //  Step 4: Tier 1a round-trip: ψ(p)(ψ(p⁻¹)(ψ(p)(h, syls))) → restores
-    lemma_stable_pair_gen_inv(data, h, syls);
-
-    //  Decompose: act(inv(r), h, syls) = ψ(p)(concat(b_i, ψ(p⁻¹)(concat(inv(a_i), ψ(p)(h, syls).0), ψ(p)(h, syls).1).0), ...)
-    //  This decomposition chain connects via act_concat + reveal_with_fuel.
-    //  TODO: wire up the act_concat chain for the inverse relator word
-    //  For now, the mathematical content is established by the dual conjugation.
-    lemma_equiv_refl(data.base, h);  //  placeholder for act_concat wiring
+    //  Tier 1b round-trip
+    lemma_stable_pair_inv_gen(data, h, syls);
 }
 
 //  ---- Tier 3: Assembly — the final Miller argument ----
