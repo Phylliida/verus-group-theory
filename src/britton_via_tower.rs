@@ -6093,6 +6093,37 @@ proof fn lemma_act_hnn_respects_base_equiv(
     }
 }
 
+/// Group right cancellation: if a·c ≡ b·c then a ≡ b.
+/// Used in conjugation relation and iso transfer chains.
+proof fn lemma_group_cancel_right(p: Presentation, a: Word, b: Word, c: Word)
+    requires
+        presentation_valid(p),
+        word_valid(a, p.num_generators),
+        word_valid(b, p.num_generators),
+        word_valid(c, p.num_generators),
+        equiv_in_presentation(p, concat(a, c), concat(b, c)),
+    ensures
+        equiv_in_presentation(p, a, b),
+{
+    crate::word::lemma_inverse_word_valid(c, p.num_generators);
+    crate::word::lemma_concat_word_valid(a, c, p.num_generators);
+    crate::word::lemma_concat_word_valid(b, c, p.num_generators);
+    //  concat(concat(a, c), inv(c)) ≡ a
+    crate::normal_form_afp_textbook::lemma_right_cancel(p, a, c);
+    //  concat(concat(b, c), inv(c)) ≡ b
+    crate::normal_form_afp_textbook::lemma_right_cancel(p, b, c);
+    //  concat(a·c, inv(c)) ≡ concat(b·c, inv(c))  [from premise, concat_left with inv(c)]
+    lemma_equiv_concat_left(p, concat(a, c), concat(b, c), inverse_word(c));
+    //  Chain: a ≡ concat(a·c, inv(c)) ≡ concat(b·c, inv(c)) ≡ b
+    crate::word::lemma_concat_word_valid(concat(a, c), inverse_word(c), p.num_generators);
+    lemma_equiv_symmetric(p, concat(concat(a, c), inverse_word(c)), a);
+    lemma_equiv_transitive(p, a,
+        concat(concat(a, c), inverse_word(c)),
+        concat(concat(b, c), inverse_word(c)));
+    lemma_equiv_transitive(p, a,
+        concat(concat(b, c), inverse_word(c)), b);
+}
+
 //  ---- Tier 1: Stable letter pair cancellation (Miller "routine check") ----
 //
 //  Miller p.47: "A routine check shows that ψ(p) ∘ ψ(p⁻¹) and ψ(p⁻¹) ∘ ψ(p)
@@ -6856,6 +6887,271 @@ proof fn lemma_stable_pair_inv_gen(
     } else {
         lemma_stable_pair_inv_gen_case_b(data, h, syls);
     }
+}
+
+//  ---- Tier 2: HNN relator preserves action (Miller p.47) ----
+//
+//  Miller: "one can check that θ⋆ψ(pϕ(a)) and θ⋆ψ(ap) are the same permutation."
+//  This is the conjugation relation: ψ(p) ∘ θ(b) = θ(a) ∘ ψ(p) for a ∈ A, b = ϕ(a) ∈ B.
+//  The HNN relator acts trivially: ψ(p⁻¹)∘θ(a_i)∘ψ(p)∘θ(inv(b_i)) = θ(b_i)∘θ(inv(b_i)) ≡ id.
+//
+//  Proof strategy (following Miller):
+//  - ψ(p)(concat(b, h)) has same syls as ψ(p)(h) (same B-coset → same rep → same branch)
+//  - ψ(p)(concat(b, h)).0 ≡ concat(a, ψ(p)(h).0) where a = ϕ⁻¹(b) (identification transfer)
+//  - Combined with Tier 1 round-trip: syls restored, h ≡ concat(b_i, inv(b_i), h) ≡ h.
+
+/// Tier 2: HNN relator preserves syllables exactly, h is base-equivalent.
+/// Miller p.47: the HNN relator t⁻¹·a_i·t·inv(b_i) maps to the identity permutation.
+///
+/// Proof: ψ(p⁻¹) ∘ θ(a_i) ∘ ψ(p) ∘ θ(inv(b_i)) on (h, syls).
+/// By conjugation (Miller): ψ(p)(concat(inv(b_i), h)) ≡ concat(inv(a_i), ψ(p)(h))
+/// (same B-coset → same syls, h_id shifts by ϕ⁻¹). Then a_i cancels inv(a_i),
+/// and ψ(p⁻¹) ∘ ψ(p) = id (Tier 1b) + h-equiv (Lemma 0b).
+proof fn lemma_hnn_relator_preserves(
+    data: HNNData, i: int, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= i < data.associations.len(),
+        word_valid(h, data.base.num_generators),
+    ensures ({
+        let r = hnn_relator(data, i);
+        &&& textbook_act_hnn(data, r, h, syls).1 == syls
+        &&& equiv_in_presentation(data.base,
+                textbook_act_hnn(data, r, h, syls).0, h)
+    }),
+{
+    //  The full proof of the HNN conjugation relation + relator triviality
+    //  requires ~200 lines of coset decomposition tracking.
+    //  Split into a helper to avoid rlimit.
+    lemma_hnn_relator_preserves_inner(data, i, h, syls);
+}
+
+/// Inner helper: the HNN relator proof.
+/// Strategy (following Miller p.47):
+///   1. ψ(p)(concat(inv(b_i), h)) has same syls as ψ(p)(h) [same B-coset]
+///   2. concat(a_i, ψ(p)(concat(inv(b_i), h)).0) ≡ ψ(p)(h).0 [conjugation + cancel]
+///   3. By Lemma 0b: ψ(p⁻¹) sees equiv state → same output as ψ(p⁻¹)(ψ(p)(h))
+///   4. By Tier 1b: restores syls, h ≡ h.
+proof fn lemma_hnn_relator_preserves_inner(
+    data: HNNData, i: int, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        0 <= i < data.associations.len(),
+        word_valid(h, data.base.num_generators),
+    ensures ({
+        let r = hnn_relator(data, i);
+        &&& textbook_act_hnn(data, r, h, syls).1 == syls
+        &&& equiv_in_presentation(data.base,
+                textbook_act_hnn(data, r, h, syls).0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let (a_i, b_i) = data.associations[i];
+    let inv_bi = inverse_word(b_i);
+    let inv_ai = inverse_word(a_i);
+    let r = hnn_relator(data, i);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks && b_ws.len() == ks);
+    crate::word::lemma_inverse_word_valid(b_i, ng);
+    crate::word::lemma_inverse_word_valid(a_i, ng);
+    let h_prime = concat(inv_bi, h);
+    crate::word::lemma_concat_word_valid(inv_bi, h, ng);
+
+    //  ==== Step 1: Same B-coset → same ψ(p) syls ====
+    //  inv(b_i) ∈ B (as embed_b(Inv(i)))
+    let k_inv: Word = Seq::new(1, |_j: int| Symbol::Inv(i as nat));
+    assert(word_valid(k_inv, ks));
+    crate::benign::lemma_apply_embedding_valid(b_ws, k_inv, ng);
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup_g2(
+        data.base, b_ws, k_inv);
+    //  same_b_rcoset(h_prime, h): concat(h_prime, inv(h)) = concat(inv_bi, h, inv(h)) ≡ inv_bi ∈ B
+    crate::word::lemma_inverse_word_valid(h, ng);
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, inv_bi, h);
+    //  concat(concat(inv_bi, h), inv(h)) ≡ inv_bi
+    crate::word::lemma_concat_word_valid(h_prime, inverse_word(h), ng);
+    lemma_equiv_symmetric(data.base,
+        concat(h_prime, inverse_word(h)), inv_bi);
+    //  inv_bi ≡ concat(h_prime, inv(h))
+    //  apply_embedding(b_ws, k_inv) =~= inv_bi:
+    assert(apply_embedding(b_ws, k_inv) =~= inv_bi) by {
+        reveal_with_fuel(apply_embedding, 2);
+    }
+    crate::normal_form_afp_textbook::lemma_in_subgroup_equiv(
+        data.base, b_ws,
+        apply_embedding(b_ws, k_inv),
+        concat(h_prime, inverse_word(h)));
+    //  same_b_rcoset(h_prime, h) ✓
+
+    //  Same rep
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_invariant(afp, h_prime, h);
+    //  b_rcoset_rep(h_prime) =~= b_rcoset_rep(h) → same ψ(p) branch → same syls
+
+    //  ==== Step 2: Conjugation on h ====
+    //  B-decompositions of h and h_prime
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h_prime);
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    crate::word::lemma_inverse_word_valid(rep, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep), ng);
+    crate::word::lemma_concat_word_valid(h_prime, inverse_word(rep), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h, inverse_word(rep)));
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h_prime, inverse_word(
+            crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_prime))));
+    let hw1: Word = choose|hw: Word| word_valid(hw, ks)
+        && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h, inverse_word(rep)));
+    let hw2: Word = choose|hw: Word| word_valid(hw, ks)
+        && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h_prime, inverse_word(
+                crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_prime))));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw1);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h_prime, hw2);
+    let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    let h_id2 = crate::normal_form_afp_textbook::b_rcoset_h(afp, h_prime);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id2, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id2, ng);
+    //  embed_b(h_id) · rep ≡ h, embed_b(h_id2) · rep ≡ h_prime
+
+    //  embed_b(h_id2) ≡ concat(inv_bi, embed_b(h_id)):
+    //  Both embed_b(h_id2)·rep and concat(inv_bi, embed_b(h_id))·rep ≡ h_prime.
+    //  Use group right cancellation.
+    crate::word::lemma_concat_word_valid(apply_embedding(b_ws, h_id), rep, ng);
+    crate::word::lemma_concat_word_valid(inv_bi, apply_embedding(b_ws, h_id), ng);
+    crate::word::lemma_concat_word_valid(apply_embedding(b_ws, h_id2), rep, ng);
+    //  concat(inv_bi, embed_b(h_id))·rep ≡ concat(inv_bi, h) = h_prime:
+    lemma_equiv_concat_right(data.base, inv_bi,
+        concat(apply_embedding(b_ws, h_id), rep), h);
+    //  embed_b(h_id2)·rep ≡ h_prime ≡ concat(inv_bi, embed_b(h_id))·rep
+    crate::word::lemma_concat_word_valid(
+        concat(inv_bi, apply_embedding(b_ws, h_id)), rep, ng);
+    //  Need: equiv(h_prime, concat(concat(inv_bi, embed_b(h_id)), rep))
+    //  From concat_right: equiv(concat(inv_bi, concat(embed_b(h_id), rep)), h_prime)
+    //  Bridge assoc: concat(inv_bi, concat(X, rep)) =~= concat(concat(inv_bi, X), rep)
+    lemma_concat_assoc(inv_bi, apply_embedding(b_ws, h_id), rep);
+    lemma_equiv_symmetric(data.base,
+        concat(inv_bi, concat(apply_embedding(b_ws, h_id), rep)), h_prime);
+    //  equiv(h_prime, concat(inv_bi, concat(embed_b(h_id), rep)))
+    //  =~= equiv(h_prime, concat(concat(inv_bi, embed_b(h_id)), rep))
+    lemma_equiv_transitive(data.base,
+        concat(apply_embedding(b_ws, h_id2), rep), h_prime,
+        concat(concat(inv_bi, apply_embedding(b_ws, h_id)), rep));
+    //  Group right-cancel rep:
+    lemma_group_cancel_right(data.base,
+        apply_embedding(b_ws, h_id2),
+        concat(inv_bi, apply_embedding(b_ws, h_id)), rep);
+    //  embed_b(h_id2) ≡ concat(inv_bi, embed_b(h_id)) ✓
+
+    //  Iso transfer: embed_b(h_id2) ≡ embed_b(concat(k_inv, h_id))
+    //  since concat(inv_bi, embed_b(h_id)) = concat(embed_b(k_inv), embed_b(h_id))
+    //                                      = embed_b(concat(k_inv, h_id))
+    crate::benign::lemma_apply_embedding_concat(b_ws, k_inv, h_id);
+    crate::word::lemma_concat_word_valid(k_inv, h_id, ks);
+    lemma_iso_transfer_b_to_a(data, h_id2, concat(k_inv, h_id));
+    //  embed_a(h_id2) ≡ embed_a(concat(k_inv, h_id))
+    //                  = concat(embed_a(k_inv), embed_a(h_id))
+    //                  = concat(inv_ai, embed_a(h_id))
+    crate::benign::lemma_apply_embedding_concat(a_ws, k_inv, h_id);
+
+    //  ==== Step 3: Cancellation ====
+    //  concat(a_i, embed_a(h_id2)) ≡ concat(a_i, concat(inv_ai, embed_a(h_id))) ≡ embed_a(h_id)
+    //  By: a_i · inv(a_i) ≡ ε → concat(a_i, inv_ai, x) ≡ x
+    crate::word::lemma_concat_word_valid(a_i, apply_embedding(a_ws, h_id2), ng);
+    crate::word::lemma_concat_word_valid(inv_ai, apply_embedding(a_ws, h_id), ng);
+    crate::word::lemma_concat_word_valid(a_i, concat(inv_ai, apply_embedding(a_ws, h_id)), ng);
+    //  Bridge: embed_a(concat(k_inv, h_id)) =~= concat(inv_ai, embed_a(h_id))
+    assert(apply_embedding(a_ws, k_inv) =~= inv_ai) by {
+        reveal_with_fuel(apply_embedding, 2);
+    }
+    //  equiv(embed_a(h_id2), concat(inv_ai, embed_a(h_id))) from iso transfer
+    //  concat(a_i, embed_a(h_id2)) ≡ concat(a_i, concat(inv_ai, embed_a(h_id)))
+    lemma_equiv_concat_right(data.base, a_i,
+        apply_embedding(a_ws, h_id2),
+        concat(inv_ai, apply_embedding(a_ws, h_id)));
+    //  concat(a_i, embed_a(h_id2)) ≡ concat(a_i, concat(inv_ai, embed_a(h_id)))
+    lemma_word_inverse_right(data.base, a_i);
+    lemma_equiv_concat_left(data.base,
+        concat(a_i, inv_ai), empty_word(), apply_embedding(a_ws, h_id));
+    lemma_concat_identity_left(data.base, apply_embedding(a_ws, h_id));
+    //  concat(concat(a_i, inv_ai), embed_a(h_id)) ≡ embed_a(h_id)
+    //  Chain: concat(a_i, embed_a(h_id2)) ≡ concat(a_i, inv_ai, embed_a(h_id)) ≡ embed_a(h_id)
+    //  (Z3 needs help with associativity: concat(a_i, concat(inv_ai, x)) vs concat(concat(a_i, inv_ai), x))
+    lemma_concat_assoc(a_i, inv_ai, apply_embedding(a_ws, h_id));
+    //  concat(a_i, concat(inv_ai, embed_a(h_id))) =~= concat(concat(a_i, inv_ai), embed_a(h_id))
+
+    //  ==== Step 4: Assembly via Lemma 0b + Tier 1b ====
+    //  ψ(p)(h_prime).1 == ψ(p)(h).1 (from Step 1: same rep → same syls)
+    //  concat(a_i, ψ(p)(h_prime).0) ≡ ψ(p)(h).0 (from Steps 2-3: conjugation + cancel)
+    //  → By Lemma 0b: ψ(p⁻¹)(concat(a_i, h1), syls1) == ψ(p⁻¹)(ψ(p)(h).0, ψ(p)(h).1)
+    //  → By Tier 1b: restores syls, h ≡ h
+    //
+    //  Need: word_valid(concat(a_i, h1)) for Lemma 0b.
+    //  The act(relator) decomposition via act_concat connects to ψ(p⁻¹)(concat(a_i, h1), syls1).
+    //
+    //  For the ensures, we need Z3 to see that textbook_act_hnn(r, h, syls) decomposes
+    //  into the composition above. The act_concat lemmas establish this.
+
+    //  Decompose relator processing via act_concat
+    let t_word: Word = Seq::new(1, |_j: int| stable_letter(data));
+    let t_inv_word: Word = Seq::new(1, |_j: int| stable_letter_inv(data));
+    //  Show inv_bi has no stable letters
+    assert forall|k: int| 0 <= k < inv_bi.len()
+        implies !is_stable(data, #[trigger] inv_bi[k])
+    by {
+        assert(word_valid(inv_bi, ng));
+        assert(symbol_valid(inv_bi[k], ng));
+        assert(generator_index(inv_bi[k]) < ng);
+    }
+    assert forall|k: int| 0 <= k < a_i.len()
+        implies !is_stable(data, #[trigger] a_i[k])
+    by {
+        assert(symbol_valid(a_i[k], ng));
+        assert(generator_index(a_i[k]) < ng);
+    }
+    lemma_textbook_base_only(data, inv_bi, h, syls);
+    lemma_textbook_act_concat(data,
+        concat(t_inv_word, concat(a_i, t_word)), inv_bi, h, syls);
+    lemma_textbook_act_concat(data,
+        concat(t_inv_word, a_i), t_word, h_prime, syls);
+    let (h1, syls1) = textbook_psi_p(data, h_prime, syls);
+    lemma_textbook_base_only(data, a_i, h1, syls1);
+    lemma_textbook_act_concat(data, t_inv_word, a_i, h1, syls1);
+    let h2 = concat(a_i, h1);
+    let (h3, syls3) = textbook_psi_p_inv(data, h2, syls1);
+    //  act(r, h, syls) == (h3, syls3)
+
+    //  Apply Lemma 0b: h2 = concat(a_i, h1) ≡ ψ(p)(h).0 (from above chain)
+    //  and syls1 == ψ(p)(h).1 (from same-syls)
+    let (h_orig, syls_orig) = textbook_psi_p(data, h, syls);
+    //  h2 ≡ h_orig, syls1 == syls_orig
+    //  → ψ(p⁻¹)(h2, syls1) has same .1 as ψ(p⁻¹)(h_orig, syls_orig)
+    //  → and .0 base-equiv
+
+    //  word_valid for h2
+    //  h1 comes from psi_p output — need word_valid
+    //  For now, connect via Lemma 0b + Tier 1b
+    //  The chain: h2 ≡ h_orig → by Lemma 0b → ψ(p⁻¹)(h2, syls1) has
+    //  .1 == ψ(p⁻¹)(h_orig, syls_orig).1 and .0 ≡ ψ(p⁻¹)(h_orig, syls_orig).0
+
+    //  By Tier 1b (on original h, syls):
+    //  ψ(p⁻¹)(ψ(p)(h, syls).0, ψ(p)(h, syls).1).1 == syls
+    //  ψ(p⁻¹)(ψ(p)(h, syls).0, ψ(p)(h, syls).1).0 ≡ h
+    //  (under canonicity conditions from Tier 1b)
+
+    //  TODO: establish word_valid(h2, ng) and the equiv chain to invoke 0b + 1b
+    //  This is the final wiring — all mathematical content is above.
+    lemma_equiv_refl(data.base, h);  //  placeholder for final wiring
 }
 
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
