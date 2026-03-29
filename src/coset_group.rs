@@ -94,7 +94,7 @@ pub open spec fn coset_table_faithful(t: CosetTable, p: Presentation) -> bool {
 }
 
 ///  If concat(u, inv(v)) ≡ ε, then u ≡ v.
-proof fn lemma_cancel_inverse_right(p: Presentation, u: Word, v: Word)
+pub proof fn lemma_cancel_inverse_right(p: Presentation, u: Word, v: Word)
     requires
         equiv_in_presentation(p, concat(u, inverse_word(v)), empty_word()),
         word_valid(u, p.num_generators),
