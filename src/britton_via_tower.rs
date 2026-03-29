@@ -7301,18 +7301,57 @@ proof fn lemma_hnn_relator_preserves_inner(
     //                          has .1 == syls, .0 ≡ h [Tier 1b]
 }
 
+//  ---- Tier 3: Assembly — the final Miller argument ----
+
+/// has_stable_letter implies stable_count ≥ 1.
+proof fn lemma_has_stable_implies_count(data: HNNData, w: Word)
+    requires
+        has_stable_letter(data, w),
+    ensures
+        stable_count(data, w) >= 1,
+    decreases w.len(),
+{
+    let witness: int = choose|i: int| 0 <= i < w.len() && is_stable(data, w[i]);
+    if w.len() > 0 {
+        if is_stable(data, w.last()) {
+            //  Last symbol is stable → count ≥ 1
+        } else {
+            //  Last not stable → witness is in drop_last
+            assert(has_stable_letter(data, w.drop_last())) by {
+                assert(0 <= witness < w.drop_last().len());
+                assert(is_stable(data, w.drop_last()[witness]));
+            }
+            lemma_has_stable_implies_count(data, w.drop_last());
+        }
+    }
+}
+
+/// Lemma 3c: No pinch + stable letters → action gives ≥ 1 syllable.
+proof fn lemma_no_pinch_action_nontrivial(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        has_stable_letter(data, w),
+        !has_pinch(data, w),
+    ensures
+        textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1.len() >= 1,
+{
+    //  Chain: !has_pinch → no collapse → syls.len() = stable_count ≥ 1
+    lemma_p_reduced_initial_no_collapse(data, w);
+    lemma_no_collapse_gives_m(data, w, empty_word(), Seq::<Syllable>::empty());
+    lemma_has_stable_implies_count(data, w);
+}
+
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
 ///  If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
-///  Proof outline (textbook permutation representation):
-///  1. net_level(w) = 0 (from w ≡ ε)
-///  2. Find rightmost Gen-Inv pair at max level (suffix strictly below max)
-///  3. Translate to tower, peel to pair_level, get act = (ε, [])
-///  4. Decompose: translate = tw_prefix · tw_g2 · tw_suffix
-///  5. G₁ suffix → right_count = 0
-///  6. G₂ one-shot → right_count = 1 (base ∉ B, top left/empty)
-///  7. Prefix preserves right_count ≥ 1
-///  8. Contradiction: right_count ≥ 1 but (ε, []) has right_count = 0
+///  Proof (Miller's direct permutation representation argument):
+///  1. If w has no pinch: action from (ε, []) gives ≥ 1 syllables (no-collapse)
+///  2. If w ≡ ε: action gives (ε, []) = 0 syllables (well-definedness)
+///  3. Contradiction: 0 ≥ 1
+///
+///  Step 2 requires the derivation induction (Tier 3b), which is the only
+///  remaining piece. For now, we use the direct no-pinch nontriviality.
 pub proof fn britton_lemma_full(
     data: HNNData, w: Word,
 )
@@ -7326,19 +7365,16 @@ pub proof fn britton_lemma_full(
         has_pinch(data, w),
 {
     if !has_pinch(data, w) {
-        lemma_equiv_net_level_zero(data, w);
+        //  Miller step 1: no pinch + stable → syls ≥ 1
+        lemma_no_pinch_action_nontrivial(data, w);
+        //  textbook_act_hnn(w, ε, []).1.len() >= 1
 
-        let max_lev = max_prefix_level(data, w);
-        lemma_max_prefix_bounds(data, w, 0);
-
-        if max_lev >= 1 {
-            //  Case A: max ≥ 1 → contradiction via lemma_case_a_contradiction
-            assert(false); //  TODO: lemma_case_a_contradiction (task J)
-        } else {
-            //  Case B: max = 0. Use dual (Inv-Gen + left_count) argument.
-            lemma_adjacent_opposite_exists(data, w);
-            assert(false); //  PLACEHOLDER: symmetric argument
-        }
+        //  Miller step 2: w ≡ ε → act(w, ε, []) == (ε, []) → syls == 0
+        //  This requires the derivation induction (lemma_equiv_implies_trivial_action)
+        //  which uses Tier 0 (h-equiv), Tier 1 (round-trip), Tier 2 (HNN relator).
+        //  TODO: implement lemma_equiv_implies_trivial_action
+        //  For now: placeholder
+        assert(false); //  PLACEHOLDER: derivation induction (Tier 3b)
     }
 }
 
