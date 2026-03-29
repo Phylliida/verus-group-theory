@@ -64,31 +64,31 @@ define a textbook-faithful action that always prepends, matching the textbook ex
 Define new spec functions that match the textbook's ψ(p) and ψ(p⁻¹) exactly:
 
 ```rust
-/// Textbook's ψ(p): always PREPEND when rep ≠ ε, ABSORB when rep = ε.
-/// Never merges. Matches Miller p.49 Cases 1+2 (prepend) and Case 3 (collapse).
+///  Textbook's ψ(p): always PREPEND when rep ≠ ε, ABSORB when rep = ε.
+///  Never merges. Matches Miller p.49 Cases 1+2 (prepend) and Case 3 (collapse).
 pub open spec fn textbook_g2_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = b_rcoset_rep(data, g);
     let h_new = b_rcoset_h(data, g);
     if rep =~= empty_word() {
-        (h_new, syls)  // ABSORB (textbook Case 3)
+        (h_new, syls)  //  ABSORB (textbook Case 3)
     } else {
-        // PREPEND (textbook Cases 1+2) — always, regardless of top type
+        //  PREPEND (textbook Cases 1+2) — always, regardless of top type
         (h_new, Seq::new(1, |_| Syllable { is_left: false, rep: rep }) + syls)
     }
 }
 
-/// Textbook's ψ(p⁻¹): symmetric for G₁/A-coset.
+///  Textbook's ψ(p⁻¹): symmetric for G₁/A-coset.
 pub open spec fn textbook_g1_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = a_rcoset_rep(data, g);
     let h_new = a_rcoset_h(data, g);
     if rep =~= empty_word() {
-        (h_new, syls)  // ABSORB
+        (h_new, syls)  //  ABSORB
     } else {
-        // PREPEND — always
+        //  PREPEND — always
         (h_new, Seq::new(1, |_| Syllable { is_left: true, rep: rep }) + syls)
     }
 }
@@ -101,7 +101,7 @@ Maps to: Miller p.49, ψ(p) and ψ(p⁻¹) exactly.
 Trivial with prepend-only:
 
 ```rust
-/// rep ≠ ε → length increases by 1. rep = ε → length unchanged.
+///  rep ≠ ε → length increases by 1. rep = ε → length unchanged.
 proof fn lemma_textbook_g2_length(data, g, syls)
     ensures
         if !(b_rcoset_rep(data, g) =~= empty_word()) {
@@ -110,7 +110,7 @@ proof fn lemma_textbook_g2_length(data, g, syls)
             textbook_g2_action(data, g, syls).1.len() == syls.len()
         }
 
-/// Symmetric for G₁.
+///  Symmetric for G₁.
 proof fn lemma_textbook_g1_length(data, g, syls)
 ```
 
@@ -122,12 +122,12 @@ Show the textbook action agrees with our existing one-shots when the top has
 opposite type (or is empty). This lets us reuse `lemma_act_word_deriv` (well-definedness).
 
 ```rust
-/// When top is left/empty: textbook_g2 = g2_one_shot (both prepend).
+///  When top is left/empty: textbook_g2 = g2_one_shot (both prepend).
 proof fn lemma_textbook_g2_agrees_prepend(data, g, syls)
     requires syls.len() == 0 || syls.first().is_left
     ensures textbook_g2_action(data, g, syls) == g2_one_shot_action(data, g, syls)
 
-/// When top is right/empty: textbook_g1 = g1_one_shot (both prepend).
+///  When top is right/empty: textbook_g1 = g1_one_shot (both prepend).
 proof fn lemma_textbook_g1_agrees_prepend(data, g, syls)
     requires syls.len() == 0 || !syls.first().is_left
     ensures textbook_g1_action(data, g, syls) == g1_one_shot_action(data, g, syls)
@@ -141,13 +141,13 @@ Process a full base segment (a Word of base symbols) through the textbook action
 analogous to `lemma_act_word_eq_g2_one_shot`.
 
 ```rust
-/// Processing a full G₂ segment via textbook action = textbook_g2_action on the product.
+///  Processing a full G₂ segment via textbook action = textbook_g2_action on the product.
 proof fn lemma_textbook_g2_segment(data, base_word, h, syls)
     ensures
-        // act_word using textbook semantics on shift(base_word)
-        // = textbook_g2_action(concat(base_word, embed_b(h)), syls)
+        //  act_word using textbook semantics on shift(base_word)
+        //  = textbook_g2_action(concat(base_word, embed_b(h)), syls)
 
-/// Symmetric for G₁.
+///  Symmetric for G₁.
 proof fn lemma_textbook_g1_segment(data, base_word, h, syls)
 ```
 
@@ -158,13 +158,13 @@ Maps to: The textbook's processing of one gᵢ element.
 The textbook's g₀·s₁·g₁·...·sₘ·gₘ structure, formalized:
 
 ```rust
-/// Number of stable letters in w.
+///  Number of stable letters in w.
 pub open spec fn stable_count(data, w) -> nat
 
-/// The k-th base segment (0 ≤ k ≤ stable_count).
+///  The k-th base segment (0 ≤ k ≤ stable_count).
 pub open spec fn kth_segment(data, w, k) -> Word
 
-/// Level of the k-th segment.
+///  Level of the k-th segment.
 pub open spec fn kth_segment_level(data, w, bl, k) -> int
 ```
 
@@ -173,13 +173,13 @@ Maps to: The textbook's p-expression structure.
 ### F. Segment Properties (~30 lines)
 
 ```rust
-/// Each segment is a base word.
+///  Each segment is a base word.
 proof fn lemma_segment_is_base(data, w, k)
 
-/// Segments + stable letters partition w.
+///  Segments + stable letters partition w.
 proof fn lemma_segments_partition(data, w)
 
-/// translate(w, bl) = concat of shift(segₖ, levelₖ * ng)
+///  translate(w, bl) = concat of shift(segₖ, levelₖ * ng)
 proof fn lemma_translate_segments(data, w, bl)
 ```
 
@@ -188,12 +188,12 @@ Maps to: The textbook's implicit use of p-expression structure.
 ### G. p-Reduced → Non-Trivial Coset Reps (~25 lines)
 
 ```rust
-/// For segment at max level (between Gen-Inv): ∉ B.
+///  For segment at max level (between Gen-Inv): ∉ B.
 proof fn lemma_segment_not_in_B(data, w, k)
     requires !has_pinch(w), segment is at max level
     ensures !in_right_subgroup(afp, kth_segment(data, w, k))
 
-/// For inter-visit segment (between Inv-Gen): ∉ A.
+///  For inter-visit segment (between Inv-Gen): ∉ A.
 proof fn lemma_segment_not_in_A(data, w, k)
     requires !has_pinch(w), segment is inter-visit
     ensures !in_left_subgroup(afp, kth_segment(data, w, k))
@@ -209,16 +209,16 @@ The textbook proof, directly:
 proof fn lemma_textbook_nontrivial(data, w, bl, pl, h, syls)
     requires !has_pinch(w), stable_count(w) >= 1
     ensures
-        // Using textbook actions: syls.len() increases by stable_count
+        //  Using textbook actions: syls.len() increases by stable_count
         result_syls.len() >= syls.len() + stable_count(w)
     decreases stable_count(w)
 {
-    // Decompose w = prefix · last_stable · last_segment
-    // Process last_segment via textbook action (D):
-    //   rep ≠ ε (from G, p-reduced) → PREPEND → length + 1
-    // Process prefix by IH (stable_count - 1):
-    //   length + (stable_count - 1)
-    // Total: syls.len() + stable_count ✓
+    //  Decompose w = prefix · last_stable · last_segment
+    //  Process last_segment via textbook action (D):
+    //    rep ≠ ε (from G, p-reduced) → PREPEND → length + 1
+    //  Process prefix by IH (stable_count - 1):
+    //    length + (stable_count - 1)
+    //  Total: syls.len() + stable_count ✓
 }
 ```
 
@@ -261,9 +261,9 @@ Maps to: Connecting the textbook's θ⋆ψ to our verified act_word.
 ### J. Final Assembly (~30 lines)
 
 ```rust
-proof fn lemma_case_a_contradiction(data, w)  // max_prefix_level ≥ 1
-proof fn lemma_case_b_contradiction(data, w)  // max_prefix_level = 0 (symmetric)
-pub proof fn britton_lemma_full(data, w)       // case split
+proof fn lemma_case_a_contradiction(data, w)  //  max_prefix_level ≥ 1
+proof fn lemma_case_b_contradiction(data, w)  //  max_prefix_level = 0 (symmetric)
+pub proof fn britton_lemma_full(data, w)       //  case split
 ```
 
 ## Implementation Order

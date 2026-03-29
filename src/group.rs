@@ -10,8 +10,8 @@ use crate::schreier::*;
 
 verus! {
 
-/// A group specified by carrier size, multiplication, inverse, and identity.
-/// Elements are natural numbers in {0..carrier_size-1}.
+///  A group specified by carrier size, multiplication, inverse, and identity.
+///  Elements are natural numbers in {0..carrier_size-1}.
 pub struct GroupSpec {
     pub carrier_size: nat,
     pub mul: spec_fn(nat, nat) -> nat,
@@ -19,33 +19,33 @@ pub struct GroupSpec {
     pub id: nat,
 }
 
-/// A GroupSpec satisfies the group axioms on {0..carrier_size-1}.
+///  A GroupSpec satisfies the group axioms on {0..carrier_size-1}.
 pub open spec fn group_axioms_valid(g: GroupSpec) -> bool {
     let n = g.carrier_size;
-    // Identity is in carrier
+    //  Identity is in carrier
     &&& g.id < n
-    // Closure under multiplication
+    //  Closure under multiplication
     &&& (forall|a: nat, b: nat| #![trigger (g.mul)(a, b)]
         a < n && b < n ==> (g.mul)(a, b) < n)
-    // Closure under inverse
+    //  Closure under inverse
     &&& (forall|a: nat| a < n ==> #[trigger] (g.inv)(a) < n)
-    // Associativity
+    //  Associativity
     &&& (forall|a: nat, b: nat, c: nat| #![trigger (g.mul)((g.mul)(a, b), c)]
         a < n && b < n && c < n ==>
         (g.mul)((g.mul)(a, b), c) == (g.mul)(a, (g.mul)(b, c)))
-    // Left identity
+    //  Left identity
     &&& (forall|a: nat| a < n ==> #[trigger] (g.mul)(g.id, a) == a)
-    // Right identity
+    //  Right identity
     &&& (forall|a: nat| a < n ==> #[trigger] (g.mul)(a, g.id) == a)
-    // Left inverse
+    //  Left inverse
     &&& (forall|a: nat| a < n ==> (g.mul)(#[trigger] (g.inv)(a), a) == g.id)
-    // Right inverse
+    //  Right inverse
     &&& (forall|a: nat| #![trigger (g.inv)(a)]
         a < n ==> (g.mul)(a, (g.inv)(a)) == g.id)
 }
 
-/// Build a GroupSpec from a coset table.
-/// Elements are coset indices, identity is coset 0.
+///  Build a GroupSpec from a coset table.
+///  Elements are coset indices, identity is coset 0.
 pub open spec fn coset_group_spec(t: CosetTable, p: Presentation) -> GroupSpec {
     GroupSpec {
         carrier_size: t.num_cosets,
@@ -55,9 +55,9 @@ pub open spec fn coset_group_spec(t: CosetTable, p: Presentation) -> GroupSpec {
     }
 }
 
-// ─── Helper lemmas ───────────────────────────────────────────────────────────
+//  ─── Helper lemmas ───────────────────────────────────────────────────────────
 
-/// coset_mul result is in bounds.
+///  coset_mul result is in bounds.
 proof fn lemma_coset_mul_in_bounds(t: CosetTable, a: nat, b: nat)
     requires
         coset_table_wf(t),
@@ -68,11 +68,11 @@ proof fn lemma_coset_mul_in_bounds(t: CosetTable, a: nat, b: nat)
         coset_mul(t, a, b) < t.num_cosets,
 {
     let w_b = coset_rep(t, b);
-    // coset_reachable → coset_rep has valid columns
+    //  coset_reachable → coset_rep has valid columns
     lemma_trace_complete(t, a, w_b);
 }
 
-/// coset_inv result is in bounds.
+///  coset_inv result is in bounds.
 proof fn lemma_coset_inv_in_bounds(t: CosetTable, a: nat)
     requires
         coset_table_wf(t),
@@ -89,9 +89,9 @@ proof fn lemma_coset_inv_in_bounds(t: CosetTable, a: nat)
     lemma_trace_complete(t, 0, inverse_word(w_a));
 }
 
-// ─── Main theorem ────────────────────────────────────────────────────────────
+//  ─── Main theorem ────────────────────────────────────────────────────────────
 
-/// The coset group satisfies all group axioms.
+///  The coset group satisfies all group axioms.
 pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
     requires
         coset_table_wf(t),
@@ -109,11 +109,11 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
     let g = coset_group_spec(t, p);
     let n = t.num_cosets;
 
-    // Identity in carrier
+    //  Identity in carrier
     assert(g.id == 0nat);
     assert(g.id < n);
 
-    // Closure under multiplication
+    //  Closure under multiplication
     assert forall|a: nat, b: nat| #![trigger (g.mul)(a, b)]
         a < n && b < n
         implies (g.mul)(a, b) < n
@@ -121,14 +121,14 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
         lemma_coset_mul_in_bounds(t, a, b);
     }
 
-    // Closure under inverse
+    //  Closure under inverse
     assert forall|a: nat| a < n
         implies #[trigger] (g.inv)(a) < n
     by {
         lemma_coset_inv_in_bounds(t, a);
     }
 
-    // Associativity
+    //  Associativity
     assert forall|a: nat, b: nat, c: nat| #![trigger (g.mul)((g.mul)(a, b), c)]
         a < n && b < n && c < n
         implies (g.mul)((g.mul)(a, b), c) == (g.mul)(a, (g.mul)(b, c))
@@ -140,14 +140,14 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
         lemma_coset_mul_assoc(t, p, a, b, c);
     }
 
-    // Left identity
+    //  Left identity
     assert forall|a: nat| a < n
         implies #[trigger] (g.mul)(g.id, a) == a
     by {
         lemma_coset_mul_identity_left(t, p, a);
     }
 
-    // Right identity
+    //  Right identity
     lemma_coset_0_reachable(t);
     assert forall|a: nat| a < n
         implies #[trigger] (g.mul)(a, g.id) == a
@@ -156,7 +156,7 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
         lemma_coset_mul_identity_right(t, p, a);
     }
 
-    // Left inverse
+    //  Left inverse
     assert forall|a: nat| a < n
         implies (g.mul)(#[trigger] (g.inv)(a), a) == g.id
     by {
@@ -167,7 +167,7 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
         lemma_coset_inv_left(t, p, a);
     }
 
-    // Right inverse
+    //  Right inverse
     assert forall|a: nat| #![trigger (g.inv)(a)]
         a < n
         implies (g.mul)(a, (g.inv)(a)) == g.id
@@ -180,4 +180,4 @@ pub proof fn lemma_coset_group_satisfies_axioms(t: CosetTable, p: Presentation)
     }
 }
 
-} // verus!
+} //  verus!

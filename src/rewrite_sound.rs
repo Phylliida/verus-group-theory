@@ -9,11 +9,11 @@ use crate::reduction::*;
 
 verus! {
 
-// ============================================================
-// Soundness: rewrite systems and group presentations
-// ============================================================
+//  ============================================================
+//  Soundness: rewrite systems and group presentations
+//  ============================================================
 
-/// A rewrite system is sound for a presentation: every rule lhs ≡ rhs in the presented group.
+///  A rewrite system is sound for a presentation: every rule lhs ≡ rhs in the presented group.
 pub open spec fn system_sound(sys: RewriteSystem, p: Presentation) -> bool {
     forall|i: int| 0 <= i < sys.rules.len() ==> (#[trigger] sys.rules[i]).lhs.len() > 0 && {
         let rule = sys.rules[i];
@@ -23,8 +23,8 @@ pub open spec fn system_sound(sys: RewriteSystem, p: Presentation) -> bool {
     }
 }
 
-/// A single rule application at position `pos` preserves equivalence in the presentation.
-/// w = prefix · lhs · suffix ≡ prefix · rhs · suffix = apply_rule_at(w, rule, pos)
+///  A single rule application at position `pos` preserves equivalence in the presentation.
+///  w = prefix · lhs · suffix ≡ prefix · rhs · suffix = apply_rule_at(w, rule, pos)
 pub proof fn lemma_rule_preserves_equiv(
     p: Presentation, w: Word, rule: RewriteRule, pos: int,
 )
@@ -42,7 +42,7 @@ pub proof fn lemma_rule_preserves_equiv(
     let suffix = w.subrange(pos + rule.lhs.len() as int, w.len() as int);
     let result = apply_rule_at(w, rule, pos);
 
-    // w =~= prefix + lhs + suffix
+    //  w =~= prefix + lhs + suffix
     assert(w =~= prefix + rule.lhs + suffix) by {
         assert(w =~= w.subrange(0, pos) + w.subrange(pos, w.len() as int));
         assert(w.subrange(pos, w.len() as int) =~=
@@ -66,16 +66,16 @@ pub proof fn lemma_rule_preserves_equiv(
         }
     }
 
-    // lhs ≡ rhs  →  lhs·suffix ≡ rhs·suffix
+    //  lhs ≡ rhs  →  lhs·suffix ≡ rhs·suffix
     lemma_equiv_concat_left(p, rule.lhs, rule.rhs, suffix);
-    // prefix·(lhs·suffix) ≡ prefix·(rhs·suffix)
+    //  prefix·(lhs·suffix) ≡ prefix·(rhs·suffix)
     lemma_equiv_concat_right(p, prefix, concat(rule.lhs, suffix), concat(rule.rhs, suffix));
 
     assert((prefix + rule.lhs + suffix) =~= (prefix + (rule.lhs + suffix)));
     assert((prefix + rule.rhs + suffix) =~= (prefix + (rule.rhs + suffix)));
 }
 
-/// A one-step rewrite in a sound system preserves group equivalence.
+///  A one-step rewrite in a sound system preserves group equivalence.
 pub proof fn lemma_one_step_preserves_equiv(
     sys: RewriteSystem, p: Presentation, w1: Word, w2: Word,
 )
@@ -95,7 +95,7 @@ pub proof fn lemma_one_step_preserves_equiv(
     lemma_rule_preserves_equiv(p, w1, rule, pos);
 }
 
-/// A one-step rewrite in a sound system preserves word validity.
+///  A one-step rewrite in a sound system preserves word validity.
 pub proof fn lemma_one_step_preserves_word_valid(
     sys: RewriteSystem, p: Presentation, w1: Word, w2: Word,
 )
@@ -141,7 +141,7 @@ pub proof fn lemma_one_step_preserves_word_valid(
     }
 }
 
-/// Multi-step rewriting in a sound system preserves group equivalence.
+///  Multi-step rewriting in a sound system preserves group equivalence.
 pub proof fn lemma_rewrite_preserves_equiv(
     sys: RewriteSystem, p: Presentation, w1: Word, w2: Word, n: nat,
 )
@@ -170,4 +170,4 @@ pub proof fn lemma_rewrite_preserves_equiv(
     }
 }
 
-} // verus!
+} //  verus!

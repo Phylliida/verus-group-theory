@@ -1,12 +1,12 @@
-// Britton's Lemma via Tower Construction
+//  Britton's Lemma via Tower Construction
 //
-// Translates HNN extension derivations to tower derivations.
-// Faithful to Lyndon-Schupp Chapter IV: the tower unfolds the HNN extension
-// by replacing the stable letter with explicit copies of the base group.
+//  Translates HNN extension derivations to tower derivations.
+//  Faithful to Lyndon-Schupp Chapter IV: the tower unfolds the HNN extension
+//  by replacing the stable letter with explicit copies of the base group.
 //
-// Key insight: the HNN relator t⁻¹·a_i·t·inv(b_i) at level k corresponds
-// exactly to the AFP identification relator shift(a_i, (k-1)·ng)·inv(shift(b_i, k·ng))
-// at tower junction (k-1)↔k.
+//  Key insight: the HNN relator t⁻¹·a_i·t·inv(b_i) at level k corresponds
+//  exactly to the AFP identification relator shift(a_i, (k-1)·ng)·inv(shift(b_i, k·ng))
+//  at tower junction (k-1)↔k.
 
 use vstd::prelude::*;
 use crate::symbol::*;
@@ -23,17 +23,17 @@ use crate::normal_form_afp_textbook::Syllable;
 
 verus! {
 
-// ============================================================
-// Part A: Level tracking and word translation
-// ============================================================
+//  ============================================================
+//  Part A: Level tracking and word translation
+//  ============================================================
 
-/// Whether symbol s is the stable letter t or t⁻¹.
+///  Whether symbol s is the stable letter t or t⁻¹.
 pub open spec fn is_stable(data: HNNData, s: Symbol) -> bool {
     let ng = data.base.num_generators;
     s == Symbol::Gen(ng) || s == Symbol::Inv(ng)
 }
 
-/// Net level change of a word: count of t minus count of t⁻¹.
+///  Net level change of a word: count of t minus count of t⁻¹.
 pub open spec fn net_level(data: HNNData, w: Word) -> int
     decreases w.len(),
 {
@@ -53,10 +53,10 @@ pub open spec fn net_level(data: HNNData, w: Word) -> int
     }
 }
 
-/// Translate an HNN word to a tower word, starting at a given base level.
-/// - Stable letters are REMOVED (encode level changes)
-/// - Base symbol at current level k becomes shifted by k·ng
-/// - base_level tracks the accumulated level from earlier context
+///  Translate an HNN word to a tower word, starting at a given base level.
+///  - Stable letters are REMOVED (encode level changes)
+///  - Base symbol at current level k becomes shifted by k·ng
+///  - base_level tracks the accumulated level from earlier context
 pub open spec fn translate_word_at(data: HNNData, w: Word, base_level: int) -> Word
     decreases w.len(),
 {
@@ -67,13 +67,13 @@ pub open spec fn translate_word_at(data: HNNData, w: Word, base_level: int) -> W
         let s = w.first();
         let rest = w.drop_first();
         if s == Symbol::Gen(ng) {
-            // t: level +1, skip symbol
+            //  t: level +1, skip symbol
             translate_word_at(data, rest, base_level + 1)
         } else if s == Symbol::Inv(ng) {
-            // t⁻¹: level -1, skip symbol
+            //  t⁻¹: level -1, skip symbol
             translate_word_at(data, rest, base_level - 1)
         } else {
-            // Base symbol: shift by base_level · ng, include in output
+            //  Base symbol: shift by base_level · ng, include in output
             let shifted_s = match s {
                 Symbol::Gen(i) => Symbol::Gen((i + base_level * ng) as nat),
                 Symbol::Inv(i) => Symbol::Inv((i + base_level * ng) as nat),
@@ -84,16 +84,16 @@ pub open spec fn translate_word_at(data: HNNData, w: Word, base_level: int) -> W
     }
 }
 
-/// Top-level translation: start at level 0.
+///  Top-level translation: start at level 0.
 pub open spec fn translate_word(data: HNNData, w: Word) -> Word {
     translate_word_at(data, w, 0)
 }
 
-// ============================================================
-// Part B: Base word translation = identity
-// ============================================================
+//  ============================================================
+//  Part B: Base word translation = identity
+//  ============================================================
 
-/// A base word has net level 0.
+///  A base word has net level 0.
 proof fn lemma_base_word_net_level_zero(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -115,7 +115,7 @@ proof fn lemma_base_word_net_level_zero(data: HNNData, w: Word)
     }
 }
 
-/// A base word translates to itself at level 0.
+///  A base word translates to itself at level 0.
 pub proof fn lemma_translate_base_word(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -138,17 +138,17 @@ pub proof fn lemma_translate_base_word(data: HNNData, w: Word)
     }
 }
 
-/// The empty word translates to the empty word.
+///  The empty word translates to the empty word.
 pub proof fn lemma_translate_empty(data: HNNData)
     ensures translate_word(data, empty_word()) =~= empty_word(),
 {
 }
 
-// ============================================================
-// Part C: Concat decomposition for translate_word_at
-// ============================================================
+//  ============================================================
+//  Part C: Concat decomposition for translate_word_at
+//  ============================================================
 
-/// translate_word_at distributes over concat (with level offset).
+///  translate_word_at distributes over concat (with level offset).
 pub proof fn lemma_translate_concat(data: HNNData, w1: Word, w2: Word, base_level: int)
     ensures
         translate_word_at(data, concat(w1, w2), base_level)
@@ -177,11 +177,11 @@ pub proof fn lemma_translate_concat(data: HNNData, w1: Word, w2: Word, base_leve
     }
 }
 
-// ============================================================
-// Part D: Derivation lifting — equiv in p1 → equiv in free_product(p1, p2)
-// ============================================================
+//  ============================================================
+//  Part D: Derivation lifting — equiv in p1 → equiv in free_product(p1, p2)
+//  ============================================================
 
-/// A single derivation step valid in p1 is also valid in free_product(p1, p2).
+///  A single derivation step valid in p1 is also valid in free_product(p1, p2).
 proof fn lemma_step_valid_in_fp_left(
     p1: Presentation, p2: Presentation,
     w: Word, step: DerivationStep,
@@ -211,7 +211,7 @@ proof fn lemma_step_valid_in_fp_left(
     }
 }
 
-/// A full derivation valid in p1 is also valid in free_product(p1, p2).
+///  A full derivation valid in p1 is also valid in free_product(p1, p2).
 proof fn lemma_derivation_valid_in_fp_left(
     p1: Presentation, p2: Presentation,
     steps: Seq<DerivationStep>, w1: Word, w2: Word,
@@ -230,7 +230,7 @@ proof fn lemma_derivation_valid_in_fp_left(
     }
 }
 
-/// Equivalence in p1 implies equivalence in free_product(p1, p2).
+///  Equivalence in p1 implies equivalence in free_product(p1, p2).
 pub proof fn lemma_left_embeds_in_fp(
     p1: Presentation, p2: Presentation, w1: Word, w2: Word,
 )
@@ -245,7 +245,7 @@ pub proof fn lemma_left_embeds_in_fp(
     assert(derivation_valid(free_product(p1, p2), d_fp, w1, w2));
 }
 
-/// Equivalence in tower(k) implies equivalence in tower(m) for k ≤ m.
+///  Equivalence in tower(k) implies equivalence in tower(m) for k ≤ m.
 pub proof fn lemma_tower_monotone(
     data: HNNData, k: nat, m: nat, w1: Word, w2: Word,
 )
@@ -268,11 +268,11 @@ pub proof fn lemma_tower_monotone(
     }
 }
 
-// ============================================================
-// Part E: Tower relator correspondence
-// ============================================================
+//  ============================================================
+//  Part E: Tower relator correspondence
+//  ============================================================
 
-/// A base relator at copy k is equiv to ε in tower(m) when k ≤ m.
+///  A base relator at copy k is equiv to ε in tower(m) when k ≤ m.
 pub proof fn lemma_base_relator_in_tower(
     data: HNNData, m: nat, k: nat, r: int,
 )
@@ -301,7 +301,7 @@ pub proof fn lemma_base_relator_in_tower(
                 shift_word(data.base.relators[r], k * ng), empty_word());
         }
     } else {
-        // k == m > 0: relator in the new copy (right factor)
+        //  k == m > 0: relator in the new copy (right factor)
         let prev = (m - 1) as nat;
         let afp_data = tower_afp_data(data, prev);
         let fp = free_product(afp_data.p1, afp_data.p2);
@@ -316,7 +316,7 @@ pub proof fn lemma_base_relator_in_tower(
     }
 }
 
-/// An identification relator at junction k↔k+1 is equiv to ε in tower(m) when k+1 ≤ m.
+///  An identification relator at junction k↔k+1 is equiv to ε in tower(m) when k+1 ≤ m.
 pub proof fn lemma_ident_relator_in_tower(
     data: HNNData, m: nat, k: nat, i: int,
 )
@@ -344,11 +344,11 @@ pub proof fn lemma_ident_relator_in_tower(
     }
 }
 
-// ============================================================
-// Part F: Context insertion — if r ≡ ε, then prefix·suffix ≡ prefix·r·suffix
-// ============================================================
+//  ============================================================
+//  Part F: Context insertion — if r ≡ ε, then prefix·suffix ≡ prefix·r·suffix
+//  ============================================================
 
-/// If r ≡ ε, then prefix·r·suffix ≡ prefix·suffix (deletion direction).
+///  If r ≡ ε, then prefix·r·suffix ≡ prefix·suffix (deletion direction).
 pub proof fn lemma_delete_equiv_empty(
     p: Presentation, prefix: Word, r: Word, suffix: Word,
 )
@@ -358,14 +358,14 @@ pub proof fn lemma_delete_equiv_empty(
         equiv_in_presentation(p, concat(prefix, concat(r, suffix)),
             concat(prefix, suffix)),
 {
-    // r ≡ ε → concat(r, suffix) ≡ concat(ε, suffix) =~= suffix
+    //  r ≡ ε → concat(r, suffix) ≡ concat(ε, suffix) =~= suffix
     lemma_equiv_concat_left(p, r, empty_word(), suffix);
-    // concat(prefix, concat(r, suffix)) ≡ concat(prefix, suffix)
+    //  concat(prefix, concat(r, suffix)) ≡ concat(prefix, suffix)
     lemma_equiv_concat_right(p, prefix, concat(r, suffix), suffix);
 }
 
-/// If r ≡ ε, then prefix·suffix ≡ prefix·r·suffix (insertion direction).
-/// Requires symmetry infrastructure (word_valid + presentation_valid).
+///  If r ≡ ε, then prefix·suffix ≡ prefix·r·suffix (insertion direction).
+///  Requires symmetry infrastructure (word_valid + presentation_valid).
 pub proof fn lemma_insert_equiv_empty(
     p: Presentation, prefix: Word, r: Word, suffix: Word,
 )
@@ -377,19 +377,19 @@ pub proof fn lemma_insert_equiv_empty(
         equiv_in_presentation(p, concat(prefix, suffix),
             concat(prefix, concat(r, suffix))),
 {
-    // ε ≡ r (by symmetry)
+    //  ε ≡ r (by symmetry)
     crate::presentation::lemma_equiv_symmetric(p, r, empty_word());
-    // concat(ε, suffix) ≡ concat(r, suffix) → suffix ≡ concat(r, suffix)
+    //  concat(ε, suffix) ≡ concat(r, suffix) → suffix ≡ concat(r, suffix)
     lemma_equiv_concat_left(p, empty_word(), r, suffix);
-    // concat(prefix, suffix) ≡ concat(prefix, concat(r, suffix))
+    //  concat(prefix, suffix) ≡ concat(prefix, concat(r, suffix))
     lemma_equiv_concat_right(p, prefix, suffix, concat(r, suffix));
 }
 
-// ============================================================
-// Part G: Translation of base words at arbitrary level
-// ============================================================
+//  ============================================================
+//  Part G: Translation of base words at arbitrary level
+//  ============================================================
 
-/// A base word at level L translates to shift_word(w, L * ng).
+///  A base word at level L translates to shift_word(w, L * ng).
 pub proof fn lemma_translate_base_word_at(data: HNNData, w: Word, base_level: nat)
     requires
         hnn_data_valid(data),
@@ -412,7 +412,7 @@ pub proof fn lemma_translate_base_word_at(data: HNNData, w: Word, base_level: na
     }
 }
 
-/// A single stable letter translates to empty at any level.
+///  A single stable letter translates to empty at any level.
 proof fn lemma_translate_stable_empty(data: HNNData, s: Symbol, base_level: int)
     requires is_stable(data, s),
     ensures
@@ -424,7 +424,7 @@ proof fn lemma_translate_stable_empty(data: HNNData, s: Symbol, base_level: int)
     reveal_with_fuel(translate_word_at, 2);
 }
 
-/// Net level of a base word is 0.
+///  Net level of a base word is 0.
 proof fn lemma_net_level_base_word(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -446,7 +446,7 @@ proof fn lemma_net_level_base_word(data: HNNData, w: Word)
     }
 }
 
-/// Net level of a single stable letter.
+///  Net level of a single stable letter.
 proof fn lemma_net_level_stable(data: HNNData, s: Symbol)
     requires is_stable(data, s),
     ensures
@@ -459,7 +459,7 @@ proof fn lemma_net_level_stable(data: HNNData, s: Symbol)
     reveal_with_fuel(net_level, 2);
 }
 
-/// Net level distributes over concat.
+///  Net level distributes over concat.
 pub proof fn lemma_net_level_concat(data: HNNData, w1: Word, w2: Word)
     ensures
         net_level(data, concat(w1, w2)) == net_level(data, w1) + net_level(data, w2),
@@ -474,16 +474,16 @@ pub proof fn lemma_net_level_concat(data: HNNData, w1: Word, w2: Word)
     }
 }
 
-// ============================================================
-// Part H: HNN relator translates to identification relator
-// ============================================================
+//  ============================================================
+//  Part H: HNN relator translates to identification relator
+//  ============================================================
 
-/// The HNN relator t⁻¹·a_i·t·inv(b_i) at level k translates to
-/// the AFP identification relator at junction (k-1)↔k.
+///  The HNN relator t⁻¹·a_i·t·inv(b_i) at level k translates to
+///  the AFP identification relator at junction (k-1)↔k.
 ///
-/// This is the textbook correspondence (Lyndon-Schupp Ch. IV):
-/// each HNN relation at level k becomes an identification relation
-/// between copy k-1 and copy k in the tower.
+///  This is the textbook correspondence (Lyndon-Schupp Ch. IV):
+///  each HNN relation at level k becomes an identification relation
+///  between copy k-1 and copy k in the tower.
 pub proof fn lemma_translate_hnn_relator(
     data: HNNData, i: int, k: int,
 )
@@ -504,65 +504,65 @@ pub proof fn lemma_translate_hnn_relator(
     let t_inv = Seq::new(1, |_j: int| Symbol::Inv(ng));
     let t_gen = Seq::new(1, |_j: int| Symbol::Gen(ng));
 
-    // r = concat(part1, part2) where part1 = concat(t_inv, a_i), part2 = concat(t_gen, inv(b_i))
+    //  r = concat(part1, part2) where part1 = concat(t_inv, a_i), part2 = concat(t_gen, inv(b_i))
     let part1 = concat(t_inv, a_i);
     let part2 = concat(t_gen, inverse_word(b_i));
 
-    // Step 1: decompose r = concat(part1, part2)
+    //  Step 1: decompose r = concat(part1, part2)
     lemma_translate_concat(data, part1, part2, k);
 
-    // Step 2: net_level(part1) = -1 (t⁻¹ contributes -1, a_i contributes 0)
+    //  Step 2: net_level(part1) = -1 (t⁻¹ contributes -1, a_i contributes 0)
     lemma_net_level_concat(data, t_inv, a_i);
     lemma_net_level_stable(data, Symbol::Inv(ng));
     lemma_net_level_base_word(data, a_i);
     assert(net_level(data, part1) == -1);
 
-    // Step 3: translate(part1, k) =~= shift(a_i, (k-1)*ng)
+    //  Step 3: translate(part1, k) =~= shift(a_i, (k-1)*ng)
     lemma_translate_concat(data, t_inv, a_i, k);
     lemma_net_level_stable(data, Symbol::Inv(ng));
     lemma_translate_stable_empty(data, Symbol::Inv(ng), k);
     lemma_translate_base_word_at(data, a_i, (k - 1) as nat);
 
-    // Step 4: translate(part2, k-1) =~= shift(inv(b_i), k*ng)
+    //  Step 4: translate(part2, k-1) =~= shift(inv(b_i), k*ng)
     lemma_translate_concat(data, t_gen, inverse_word(b_i), k - 1);
     lemma_net_level_stable(data, Symbol::Gen(ng));
     lemma_translate_stable_empty(data, Symbol::Gen(ng), k - 1);
     crate::word::lemma_inverse_word_valid(b_i, ng);
     lemma_translate_base_word_at(data, inverse_word(b_i), k as nat);
 
-    // Intermediate assertions to chain the =~= results
+    //  Intermediate assertions to chain the =~= results
     assert(translate_word_at(data, part1, k)
         =~= shift_word(a_i, ((k - 1) as nat) * ng));
     assert(translate_word_at(data, part2, k - 1)
         =~= shift_word(inverse_word(b_i), k as nat * ng));
 
-    // Step 5: shift(inv(b_i), k*ng) =~= inv(shift(b_i, k*ng))
+    //  Step 5: shift(inv(b_i), k*ng) =~= inv(shift(b_i, k*ng))
     crate::free_product::lemma_shift_inverse_word(b_i, k as nat * ng);
 
-    // Step 6: connect to amalgamation_relator
+    //  Step 6: connect to amalgamation_relator
     lemma_tower_num_generators(data, (k - 1) as nat);
     assert(translate_word_at(data, part2, k - 1)
         =~= inverse_word(shift_word(b_i, k as nat * ng)));
 
-    // Connect hnn_relator to concat(part1, part2)
+    //  Connect hnn_relator to concat(part1, part2)
     assert(hnn_relator(data, i) =~= concat(part1, part2));
 
-    // Final chain
+    //  Final chain
     assert(translate_word_at(data, concat(part1, part2), k)
         =~= concat(shift_word(a_i, ((k - 1) as nat) * ng),
                     inverse_word(shift_word(b_i, k as nat * ng))));
 }
 
-// ============================================================
-// Part I: General middle-deletion lemma for translation
-// ============================================================
+//  ============================================================
+//  Part I: General middle-deletion lemma for translation
+//  ============================================================
 
-/// If the translated middle ≡ ε in tower and net_level(middle) == 0,
-/// then translate(prefix · middle · suffix) ≡ translate(prefix · suffix) in tower.
+///  If the translated middle ≡ ε in tower and net_level(middle) == 0,
+///  then translate(prefix · middle · suffix) ≡ translate(prefix · suffix) in tower.
 ///
-/// This handles ALL step types uniformly:
-/// - FreeReduce/Delete: w = prefix · middle · suffix → w' = prefix · suffix
-/// - FreeExpand/Insert: w = prefix · suffix → w' = prefix · middle · suffix (reverse direction)
+///  This handles ALL step types uniformly:
+///  - FreeReduce/Delete: w = prefix · middle · suffix → w' = prefix · suffix
+///  - FreeExpand/Insert: w = prefix · suffix → w' = prefix · middle · suffix (reverse direction)
 pub proof fn lemma_translate_delete_middle(
     data: HNNData, m: nat, base_level: int,
     prefix: Word, middle: Word, suffix: Word,
@@ -584,13 +584,13 @@ pub proof fn lemma_translate_delete_middle(
     let tp = tower_presentation(data, m);
     let lp = base_level + net_level(data, prefix);
 
-    // Decompose translate of w = prefix · middle · suffix
+    //  Decompose translate of w = prefix · middle · suffix
     lemma_translate_concat(data, prefix, concat(middle, suffix), base_level);
     lemma_translate_concat(data, middle, suffix, lp);
     lemma_net_level_concat(data, prefix, concat(middle, suffix));
     lemma_net_level_concat(data, middle, suffix);
 
-    // Decompose translate of w' = prefix · suffix
+    //  Decompose translate of w' = prefix · suffix
     lemma_translate_concat(data, prefix, suffix, base_level);
 
     let tr_prefix = translate_word_at(data, prefix, base_level);
@@ -600,8 +600,8 @@ pub proof fn lemma_translate_delete_middle(
     lemma_delete_equiv_empty(tp, tr_prefix, tr_middle, tr_suffix);
 }
 
-/// Reverse direction: translate(prefix · suffix) ≡ translate(prefix · middle · suffix).
-/// Needs symmetry infrastructure.
+///  Reverse direction: translate(prefix · suffix) ≡ translate(prefix · middle · suffix).
+///  Needs symmetry infrastructure.
 pub proof fn lemma_translate_insert_middle(
     data: HNNData, m: nat, base_level: int,
     prefix: Word, middle: Word, suffix: Word,
@@ -636,11 +636,11 @@ pub proof fn lemma_translate_insert_middle(
     lemma_insert_equiv_empty(tp, tr_prefix, tr_middle, tr_suffix);
 }
 
-// ============================================================
-// Part J: Specific middle ≡ ε results
-// ============================================================
+//  ============================================================
+//  Part J: Specific middle ≡ ε results
+//  ============================================================
 
-/// A stable inverse pair translates to ε (=~=, not just ≡).
+///  A stable inverse pair translates to ε (=~=, not just ≡).
 proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     requires
         is_stable(data, s),
@@ -661,7 +661,7 @@ proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     lemma_net_level_concat(data, s_word, inv_s_word);
     lemma_net_level_stable(data, s);
 
-    // inverse_symbol of stable is also stable
+    //  inverse_symbol of stable is also stable
     let ng = data.base.num_generators;
     assert(is_stable(data, inverse_symbol(s))) by {
         if s == Symbol::Gen(ng) {
@@ -680,11 +680,11 @@ proof fn lemma_translate_stable_pair(data: HNNData, s: Symbol, base_level: int)
     }
 }
 
-// ============================================================
-// Part G2: Base at copy k embeds in tower via shift homomorphism
-// ============================================================
+//  ============================================================
+//  Part G2: Base at copy k embeds in tower via shift homomorphism
+//  ============================================================
 
-/// Shift homomorphism: base → tower(m), mapping Gen(i) → [Gen(i + k*ng)].
+///  Shift homomorphism: base → tower(m), mapping Gen(i) → [Gen(i + k*ng)].
 pub open spec fn shift_hom(data: HNNData, m: nat, k: nat) -> crate::homomorphism::HomomorphismData {
     let ng = data.base.num_generators;
     crate::homomorphism::HomomorphismData {
@@ -694,7 +694,7 @@ pub open spec fn shift_hom(data: HNNData, m: nat, k: nat) -> crate::homomorphism
     }
 }
 
-/// The shift homomorphism maps words to their shifted versions.
+///  The shift homomorphism maps words to their shifted versions.
 #[verifier::rlimit(200)]
 proof fn lemma_shift_hom_applies(data: HNNData, k: nat, m: nat, w: Word)
     requires
@@ -714,28 +714,28 @@ proof fn lemma_shift_hom_applies(data: HNNData, k: nat, m: nat, w: Word)
         assert(shifted.len() == 0);
     } else {
         lemma_shift_hom_applies(data, k, m, w.drop_first());
-        // IH: apply_hom(h, rest) =~= shift_word(rest, k*ng)
-        // result = concat(apply_hom_symbol(h, w.first()), apply_hom(h, rest))
-        // shifted = Seq::new(w.len(), |j| shift_symbol(w[j], k*ng))
-        // Element-wise: result[0] == shifted[0] and result[j] == shifted[j] for j > 0
+        //  IH: apply_hom(h, rest) =~= shift_word(rest, k*ng)
+        //  result = concat(apply_hom_symbol(h, w.first()), apply_hom(h, rest))
+        //  shifted = Seq::new(w.len(), |j| shift_symbol(w[j], k*ng))
+        //  Element-wise: result[0] == shifted[0] and result[j] == shifted[j] for j > 0
 
-        // The result has same length as shifted
+        //  The result has same length as shifted
         let s = w.first();
         assert(symbol_valid(s, ng));
         let sym_img = crate::homomorphism::apply_hom_symbol(h, s);
-        // For both Gen and Inv: sym_img is a 1-element word = [shift_symbol(s, k*ng)]
+        //  For both Gen and Inv: sym_img is a 1-element word = [shift_symbol(s, k*ng)]
         match s {
             Symbol::Gen(i) => {
                 assert(sym_img.len() == 1);
                 assert(sym_img[0] == shift_symbol(s, k * ng));
             }
             Symbol::Inv(i) => {
-                // sym_img = inverse_word([Gen(i+k*ng)]) = [Inv(i+k*ng)]
+                //  sym_img = inverse_word([Gen(i+k*ng)]) = [Inv(i+k*ng)]
                 let gen_img = h.generator_images[i as int];
                 assert(gen_img.len() == 1);
                 assert(gen_img[0] == Symbol::Gen((i + k * ng) as nat));
-                // inverse_word definition: Seq::new(w.len(), |j| inverse_symbol(w[w.len()-1-j]))
-                // For len=1: Seq::new(1, |j| inverse_symbol(gen_img[0])) = [Inv(i+k*ng)]
+                //  inverse_word definition: Seq::new(w.len(), |j| inverse_symbol(w[w.len()-1-j]))
+                //  For len=1: Seq::new(1, |j| inverse_symbol(gen_img[0])) = [Inv(i+k*ng)]
                 crate::word::lemma_inverse_word_len(gen_img);
                 assert(sym_img.len() == 1);
                 assert(sym_img[0] == shift_symbol(s, k * ng));
@@ -744,7 +744,7 @@ proof fn lemma_shift_hom_applies(data: HNNData, k: nat, m: nat, w: Word)
     }
 }
 
-/// The shift homomorphism is valid: relator images ≡ ε in tower(m).
+///  The shift homomorphism is valid: relator images ≡ ε in tower(m).
 proof fn lemma_shift_hom_valid(data: HNNData, m: nat, k: nat)
     requires
         hnn_data_valid(data),
@@ -758,7 +758,7 @@ proof fn lemma_shift_hom_valid(data: HNNData, m: nat, k: nat)
     lemma_tower_valid(data, m);
     lemma_tower_num_generators(data, m);
 
-    // Generator images are word_valid for tower(m)
+    //  Generator images are word_valid for tower(m)
     assert forall|i: int| 0 <= i < h.generator_images.len()
         implies word_valid(h.generator_images[i], h.target.num_generators)
     by {
@@ -767,19 +767,19 @@ proof fn lemma_shift_hom_valid(data: HNNData, m: nat, k: nat)
             requires i < ng as int, k <= m;
     }
 
-    // Relator images ≡ ε: shift(relator, k*ng) ≡ ε in tower(m)
+    //  Relator images ≡ ε: shift(relator, k*ng) ≡ ε in tower(m)
     assert forall|i: int| 0 <= i < h.source.relators.len()
         implies equiv_in_presentation(h.target,
             crate::homomorphism::apply_hom(h, h.source.relators[i]), empty_word())
     by {
         lemma_shift_hom_applies(data, k, m, h.source.relators[i]);
-        // apply_hom(h, relator) =~= shift(relator, k*ng)
+        //  apply_hom(h, relator) =~= shift(relator, k*ng)
         lemma_base_relator_in_tower(data, m, k, i);
-        // shift(relator, k*ng) ≡ ε in tower(m)
+        //  shift(relator, k*ng) ≡ ε in tower(m)
     }
 }
 
-/// Base at copy k embeds in tower(m): equiv(base, w1, w2) → equiv(tower(m), shift(w1, k*ng), shift(w2, k*ng)).
+///  Base at copy k embeds in tower(m): equiv(base, w1, w2) → equiv(tower(m), shift(w1, k*ng), shift(w2, k*ng)).
 pub proof fn lemma_base_at_copy_k_embeds(
     data: HNNData, m: nat, k: nat, w1: Word, w2: Word,
 )
@@ -800,24 +800,24 @@ pub proof fn lemma_base_at_copy_k_embeds(
     lemma_shift_hom_applies(data, k, m, w2);
 }
 
-// Tower identifications_isomorphic from hnn_associations_isomorphic.
+//  Tower identifications_isomorphic from hnn_associations_isomorphic.
 //
-// Infrastructure proven:
-// - Backward: base_at_copy_k_embeds ✓ (shift homomorphism)
-//   equiv(base, v, ε) → equiv(tower(m), shift(v, k*ng), ε)
-// - Forward: lemma_afp_injectivity_right ✓ (G₂ one-shot)
-//   equiv(AFP, shift(w, n1), ε) → equiv(base, w, ε)
+//  Infrastructure proven:
+//  - Backward: base_at_copy_k_embeds ✓ (shift homomorphism)
+//    equiv(base, v, ε) → equiv(tower(m), shift(v, k*ng), ε)
+//  - Forward: lemma_afp_injectivity_right ✓ (G₂ one-shot)
+//    equiv(AFP, shift(w, n1), ε) → equiv(base, w, ε)
 //
-// Remaining connection (~30 lines):
-// - Show embed_a_tower(w) =~= shift(embed_a_hnn(w), k*ng) (shift-embedding distributivity)
-// - Combine with hnn_associations_isomorphic for the biconditional
-// - The Seq::new closure matching for a_words_tower vs shifted a_words_hnn
-//   is the technical blocker (same issue as inverse_word_len was before finding it in word.rs)
+//  Remaining connection (~30 lines):
+//  - Show embed_a_tower(w) =~= shift(embed_a_hnn(w), k*ng) (shift-embedding distributivity)
+//  - Combine with hnn_associations_isomorphic for the biconditional
+//  - The Seq::new closure matching for a_words_tower vs shifted a_words_hnn
+//    is the technical blocker (same issue as inverse_word_len was before finding it in word.rs)
 
-/// Shift-embedding distributivity: embedding with shifted images = shift of embedding.
-/// apply_embedding(shift_each(images, offset), w) =~= shift(apply_embedding(images, w), offset)
-/// Shift-embedding distributivity: embedding with shifted images = shift of embedding.
-/// Takes shifted_images as parameter to avoid Seq::new closure mismatch in ensures.
+///  Shift-embedding distributivity: embedding with shifted images = shift of embedding.
+///  apply_embedding(shift_each(images, offset), w) =~= shift(apply_embedding(images, w), offset)
+///  Shift-embedding distributivity: embedding with shifted images = shift of embedding.
+///  Takes shifted_images as parameter to avoid Seq::new closure mismatch in ensures.
 proof fn lemma_shift_embedding_distributes(
     images: Seq<Word>, shifted_images: Seq<Word>, w: Word, offset: nat,
 )
@@ -838,7 +838,7 @@ proof fn lemma_shift_embedding_distributes(
         crate::free_product::lemma_shift_concat(
             apply_embedding_symbol(images, s),
             apply_embedding(images, w.drop_first()), offset);
-        // Trigger the forall for the specific symbol index and establish symbol-level =~=
+        //  Trigger the forall for the specific symbol index and establish symbol-level =~=
         match s {
             Symbol::Gen(i) => {
                 assert(shifted_images[i as int] =~= shift_word(images[i as int], offset));
@@ -851,10 +851,10 @@ proof fn lemma_shift_embedding_distributes(
     }
 }
 
-/// Tower identifications_isomorphic from hnn_associations_isomorphic.
-/// Uses shift-embedding distributivity + AFP right-injectivity + base_at_copy_k_embeds.
+///  Tower identifications_isomorphic from hnn_associations_isomorphic.
+///  Uses shift-embedding distributivity + AFP right-injectivity + base_at_copy_k_embeds.
 #[verifier::rlimit(300)]
-/// Forward: tower(k) equiv → base equiv for embed_a_hnn.
+///  Forward: tower(k) equiv → base equiv for embed_a_hnn.
 proof fn lemma_tower_iso_forward_mid(
     data: HNNData, k: nat, embed_a_hnn: Word,
 )
@@ -870,7 +870,7 @@ proof fn lemma_tower_iso_forward_mid(
     let ng = data.base.num_generators;
     reveal(presentation_valid);
     if k == 0 {
-        // tower(0) = base, shift by 0 = identity
+        //  tower(0) = base, shift by 0 = identity
         assert(k * ng == 0) by (nonlinear_arith) requires k == 0;
         assert(shift_word(embed_a_hnn, 0nat) =~= embed_a_hnn);
     } else {
@@ -883,7 +883,7 @@ proof fn lemma_tower_iso_forward_mid(
     }
 }
 
-/// Backward: base equiv → tower(k) equiv for embed_a_hnn.
+///  Backward: base equiv → tower(k) equiv for embed_a_hnn.
 proof fn lemma_tower_iso_backward_mid(
     data: HNNData, k: nat, embed_a_hnn: Word,
 )
@@ -895,24 +895,24 @@ proof fn lemma_tower_iso_backward_mid(
         equiv_in_presentation(tower_presentation(data, k),
             shift_word(embed_a_hnn, k * data.base.num_generators), empty_word()),
 {
-    // shift(ε, k*ng) =~= ε
+    //  shift(ε, k*ng) =~= ε
     assert(shift_word(empty_word(), k * data.base.num_generators) =~= empty_word());
     lemma_base_at_copy_k_embeds(data, k, k, embed_a_hnn, empty_word());
 }
 
-// lemma_tower_iso_per_word: per-word biconditional for tower isomorphism.
-// Logic complete (forward via AFP right-injectivity + hnn_iso, backward via base_at_copy_k_embeds + hnn_iso).
-// Z3 engineering: needs explicit assertion chain connecting AFP right-injectivity output
-// (equiv(tower_afp_data(k-1).p2, embed_a_hnn, ε)) to equiv(data.base, embed_a_hnn, ε)
-// and shift(embed_a_hnn, k*ng) to embed_a_tower. ~10 more lines of intermediate assertions.
+//  lemma_tower_iso_per_word: per-word biconditional for tower isomorphism.
+//  Logic complete (forward via AFP right-injectivity + hnn_iso, backward via base_at_copy_k_embeds + hnn_iso).
+//  Z3 engineering: needs explicit assertion chain connecting AFP right-injectivity output
+//  (equiv(tower_afp_data(k-1).p2, embed_a_hnn, ε)) to equiv(data.base, embed_a_hnn, ε)
+//  and shift(embed_a_hnn, k*ng) to embed_a_tower. ~10 more lines of intermediate assertions.
 //
-// All building blocks verified (0 assumes):
-// - lemma_afp_injectivity_right ✓
-// - lemma_base_at_copy_k_embeds ✓ (shift homomorphism)
-// - lemma_shift_embedding_distributes ✓
-// - hnn_associations_isomorphic ✓ (precondition)
+//  All building blocks verified (0 assumes):
+//  - lemma_afp_injectivity_right ✓
+//  - lemma_base_at_copy_k_embeds ✓ (shift homomorphism)
+//  - lemma_shift_embedding_distributes ✓
+//  - hnn_associations_isomorphic ✓ (precondition)
 
-/// Helper: per-word proof of the tower isomorphism biconditional.
+///  Helper: per-word proof of the tower isomorphism biconditional.
 #[verifier::rlimit(1000)]
 proof fn lemma_tower_iso_per_word(
     data: HNNData, k: nat, w: Word,
@@ -939,24 +939,24 @@ proof fn lemma_tower_iso_per_word(
     assert(afp_data.identifications.len() == kk);
     let a_words_hnn = Seq::new(kk, |i: int| data.associations[i].0);
     let b_words_hnn = Seq::new(kk, |i: int| data.associations[i].1);
-    // EXACTLY match ensures clause's Seq::new (same length expression)
+    //  EXACTLY match ensures clause's Seq::new (same length expression)
     let a_words_tower = Seq::new(afp_data.identifications.len(), |i: int| afp_data.identifications[i].0);
     let b_words_tower = Seq::new(afp_data.identifications.len(), |i: int| afp_data.identifications[i].1);
 
-    // Element-wise: a_words_tower[i] = shift(a_words_hnn[i], k*ng) and b_words_tower[i] = b_words_hnn[i]
+    //  Element-wise: a_words_tower[i] = shift(a_words_hnn[i], k*ng) and b_words_tower[i] = b_words_hnn[i]
     assert forall|i: int| 0 <= i < kk implies
         afp_data.identifications[i].1 == data.associations[i].1 by {}
     assert forall|i: int| 0 <= i < kk implies
         #[trigger] b_words_tower[i] =~= b_words_hnn[i] by {}
     assert(b_words_tower =~= b_words_hnn);
 
-    // Shift-embedding distributivity
+    //  Shift-embedding distributivity
     assert forall|i: int| 0 <= i < a_words_hnn.len() implies
         #[trigger] a_words_tower[i] =~= shift_word(a_words_hnn[i], k * ng) by {}
     lemma_shift_embedding_distributes(a_words_hnn, a_words_tower, w, k * ng);
     let embed_a_hnn = apply_embedding(a_words_hnn, w);
 
-    // word_valid for embed_a_hnn
+    //  word_valid for embed_a_hnn
     assert forall|j: int| 0 <= j < a_words_hnn.len()
         implies word_valid(#[trigger] a_words_hnn[j], ng)
     by { assert(word_valid(data.associations[j].0, ng)); }
@@ -965,29 +965,29 @@ proof fn lemma_tower_iso_per_word(
     let embed_a_tower = apply_embedding(a_words_tower, w);
     let embed_b_tower = apply_embedding(b_words_tower, w);
 
-    // Connect embed_b_tower to embed_b_hnn (shift by 0 = identity)
+    //  Connect embed_b_tower to embed_b_hnn (shift by 0 = identity)
     assert forall|i: int| 0 <= i < b_words_hnn.len() implies
         #[trigger] b_words_tower[i] =~= shift_word(b_words_hnn[i], 0nat) by {}
     lemma_shift_embedding_distributes(b_words_hnn, b_words_tower, w, 0nat);
-    // embed_b_tower =~= shift(embed_b_hnn, 0) =~= embed_b_hnn
+    //  embed_b_tower =~= shift(embed_b_hnn, 0) =~= embed_b_hnn
     assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
 
-    // HNN biconditional (should fire from hnn_associations_isomorphic)
+    //  HNN biconditional (should fire from hnn_associations_isomorphic)
     assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word())
         <==> equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
 
-    // Key =~= connections
+    //  Key =~= connections
     assert(b_words_tower =~= b_words_hnn);
     assert(embed_b_tower =~= apply_embedding(b_words_hnn, w));
 
-    // Explicitly trigger hnn_iso biconditional
+    //  Explicitly trigger hnn_iso biconditional
     assert(word_valid(w, kk as nat));
     assert(equiv_in_presentation(data.base, embed_a_hnn, empty_word())
         <==> equiv_in_presentation(data.base, apply_embedding(b_words_hnn, w), empty_word()));
 
-    // Forward: equiv(p1, embed_a_tower, ε) → equiv(base, embed_a_hnn, ε)
-    // Then hnn_iso → equiv(base, embed_b_hnn, ε) =~= equiv(p2, embed_b_tower, ε)
-    // Setup for forward direction (AFP right-injectivity needs these)
+    //  Forward: equiv(p1, embed_a_tower, ε) → equiv(base, embed_a_hnn, ε)
+    //  Then hnn_iso → equiv(base, embed_b_hnn, ε) =~= equiv(p2, embed_b_tower, ε)
+    //  Setup for forward direction (AFP right-injectivity needs these)
     if k > 0 {
         assert(tower_textbook_prereqs_at(data, (k - 1) as nat));
         lemma_tower_afp_data_valid(data, (k - 1) as nat);
@@ -995,22 +995,22 @@ proof fn lemma_tower_iso_per_word(
         lemma_tower_num_generators(data, (k - 1) as nat);
     }
 
-    // Establish the two intermediate biconditionals, then chain
+    //  Establish the two intermediate biconditionals, then chain
     let mid = equiv_in_presentation(data.base, embed_a_hnn, empty_word());
     let lhs = equiv_in_presentation(afp_data.p1, apply_embedding(a_words_tower, w), empty_word());
     let rhs = equiv_in_presentation(afp_data.p2, apply_embedding(b_words_tower, w), empty_word());
 
-    // (1) mid ↔ rhs: from hnn_iso + embed_b connection
-    // Already have: mid ↔ equiv(base, embed_b_hnn, ε) from hnn_iso
-    // And: rhs = equiv(base, embed_b_tower, ε) = equiv(base, embed_b_hnn, ε) (from =~=)
-    // So: mid ↔ rhs
+    //  (1) mid ↔ rhs: from hnn_iso + embed_b connection
+    //  Already have: mid ↔ equiv(base, embed_b_hnn, ε) from hnn_iso
+    //  And: rhs = equiv(base, embed_b_tower, ε) = equiv(base, embed_b_hnn, ε) (from =~=)
+    //  So: mid ↔ rhs
 
-    // (2) lhs → mid: tower equiv → base equiv
+    //  (2) lhs → mid: tower equiv → base equiv
     if lhs {
         lemma_tower_iso_forward_mid(data, k, embed_a_hnn);
     }
 
-    // (3) mid → lhs: base equiv → tower equiv
+    //  (3) mid → lhs: base equiv → tower equiv
     if mid {
         lemma_tower_iso_backward_mid(data, k, embed_a_hnn);
     }
@@ -1045,7 +1045,7 @@ pub proof fn lemma_tower_identifications_isomorphic(
     }
 }
 
-/// A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
+///  A base inverse pair [s, inv(s)] at level k: net_level is 0 and translation ≡ ε in tower.
 proof fn lemma_translate_base_pair_trivial(
     data: HNNData, m: nat, s: Symbol, base_level: nat,
 )
@@ -1066,7 +1066,7 @@ proof fn lemma_translate_base_pair_trivial(
     let inv_s_word = Seq::new(1, |_j: int| inverse_symbol(s));
     let pair = concat(s_word, inv_s_word);
 
-    // net_level(pair) = 0 (neither s nor inv(s) is stable)
+    //  net_level(pair) = 0 (neither s nor inv(s) is stable)
     lemma_net_level_concat(data, s_word, inv_s_word);
     assert(s_word.first() == s);
     assert(s_word.drop_first() =~= Seq::<Symbol>::empty());
@@ -1083,21 +1083,21 @@ proof fn lemma_translate_base_pair_trivial(
         }
     }
 
-    // Fully unfold translate for 2-element pair
+    //  Fully unfold translate for 2-element pair
     reveal_with_fuel(translate_word_at, 3);
-    // translate(pair, bl) = [shift_symbol(s, bl*ng), shift_symbol(inv(s), bl*ng)]
-    // These form a cancelling pair
+    //  translate(pair, bl) = [shift_symbol(s, bl*ng), shift_symbol(inv(s), bl*ng)]
+    //  These form a cancelling pair
     let ss = shift_symbol(s, base_level * ng);
     let iss = shift_symbol(inverse_symbol(s), base_level * ng);
-    // ss and iss are inverses: Gen(j+k) and Inv(j+k)
+    //  ss and iss are inverses: Gen(j+k) and Inv(j+k)
     assert(is_inverse_pair(ss, iss)) by {
         match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
     }
-    // The translated pair has a cancellation at position 0
+    //  The translated pair has a cancellation at position 0
     let translated = translate_word_at(data, pair, base_level as int);
     assert(has_cancellation_at(translated, 0));
     assert(reduce_at(translated, 0) =~= empty_word());
-    // Free reduction gives a 1-step derivation proving ≡ ε
+    //  Free reduction gives a 1-step derivation proving ≡ ε
     let step = DerivationStep::FreeReduce { position: 0 };
     assert(apply_step(tower_presentation(data, m), translated, step)
         == Some(empty_word()));
@@ -1109,19 +1109,19 @@ proof fn lemma_translate_base_pair_trivial(
     assert(derivation_valid(tower_presentation(data, m), d, translated, empty_word()));
 }
 
-// ============================================================
-// Part K: Level bounds and prefix_levels_bounded
-// ============================================================
+//  ============================================================
+//  Part K: Level bounds and prefix_levels_bounded
+//  ============================================================
 
-/// All prefix net_levels of w are in [0, m].
-/// This means: for every j in [0, w.len()], net_level(w[0..j]) is in [0, m].
+///  All prefix net_levels of w are in [0, m].
+///  This means: for every j in [0, w.len()], net_level(w[0..j]) is in [0, m].
 pub open spec fn prefix_levels_bounded(data: HNNData, w: Word, m: nat) -> bool {
     forall|j: int| #![trigger w.subrange(0, j)]
         0 <= j <= w.len() ==>
             0 <= net_level(data, w.subrange(0, j)) <= m as int
 }
 
-/// Net level of a subrange [0, j] decomposes via concat.
+///  Net level of a subrange [0, j] decomposes via concat.
 proof fn lemma_net_level_subrange_prefix(data: HNNData, w: Word, pos: int)
     requires 0 <= pos <= w.len(),
     ensures
@@ -1133,11 +1133,11 @@ proof fn lemma_net_level_subrange_prefix(data: HNNData, w: Word, pos: int)
     lemma_net_level_concat(data, w.subrange(0, pos), w.subrange(pos, w.len() as int));
 }
 
-// ============================================================
-// Part L: word_valid for shift_word at arbitrary offset
-// ============================================================
+//  ============================================================
+//  Part L: word_valid for shift_word at arbitrary offset
+//  ============================================================
 
-/// shift_word(w, k * ng) is word_valid for (m+1)*ng when w is base-valid and k <= m.
+///  shift_word(w, k * ng) is word_valid for (m+1)*ng when w is base-valid and k <= m.
 proof fn lemma_shift_word_valid_for_tower(
     data: HNNData, w: Word, k: nat, m: nat,
 )
@@ -1152,7 +1152,7 @@ proof fn lemma_shift_word_valid_for_tower(
     let ng = data.base.num_generators;
     let sw = shift_word(w, k * ng);
     let n = (m + 1) * ng;
-    // k <= m implies k*ng <= m*ng, so i + k*ng < ng + m*ng = (m+1)*ng = n
+    //  k <= m implies k*ng <= m*ng, so i + k*ng < ng + m*ng = (m+1)*ng = n
     assert(k * ng <= m * ng) by(nonlinear_arith)
         requires k <= m
     {}
@@ -1171,7 +1171,7 @@ proof fn lemma_shift_word_valid_for_tower(
     }
 }
 
-/// inverse_word(shift_word(w, k*ng)) is word_valid for tower(m).
+///  inverse_word(shift_word(w, k*ng)) is word_valid for tower(m).
 proof fn lemma_inv_shift_word_valid_for_tower(
     data: HNNData, w: Word, k: nat, m: nat,
 )
@@ -1189,11 +1189,11 @@ proof fn lemma_inv_shift_word_valid_for_tower(
         shift_word(w, k * ng), (m + 1) * ng);
 }
 
-// ============================================================
-// Part M: Net level helpers for relators
-// ============================================================
+//  ============================================================
+//  Part M: Net level helpers for relators
+//  ============================================================
 
-/// Net level of inverse_word is the negation.
+///  Net level of inverse_word is the negation.
 proof fn lemma_net_level_inverse(data: HNNData, w: Word)
     ensures
         net_level(data, inverse_word(w)) == -net_level(data, w),
@@ -1206,20 +1206,20 @@ proof fn lemma_net_level_inverse(data: HNNData, w: Word)
         let s = w.first();
         let rest = w.drop_first();
 
-        // inverse_word(w) = concat(inverse_word(rest), [inv(s)])
+        //  inverse_word(w) = concat(inverse_word(rest), [inv(s)])
         let inv_s_word = Seq::new(1, |_j: int| inverse_symbol(s));
         assert(inverse_word(w) =~= concat(inverse_word(rest), inv_s_word));
 
-        // net_level decomposes
+        //  net_level decomposes
         lemma_net_level_concat(data, inverse_word(rest), inv_s_word);
         lemma_net_level_inverse(data, rest);
 
-        // net_level of [inv(s)]
+        //  net_level of [inv(s)]
         assert(inv_s_word.first() == inverse_symbol(s));
         assert(inv_s_word.drop_first() =~= Seq::<Symbol>::empty());
         reveal_with_fuel(net_level, 2);
 
-        // Case analysis: net_level([inv(s)]) == -net_level_contribution(s)
+        //  Case analysis: net_level([inv(s)]) == -net_level_contribution(s)
         if s == Symbol::Gen(ng) {
             assert(inverse_symbol(s) == Symbol::Inv(ng));
         } else if s == Symbol::Inv(ng) {
@@ -1243,7 +1243,7 @@ proof fn lemma_net_level_inverse(data: HNNData, w: Word)
     }
 }
 
-/// HNN relator has net_level 0.
+///  HNN relator has net_level 0.
 proof fn lemma_net_level_hnn_relator(data: HNNData, i: int)
     requires
         hnn_data_valid(data),
@@ -1269,7 +1269,7 @@ proof fn lemma_net_level_hnn_relator(data: HNNData, i: int)
     lemma_net_level_base_word(data, inverse_word(b_i));
 }
 
-/// Any relator in hnn_presentation has net_level 0.
+///  Any relator in hnn_presentation has net_level 0.
 proof fn lemma_net_level_hnn_pres_relator(data: HNNData, idx: int)
     requires
         hnn_data_valid(data),
@@ -1290,7 +1290,7 @@ proof fn lemma_net_level_hnn_pres_relator(data: HNNData, idx: int)
     }
 }
 
-/// get_relator has net_level 0 when the underlying relator does.
+///  get_relator has net_level 0 when the underlying relator does.
 proof fn lemma_net_level_get_relator(data: HNNData, idx: nat, inverted: bool)
     requires
         hnn_data_valid(data),
@@ -1305,8 +1305,8 @@ proof fn lemma_net_level_get_relator(data: HNNData, idx: nat, inverted: bool)
     }
 }
 
-/// Decompose inverse_word(hnn_relator):
-/// inv(t⁻¹ · a_i · t · inv(b_i)) = b_i · t⁻¹ · inv(a_i) · t
+///  Decompose inverse_word(hnn_relator):
+///  inv(t⁻¹ · a_i · t · inv(b_i)) = b_i · t⁻¹ · inv(a_i) · t
 proof fn lemma_inverse_hnn_relator_decomp(data: HNNData, i: int)
     requires
         hnn_data_valid(data),
@@ -1326,16 +1326,16 @@ proof fn lemma_inverse_hnn_relator_decomp(data: HNNData, i: int)
     let t_inv_word = Seq::new(1, |_j: int| Symbol::Inv(ng));
     let inv_b_i = inverse_word(b_i);
 
-    // hnn_relator = concat(t_inv_word, concat(a_i, concat(t_word, inv_b_i)))
+    //  hnn_relator = concat(t_inv_word, concat(a_i, concat(t_word, inv_b_i)))
     let r = hnn_relator(data, i);
     assert(r =~= concat(t_inv_word, concat(a_i, concat(t_word, inv_b_i))));
 
-    // Apply inverse_concat repeatedly
+    //  Apply inverse_concat repeatedly
     crate::word::lemma_inverse_concat(t_inv_word, concat(a_i, concat(t_word, inv_b_i)));
     crate::word::lemma_inverse_concat(a_i, concat(t_word, inv_b_i));
     crate::word::lemma_inverse_concat(t_word, inv_b_i);
 
-    // inverse of single-symbol words
+    //  inverse of single-symbol words
     assert(inverse_word(t_inv_word) =~= t_word) by {
         reveal_with_fuel(inverse_word, 2);
     }
@@ -1343,21 +1343,21 @@ proof fn lemma_inverse_hnn_relator_decomp(data: HNNData, i: int)
         reveal_with_fuel(inverse_word, 2);
     }
 
-    // inverse of inverse_word(b_i) = b_i
+    //  inverse of inverse_word(b_i) = b_i
     crate::word::lemma_inverse_involution(b_i);
 
-    // Chain: inv(r) = inv(inv_b_i) ++ inv(t_word) ++ inv(a_i) ++ inv(t_inv_word)
-    //               = b_i ++ t_inv_word ++ inv(a_i) ++ t_word
+    //  Chain: inv(r) = inv(inv_b_i) ++ inv(t_word) ++ inv(a_i) ++ inv(t_inv_word)
+    //                = b_i ++ t_inv_word ++ inv(a_i) ++ t_word
 }
 
-// ============================================================
-// Part N: Per-step translation — the core case analysis
-// ============================================================
+//  ============================================================
+//  Part N: Per-step translation — the core case analysis
+//  ============================================================
 
-/// Helper: A single free-reduce or free-expand step preserves translation equivalence.
-/// The inverse pair [s, inv(s)] either:
-///  - stable pair: translates to ε (=~=)
-///  - base pair: translates to a cancelling pair ≡ ε in tower
+///  Helper: A single free-reduce or free-expand step preserves translation equivalence.
+///  The inverse pair [s, inv(s)] either:
+///   - stable pair: translates to ε (=~=)
+///   - base pair: translates to a cancelling pair ≡ ε in tower
 proof fn lemma_pair_translate_equiv_empty(
     data: HNNData, m: nat, s: Symbol, base_level: int,
 )
@@ -1381,15 +1381,15 @@ proof fn lemma_pair_translate_equiv_empty(
     let tp = tower_presentation(data, m);
 
     if is_stable(data, s) {
-        // Stable pair: translate =~= ε
+        //  Stable pair: translate =~= ε
         lemma_translate_stable_pair(data, s, base_level);
         assert(translate_word_at(data, pair, base_level) =~= empty_word());
-        // empty word ≡ ε trivially
+        //  empty word ≡ ε trivially
         lemma_equiv_refl(tp, empty_word());
-        // word_valid of empty word
+        //  word_valid of empty word
         assert(word_valid(empty_word(), tp.num_generators));
     } else {
-        // Base pair: use existing lemma
+        //  Base pair: use existing lemma
         assert(symbol_valid(s, ng)) by {
             match s {
                 Symbol::Gen(i) => { assert(i < ng + 1); assert(i != ng); assert(i < ng); }
@@ -1398,7 +1398,7 @@ proof fn lemma_pair_translate_equiv_empty(
         }
         lemma_translate_base_pair_trivial(data, m, s, base_level as nat);
 
-        // word_valid: the translated pair is a 2-symbol word with shifted symbols
+        //  word_valid: the translated pair is a 2-symbol word with shifted symbols
         lemma_tower_num_generators(data, m);
         reveal_with_fuel(translate_word_at, 3);
         let translated = translate_word_at(data, pair, base_level);
@@ -1418,7 +1418,7 @@ proof fn lemma_pair_translate_equiv_empty(
     }
 }
 
-/// Helper: word_valid for the translation of a base relator at level k.
+///  Helper: word_valid for the translation of a base relator at level k.
 proof fn lemma_translate_base_relator_valid(
     data: HNNData, m: nat, k: nat, r_idx: int,
 )
@@ -1439,7 +1439,7 @@ proof fn lemma_translate_base_relator_valid(
     lemma_shift_word_valid_for_tower(data, r, k, m);
 }
 
-/// Helper: word_valid for the translation of an HNN relator at level k.
+///  Helper: word_valid for the translation of an HNN relator at level k.
 proof fn lemma_translate_hnn_relator_valid(
     data: HNNData, m: nat, k: nat, i: int,
 )
@@ -1457,13 +1457,13 @@ proof fn lemma_translate_hnn_relator_valid(
     let (a_i, b_i) = (data.associations[i].0, data.associations[i].1);
     lemma_translate_hnn_relator(data, i, k as int);
     lemma_tower_num_generators(data, m);
-    // translate = amalgamation_relator(tower_afp_data(data, (k-1)), i)
-    //           = concat(shift_word(a_i, (k-1)*ng), inverse_word(shift_word(b_i, k*ng)))
+    //  translate = amalgamation_relator(tower_afp_data(data, (k-1)), i)
+    //            = concat(shift_word(a_i, (k-1)*ng), inverse_word(shift_word(b_i, k*ng)))
     let afp_data = tower_afp_data(data, (k - 1) as nat);
     let tr = amalgamation_relator(afp_data, i);
     assert(translate_word_at(data, hnn_relator(data, i), k as int) =~= tr);
 
-    // Need tower_num_generators at k-1 to connect afp_data.p1.num_generators = k*ng
+    //  Need tower_num_generators at k-1 to connect afp_data.p1.num_generators = k*ng
     lemma_tower_num_generators(data, (k - 1) as nat);
 
     let sa = shift_word(a_i, ((k - 1) as nat) * ng);
@@ -1477,11 +1477,11 @@ proof fn lemma_translate_hnn_relator_valid(
     crate::word::lemma_inverse_word_valid(sb, (m + 1) * ng);
     crate::word::lemma_concat_word_valid(sa, inv_sb, (m + 1) * ng);
 
-    // Connect tr to concat(sa, inv_sb) via afp_data decomposition
+    //  Connect tr to concat(sa, inv_sb) via afp_data decomposition
     assert(afp_data.p1.num_generators == k * ng);
     assert(tr =~= concat(sa, inv_sb));
 
-    // Transfer word_valid through =~= to the translate
+    //  Transfer word_valid through =~= to the translate
     let tw = translate_word_at(data, hnn_relator(data, i), k as int);
     assert forall|j: int| 0 <= j < tw.len()
         implies symbol_valid(#[trigger] tw[j], tp.num_generators)
@@ -1490,7 +1490,7 @@ proof fn lemma_translate_hnn_relator_valid(
     }
 }
 
-/// Helper: translated relator (base or HNN, possibly inverted) is word_valid for tower(m).
+///  Helper: translated relator (base or HNN, possibly inverted) is word_valid for tower(m).
 proof fn lemma_translate_relator_valid(
     data: HNNData, m: nat, idx: nat, inverted: bool, level: int,
 )
@@ -1498,7 +1498,7 @@ proof fn lemma_translate_relator_valid(
         hnn_data_valid(data),
         0 <= idx < hnn_presentation(data).relators.len(),
         0 <= level <= m as int,
-        // HNN relators need level >= 1
+        //  HNN relators need level >= 1
         idx >= data.base.relators.len() ==> level >= 1,
     ensures
         word_valid(
@@ -1516,19 +1516,19 @@ proof fn lemma_translate_relator_valid(
 
     if !inverted {
         if idx < nb {
-            // Base relator
+            //  Base relator
             assert(p.relators[idx as int] == data.base.relators[idx as int]);
             lemma_translate_base_relator_valid(data, m, level as nat, idx as int);
         } else {
-            // HNN relator
+            //  HNN relator
             let hi = (idx - nb) as int;
             assert(p.relators[idx as int] == hnn_relator(data, hi));
             lemma_translate_hnn_relator_valid(data, m, level as nat, hi);
         }
     } else {
-        // Inverted relator: get_relator = inverse_word(p.relators[idx])
+        //  Inverted relator: get_relator = inverse_word(p.relators[idx])
         if idx < nb {
-            // Inverted base relator: inverse_word of a base word is still base-valid
+            //  Inverted base relator: inverse_word of a base word is still base-valid
             assert(p.relators[idx as int] == data.base.relators[idx as int]);
             let base_r = data.base.relators[idx as int];
             reveal(presentation_valid);
@@ -1537,7 +1537,7 @@ proof fn lemma_translate_relator_valid(
             lemma_tower_num_generators(data, m);
             lemma_shift_word_valid_for_tower(data, inverse_word(base_r), level as nat, m);
         } else {
-            // Inverted HNN relator: inv(t⁻¹·a_i·t·inv(b_i)) = b_i·t⁻¹·inv(a_i)·t
+            //  Inverted HNN relator: inv(t⁻¹·a_i·t·inv(b_i)) = b_i·t⁻¹·inv(a_i)·t
             let hi = (idx - nb) as int;
             assert(p.relators[idx as int] == hnn_relator(data, hi));
             lemma_inverse_hnn_relator_decomp(data, hi);
@@ -1548,7 +1548,7 @@ proof fn lemma_translate_relator_valid(
             let inv_a_i = inverse_word(a_i);
             let k = level as nat;
 
-            // Decompose and translate each part
+            //  Decompose and translate each part
             let part_a = b_i;
             let part_b = t_inv_word;
             let part_c = inv_a_i;
@@ -1559,7 +1559,7 @@ proof fn lemma_translate_relator_valid(
             assert(inverse_word(hnn_relator(data, hi))
                 =~= concat(part_a, part_bcd));
 
-            // net_level computations
+            //  net_level computations
             lemma_net_level_base_word(data, b_i);
             lemma_net_level_base_word(data, inv_a_i);
             lemma_net_level_stable(data, Symbol::Inv(ng));
@@ -1567,7 +1567,7 @@ proof fn lemma_translate_relator_valid(
             lemma_net_level_concat(data, part_c, part_d);
             lemma_net_level_concat(data, part_b, part_cd);
 
-            // translate_concat decompositions
+            //  translate_concat decompositions
             lemma_translate_concat(data, part_a, part_bcd, k as int);
             lemma_translate_concat(data, part_b, part_cd, k as int);
             lemma_translate_concat(data, part_c, part_d, (k - 1) as int);
@@ -1581,7 +1581,7 @@ proof fn lemma_translate_relator_valid(
                 shift_word(b_i, k * ng),
                 shift_word(inv_a_i, ((k - 1) as nat) * ng)));
 
-            // word_valid of the translated parts
+            //  word_valid of the translated parts
             lemma_shift_word_valid_for_tower(data, b_i, k, m);
             lemma_shift_word_valid_for_tower(data, inv_a_i, (k - 1) as nat, m);
             crate::word::lemma_concat_word_valid(
@@ -1592,7 +1592,7 @@ proof fn lemma_translate_relator_valid(
     }
 }
 
-/// Helper: translated relator (base or HNN, possibly inverted) ≡ ε in tower(m).
+///  Helper: translated relator (base or HNN, possibly inverted) ≡ ε in tower(m).
 proof fn lemma_translate_relator_equiv_empty(
     data: HNNData, m: nat, idx: nat, inverted: bool, level: int,
 )
@@ -1618,37 +1618,37 @@ proof fn lemma_translate_relator_equiv_empty(
 
     if !inverted {
         if idx < nb {
-            // Base relator at level k
+            //  Base relator at level k
             assert(r == data.base.relators[idx as int]);
             reveal(presentation_valid);
             lemma_translate_base_word_at(data, r, level as nat);
             lemma_base_relator_in_tower(data, m, level as nat, idx as int);
         } else {
-            // HNN relator at level k
+            //  HNN relator at level k
             let hi = (idx - nb) as int;
             assert(r == hnn_relator(data, hi));
             lemma_translate_hnn_relator(data, hi, level);
             lemma_ident_relator_in_tower(data, m, (level - 1) as nat, hi);
         }
     } else {
-        // Inverted: get_relator = inverse_word(relator)
+        //  Inverted: get_relator = inverse_word(relator)
         if idx < nb {
             assert(r == inverse_word(data.base.relators[idx as int]));
             let base_r = data.base.relators[idx as int];
             reveal(presentation_valid);
-            // First show non-inverted translate ≡ ε
+            //  First show non-inverted translate ≡ ε
             lemma_translate_base_word_at(data, base_r, level as nat);
             lemma_base_relator_in_tower(data, m, level as nat, idx as int);
 
-            // Now show inverted: inverse_word(base_r) is still base-valid
+            //  Now show inverted: inverse_word(base_r) is still base-valid
             crate::word::lemma_inverse_word_valid(base_r, ng);
             lemma_translate_base_word_at(data, inverse_word(base_r), level as nat);
 
-            // shift(inv(r), k*ng) = inv(shift(r, k*ng))
+            //  shift(inv(r), k*ng) = inv(shift(r, k*ng))
             crate::free_product::lemma_shift_inverse_word(base_r, (level as nat) * ng);
 
-            // translate(inv(r), k) =~= inv(shift(r, k*ng)) and translate(r, k) ≡ ε
-            // so inv(translate(r, k)) ≡ ε
+            //  translate(inv(r), k) =~= inv(shift(r, k*ng)) and translate(r, k) ≡ ε
+            //  so inv(translate(r, k)) ≡ ε
             lemma_tower_valid(data, m);
             lemma_tower_num_generators(data, m);
             lemma_shift_word_valid_for_tower(data, base_r, level as nat, m);
@@ -1658,7 +1658,7 @@ proof fn lemma_translate_relator_equiv_empty(
         } else {
             let hi = (idx - nb) as int;
             assert(r == inverse_word(hnn_relator(data, hi)));
-            // Decompose inv(hnn_relator) = b_i · t⁻¹ · inv(a_i) · t
+            //  Decompose inv(hnn_relator) = b_i · t⁻¹ · inv(a_i) · t
             lemma_inverse_hnn_relator_decomp(data, hi);
             let (a_i, b_i) = (data.associations[hi].0, data.associations[hi].1);
             let t_word = Seq::new(1, |_j: int| Symbol::Gen(ng));
@@ -1676,7 +1676,7 @@ proof fn lemma_translate_relator_equiv_empty(
 
             assert(r =~= concat(part_a, part_bcd));
 
-            // net_level and translate decomposition
+            //  net_level and translate decomposition
             lemma_net_level_base_word(data, b_i);
             lemma_net_level_base_word(data, inv_a_i);
             lemma_net_level_stable(data, Symbol::Inv(ng));
@@ -1691,19 +1691,19 @@ proof fn lemma_translate_relator_equiv_empty(
             lemma_translate_base_word_at(data, inv_a_i, (k - 1) as nat);
             lemma_translate_stable_empty(data, Symbol::Gen(ng), (k - 1) as int);
 
-            // translate(r, k) =~= concat(shift(b_i, k*ng), shift(inv(a_i), (k-1)*ng))
+            //  translate(r, k) =~= concat(shift(b_i, k*ng), shift(inv(a_i), (k-1)*ng))
             let tr_inv = translate_word_at(data, r, k as int);
             assert(tr_inv =~= concat(
                 shift_word(b_i, k * ng),
                 shift_word(inv_a_i, ((k - 1) as nat) * ng)));
 
-            // This equals inverse_word(amalgamation_relator(afp_data, hi))
-            // amal_r = concat(shift(a_i, (k-1)*ng), inv(shift(b_i, k*ng)))
-            // inv(amal_r) = concat(shift(b_i, k*ng), inv(shift(a_i, (k-1)*ng)))
+            //  This equals inverse_word(amalgamation_relator(afp_data, hi))
+            //  amal_r = concat(shift(a_i, (k-1)*ng), inv(shift(b_i, k*ng)))
+            //  inv(amal_r) = concat(shift(b_i, k*ng), inv(shift(a_i, (k-1)*ng)))
             crate::free_product::lemma_shift_inverse_word(a_i, ((k - 1) as nat) * ng);
-            // shift(inv(a_i), (k-1)*ng) =~= inv(shift(a_i, (k-1)*ng))
+            //  shift(inv(a_i), (k-1)*ng) =~= inv(shift(a_i, (k-1)*ng))
 
-            // amal_r ≡ ε, so inv(amal_r) ≡ ε
+            //  amal_r ≡ ε, so inv(amal_r) ≡ ε
             let afp_data = tower_afp_data(data, (level - 1) as nat);
             let amal_r = amalgamation_relator(afp_data, hi);
             lemma_translate_hnn_relator(data, hi, level);
@@ -1712,7 +1712,7 @@ proof fn lemma_translate_relator_equiv_empty(
             lemma_tower_valid(data, m);
             lemma_tower_num_generators(data, m);
 
-            // word_valid of amal_r for lemma_inverse_of_trivial
+            //  word_valid of amal_r for lemma_inverse_of_trivial
             lemma_tower_num_generators(data, (level - 1) as nat);
             let sa = shift_word(a_i, ((k - 1) as nat) * ng);
             let sb = shift_word(b_i, k * ng);
@@ -1720,9 +1720,9 @@ proof fn lemma_translate_relator_equiv_empty(
             lemma_shift_word_valid_for_tower(data, b_i, k, m);
             crate::word::lemma_inverse_word_valid(sb, (m + 1) * ng);
             crate::word::lemma_concat_word_valid(sa, inverse_word(sb), (m + 1) * ng);
-            // amal_r =~= concat(sa, inverse_word(sb))
+            //  amal_r =~= concat(sa, inverse_word(sb))
             assert(amal_r =~= concat(sa, inverse_word(sb)));
-            // Transfer word_valid through =~=
+            //  Transfer word_valid through =~=
             assert forall|j: int| 0 <= j < amal_r.len()
                 implies symbol_valid(#[trigger] amal_r[j], tp.num_generators)
             by {
@@ -1731,10 +1731,10 @@ proof fn lemma_translate_relator_equiv_empty(
             }
 
             crate::normal_form_amalgamated::lemma_inverse_of_trivial(tp, amal_r);
-            // inv(amal_r) = inv(concat(sa, inv(sb))) =~= concat(inv(inv(sb)), inv(sa)) =~= concat(sb, inv(sa))
+            //  inv(amal_r) = inv(concat(sa, inv(sb))) =~= concat(inv(inv(sb)), inv(sa)) =~= concat(sb, inv(sa))
             crate::word::lemma_inverse_concat(sa, inverse_word(sb));
             crate::word::lemma_inverse_involution(sb);
-            // inv(sa) =~= shift(inv(a_i), (k-1)*ng)
+            //  inv(sa) =~= shift(inv(a_i), (k-1)*ng)
             crate::free_product::lemma_shift_inverse_word(a_i, ((k - 1) as nat) * ng);
             assert(inverse_word(amal_r) =~= concat(sb, shift_word(inv_a_i, ((k - 1) as nat) * ng)));
             assert(tr_inv =~= inverse_word(amal_r));
@@ -1742,19 +1742,19 @@ proof fn lemma_translate_relator_equiv_empty(
     }
 }
 
-// ============================================================
-// Part O: The per-step lemma
-// ============================================================
+//  ============================================================
+//  Part O: The per-step lemma
+//  ============================================================
 
-/// For FreeReduce/RelatorDelete at position pos:
-/// the level at pos determines the middle's translation.
-/// Need: 0 <= net_level(prefix) <= m, and for HNN relators, >= 1.
+///  For FreeReduce/RelatorDelete at position pos:
+///  the level at pos determines the middle's translation.
+///  Need: 0 <= net_level(prefix) <= m, and for HNN relators, >= 1.
 ///
-/// For FreeExpand/RelatorInsert at position pos:
-/// the level at pos determines the middle's translation.
-/// Same level requirements.
+///  For FreeExpand/RelatorInsert at position pos:
+///  the level at pos determines the middle's translation.
+///  Same level requirements.
 ///
-/// In all cases: translate(w) ≡ translate(w_next) in tower(m).
+///  In all cases: translate(w) ≡ translate(w_next) in tower(m).
 pub proof fn lemma_hnn_step_tower_equiv(
     data: HNNData, m: nat, base_level: int, w: Word, step: DerivationStep,
 )
@@ -1851,11 +1851,11 @@ pub proof fn lemma_hnn_step_tower_equiv(
     }
 }
 
-// ============================================================
-// Part P: Derivation-level induction
-// ============================================================
+//  ============================================================
+//  Part P: Derivation-level induction
+//  ============================================================
 
-/// Get the position of a derivation step.
+///  Get the position of a derivation step.
 pub open spec fn step_position(step: DerivationStep) -> int {
     match step {
         DerivationStep::FreeReduce { position } => position,
@@ -1865,7 +1865,7 @@ pub open spec fn step_position(step: DerivationStep) -> int {
     }
 }
 
-/// Whether a step involves an HNN relator (not a base relator).
+///  Whether a step involves an HNN relator (not a base relator).
 pub open spec fn step_is_hnn_relator(data: HNNData, step: DerivationStep) -> bool {
     match step {
         DerivationStep::RelatorInsert { relator_index, .. } |
@@ -1875,7 +1875,7 @@ pub open spec fn step_is_hnn_relator(data: HNNData, step: DerivationStep) -> boo
     }
 }
 
-/// Level condition for a single step applied to word w.
+///  Level condition for a single step applied to word w.
 pub open spec fn step_level_ok(data: HNNData, m: nat, base_level: int, w: Word, step: DerivationStep) -> bool {
     let pos = step_position(step);
     let level = net_level(data, w.subrange(0, pos)) + base_level;
@@ -1883,8 +1883,8 @@ pub open spec fn step_level_ok(data: HNNData, m: nat, base_level: int, w: Word, 
     &&& (step_is_hnn_relator(data, step) ==> level >= 1)
 }
 
-/// A full derivation from w producing w', where every step has valid levels.
-/// Returns the final word (should equal w') when the derivation is valid.
+///  A full derivation from w producing w', where every step has valid levels.
+///  Returns the final word (should equal w') when the derivation is valid.
 pub open spec fn derivation_levels_ok(
     data: HNNData, m: nat, base_level: int,
     steps: Seq<DerivationStep>, start: Word,
@@ -1905,8 +1905,8 @@ pub open spec fn derivation_levels_ok(
     }
 }
 
-/// Main induction: if all steps in a derivation have valid (shifted) levels,
-/// then translate_at(start, base_level) ≡ translate_at(end, base_level) in tower(m).
+///  Main induction: if all steps in a derivation have valid (shifted) levels,
+///  then translate_at(start, base_level) ≡ translate_at(end, base_level) in tower(m).
 pub proof fn lemma_hnn_derivation_to_tower_equiv(
     data: HNNData, m: nat, base_level: int,
     steps: Seq<DerivationStep>, start: Word, end: Word,
@@ -1932,17 +1932,17 @@ pub proof fn lemma_hnn_derivation_to_tower_equiv(
         let step = steps.first();
         let mid = apply_step(p, start, step).unwrap();
 
-        // Per-step: translate(start) ≡ translate(mid)
+        //  Per-step: translate(start) ≡ translate(mid)
         lemma_hnn_step_tower_equiv(data, m, base_level, start, step);
 
-        // mid is word_valid (step preserves word_valid)
+        //  mid is word_valid (step preserves word_valid)
         crate::britton_proof::lemma_hnn_presentation_valid(data);
         crate::presentation::lemma_step_preserves_word_valid_pres(p, start, step, mid);
 
-        // Inductive: translate(mid) ≡ translate(end)
+        //  Inductive: translate(mid) ≡ translate(end)
         lemma_hnn_derivation_to_tower_equiv(data, m, base_level, steps.drop_first(), mid, end);
 
-        // Chain: translate(start) ≡ translate(end)
+        //  Chain: translate(start) ≡ translate(end)
         lemma_equiv_transitive(tp,
             translate_word_at(data, start, base_level),
             translate_word_at(data, mid, base_level),
@@ -1950,15 +1950,15 @@ pub proof fn lemma_hnn_derivation_to_tower_equiv(
     }
 }
 
-/// **Britton's Lemma (Lyndon-Schupp Ch. IV):**
-/// If w is a base word (no stable letters) and w ≡ ε in the HNN extension G*,
-/// then w ≡ ε in the base group G.
+///  **Britton's Lemma (Lyndon-Schupp Ch. IV):**
+///  If w is a base word (no stable letters) and w ≡ ε in the HNN extension G*,
+///  then w ≡ ε in the base group G.
 ///
-/// Proof:
-/// 1. w ≡ ε in G* → derivation D with levels fitting in tower(m)
-/// 2. lemma_hnn_derivation_to_tower_equiv → translate(w) ≡ translate(ε) in tower(m)
-/// 3. translate(w) = w (base word), translate(ε) = ε
-/// 4. lemma_g0_embeds_in_tower_textbook → w ≡ ε in G
+///  Proof:
+///  1. w ≡ ε in G* → derivation D with levels fitting in tower(m)
+///  2. lemma_hnn_derivation_to_tower_equiv → translate(w) ≡ translate(ε) in tower(m)
+///  3. translate(w) = w (base word), translate(ε) = ε
+///  4. lemma_g0_embeds_in_tower_textbook → w ≡ ε in G
 pub proof fn britton_lemma(
     data: HNNData, m: nat, w: Word,
 )
@@ -1966,13 +1966,13 @@ pub proof fn britton_lemma(
         hnn_data_valid(data),
         word_valid(w, data.base.num_generators),
         equiv_in_presentation(hnn_presentation(data), w, empty_word()),
-        // The derivation fits within tower height m (at base_level 0)
+        //  The derivation fits within tower height m (at base_level 0)
         ({
             let d: Derivation = choose|d: Derivation|
                 derivation_valid(hnn_presentation(data), d, w, empty_word());
             derivation_levels_ok(data, m, 0, d.steps, w)
         }),
-        // Tower textbook prerequisites
+        //  Tower textbook prerequisites
         tower_textbook_chain(data, m),
     ensures
         equiv_in_presentation(data.base, w, empty_word()),
@@ -1995,14 +1995,14 @@ pub proof fn britton_lemma(
     lemma_g0_embeds_in_tower_textbook(data, m, w);
 }
 
-// ============================================================
-// Part S: Derivation level bounds for shifted translation
-// ============================================================
+//  ============================================================
+//  Part S: Derivation level bounds for shifted translation
+//  ============================================================
 
-/// Minimum "adjusted" step level across a derivation.
-/// For HNN relator steps, returns level - 1 (since they need level >= 1).
-/// For other steps, returns level (since they need level >= 0).
-/// Shift >= -derivation_min_adj_level ensures all shifted levels are valid.
+///  Minimum "adjusted" step level across a derivation.
+///  For HNN relator steps, returns level - 1 (since they need level >= 1).
+///  For other steps, returns level (since they need level >= 0).
+///  Shift >= -derivation_min_adj_level ensures all shifted levels are valid.
 pub open spec fn derivation_min_adj_level(
     data: HNNData, steps: Seq<DerivationStep>, start: Word,
 ) -> int
@@ -2024,7 +2024,7 @@ pub open spec fn derivation_min_adj_level(
     }
 }
 
-/// Maximum step level across a derivation.
+///  Maximum step level across a derivation.
 pub open spec fn derivation_max_step_level(
     data: HNNData, steps: Seq<DerivationStep>, start: Word,
 ) -> int
@@ -2045,8 +2045,8 @@ pub open spec fn derivation_max_step_level(
     }
 }
 
-/// If base_level >= -min_adj and m >= max_level + base_level,
-/// then derivation_levels_ok holds.
+///  If base_level >= -min_adj and m >= max_level + base_level,
+///  then derivation_levels_ok holds.
 proof fn lemma_derivation_levels_ok_from_bounds(
     data: HNNData, m: nat, base_level: int,
     steps: Seq<DerivationStep>, start: Word,
@@ -2067,12 +2067,12 @@ proof fn lemma_derivation_levels_ok_from_bounds(
         let level = net_level(data, start.subrange(0, pos));
         let adj = if step_is_hnn_relator(data, step) { level - 1 } else { level };
 
-        // adj >= derivation_min_adj_level, so base_level >= -adj, so level + base_level >= 0 (or >= 1)
+        //  adj >= derivation_min_adj_level, so base_level >= -adj, so level + base_level >= 0 (or >= 1)
         assert(adj >= derivation_min_adj_level(data, steps, start));
-        // level <= derivation_max_step_level, so level + base_level <= m
+        //  level <= derivation_max_step_level, so level + base_level <= m
         assert(level <= derivation_max_step_level(data, steps, start));
 
-        // Recurse: rest_min >= whole_min and rest_max <= whole_max
+        //  Recurse: rest_min >= whole_min and rest_max <= whole_max
         let rest_min = derivation_min_adj_level(data, steps.drop_first(), next);
         let rest_max = derivation_max_step_level(data, steps.drop_first(), next);
         assert(rest_min >= derivation_min_adj_level(data, steps, start)) by {
@@ -2086,11 +2086,11 @@ proof fn lemma_derivation_levels_ok_from_bounds(
     }
 }
 
-// ============================================================
-// Part T: Tower textbook chain from HNN associations
-// ============================================================
+//  ============================================================
+//  Part T: Tower textbook chain from HNN associations
+//  ============================================================
 
-/// Derive tower_textbook_chain from hnn_associations_isomorphic by induction.
+///  Derive tower_textbook_chain from hnn_associations_isomorphic by induction.
 pub proof fn lemma_tower_textbook_chain_from_hnn_iso(data: HNNData, m: nat)
     requires
         hnn_data_valid(data),
@@ -2103,16 +2103,16 @@ pub proof fn lemma_tower_textbook_chain_from_hnn_iso(data: HNNData, m: nat)
         assert forall|k: nat| k < 0nat
             implies #[trigger] tower_textbook_prereqs_at(data, k) by {}
     } else {
-        // IH: tower_textbook_chain(data, m-1)
+        //  IH: tower_textbook_chain(data, m-1)
         lemma_tower_textbook_chain_from_hnn_iso(data, (m - 1) as nat);
 
         let k = (m - 1) as nat;
         let afp_data = tower_afp_data(data, k);
 
-        // Prove identifications_isomorphic at level k
+        //  Prove identifications_isomorphic at level k
         lemma_tower_identifications_isomorphic(data, k);
 
-        // Prove action_preserves_canonical at level k
+        //  Prove action_preserves_canonical at level k
         lemma_tower_afp_data_valid(data, k);
         lemma_tower_valid(data, k);
         reveal(presentation_valid);
@@ -2123,18 +2123,18 @@ pub proof fn lemma_tower_textbook_chain_from_hnn_iso(data: HNNData, m: nat)
         assert forall|j: nat| j < m
             implies #[trigger] tower_textbook_prereqs_at(data, j)
         by {
-            if j < k {} // from IH
+            if j < k {} //  from IH
         }
     }
 }
 
-// ============================================================
-// Part U: Copy-s tower embedding
-// ============================================================
+//  ============================================================
+//  Part U: Copy-s tower embedding
+//  ============================================================
 
-/// Generalized tower embedding: if shift(w, s*ng) ≡ ε in tower(m) where s <= m,
-/// then w ≡ ε in base. Uses AFP left-injectivity to peel from tower(m) down to
-/// tower(s), then AFP right-injectivity at level s-1.
+///  Generalized tower embedding: if shift(w, s*ng) ≡ ε in tower(m) where s <= m,
+///  then w ≡ ε in base. Uses AFP left-injectivity to peel from tower(m) down to
+///  tower(s), then AFP right-injectivity at level s-1.
 pub proof fn lemma_copy_s_embeds(data: HNNData, m: nat, s: nat, w: Word)
     requires
         hnn_data_valid(data),
@@ -2153,7 +2153,7 @@ pub proof fn lemma_copy_s_embeds(data: HNNData, m: nat, s: nat, w: Word)
         assert(s * ng == 0) by (nonlinear_arith) requires s == 0;
         assert(shift_word(w, 0nat) =~= w);
     } else if s == m {
-        // shift(w, m*ng) is in the G₂ part of AFP at level m-1
+        //  shift(w, m*ng) is in the G₂ part of AFP at level m-1
         let prev = (m - 1) as nat;
         assert(tower_textbook_prereqs_at(data, prev));
         lemma_tower_afp_data_valid(data, prev);
@@ -2163,7 +2163,7 @@ pub proof fn lemma_copy_s_embeds(data: HNNData, m: nat, s: nat, w: Word)
         crate::normal_form_afp_textbook::lemma_afp_injectivity_right(
             tower_afp_data(data, prev), w);
     } else {
-        // s < m: shift(w, s*ng) is a tower(m-1) word
+        //  s < m: shift(w, s*ng) is a tower(m-1) word
         let prev = (m - 1) as nat;
         assert(tower_textbook_prereqs_at(data, prev));
         lemma_tower_afp_data_valid(data, prev);
@@ -2184,22 +2184,22 @@ pub proof fn lemma_copy_s_embeds(data: HNNData, m: nat, s: nat, w: Word)
     }
 }
 
-// ============================================================
-// Part V: Translation of base word at shifted level
-// ============================================================
+//  ============================================================
+//  Part V: Translation of base word at shifted level
+//  ============================================================
 
-/// translate_word_at(data, ε, base_level) = ε for any base_level.
+///  translate_word_at(data, ε, base_level) = ε for any base_level.
 proof fn lemma_translate_empty_at(data: HNNData, base_level: int)
     ensures
         translate_word_at(data, empty_word(), base_level) =~= empty_word(),
 {}
 
-/// **Britton's Lemma (Unconditional, Lyndon-Schupp Ch. IV):**
-/// If w is a base word and w ≡ ε in the HNN extension G*, then w ≡ ε in G.
+///  **Britton's Lemma (Unconditional, Lyndon-Schupp Ch. IV):**
+///  If w is a base word and w ≡ ε in the HNN extension G*, then w ≡ ε in G.
 ///
-/// No additional assumptions beyond hnn_data_valid and hnn_associations_isomorphic.
-/// The tower textbook prerequisites are derived from hnn_associations_isomorphic,
-/// and the derivation levels are handled by shifting to a non-negative base level.
+///  No additional assumptions beyond hnn_data_valid and hnn_associations_isomorphic.
+///  The tower textbook prerequisites are derived from hnn_associations_isomorphic,
+///  and the derivation levels are handled by shifting to a non-negative base level.
 pub proof fn britton_lemma_unconditional(
     data: HNNData, w: Word,
 )
@@ -2214,55 +2214,55 @@ pub proof fn britton_lemma_unconditional(
     let hp = hnn_presentation(data);
     let ng = data.base.num_generators;
 
-    // Get the derivation
+    //  Get the derivation
     let d: Derivation = choose|d: Derivation|
         derivation_valid(hp, d, w, empty_word());
 
-    // Compute shift amount from derivation bounds
+    //  Compute shift amount from derivation bounds
     let min_adj = derivation_min_adj_level(data, d.steps, w);
     let max_lev = derivation_max_step_level(data, d.steps, w);
-    // base_level >= -min_adj ensures shifted levels are valid
+    //  base_level >= -min_adj ensures shifted levels are valid
     let base_level: nat = if min_adj >= 0 { 0 } else { (-min_adj) as nat };
-    // m >= max_lev + base_level and m >= base_level (since max_lev >= 0 for base word derivations)
-    // Use base_level + max_lev.abs() + 1 as a safe upper bound
+    //  m >= max_lev + base_level and m >= base_level (since max_lev >= 0 for base word derivations)
+    //  Use base_level + max_lev.abs() + 1 as a safe upper bound
     let max_lev_abs: nat = if max_lev >= 0 { max_lev as nat } else { (-max_lev) as nat };
     let m: nat = (base_level + max_lev_abs + 1) as nat;
 
-    // base_level <= m (since m = base_level + max_lev_abs + 1 > base_level)
+    //  base_level <= m (since m = base_level + max_lev_abs + 1 > base_level)
     assert(base_level <= m);
-    // m >= max_lev + base_level (since m = base_level + |max_lev| + 1 >= base_level + max_lev)
+    //  m >= max_lev + base_level (since m = base_level + |max_lev| + 1 >= base_level + max_lev)
     assert(m as int >= max_lev + base_level as int);
 
-    // word_valid(w, hp.num_generators) — weaken from ng to ng+1
+    //  word_valid(w, hp.num_generators) — weaken from ng to ng+1
     assert(word_valid(w, hp.num_generators)) by {
         assert forall|k: int| 0 <= k < w.len()
             implies symbol_valid(#[trigger] w[k], hp.num_generators)
         by {}
     }
 
-    // Step 1: Levels are OK with the chosen base_level
+    //  Step 1: Levels are OK with the chosen base_level
     lemma_derivation_levels_ok_from_bounds(data, m, base_level as int, d.steps, w);
 
-    // Step 2: Translate derivation to tower equivalence
+    //  Step 2: Translate derivation to tower equivalence
     lemma_hnn_derivation_to_tower_equiv(data, m, base_level as int, d.steps, w, empty_word());
 
-    // Step 3: translate_at(w, base_level) = shift_word(w, base_level * ng)
+    //  Step 3: translate_at(w, base_level) = shift_word(w, base_level * ng)
     lemma_translate_base_word_at(data, w, base_level);
-    // Step 3b: translate_at(ε, base_level) = ε
+    //  Step 3b: translate_at(ε, base_level) = ε
     lemma_translate_empty_at(data, base_level as int);
 
-    // Step 4: Tower textbook chain from hnn_associations_isomorphic
+    //  Step 4: Tower textbook chain from hnn_associations_isomorphic
     lemma_tower_textbook_chain_from_hnn_iso(data, m);
 
-    // Step 5: Copy-s tower embedding → w ≡ ε in base
+    //  Step 5: Copy-s tower embedding → w ≡ ε in base
     lemma_copy_s_embeds(data, m, base_level, w);
 }
 
-// ============================================================
-// Part W: Full Britton's Lemma — right syllable count preservation
-// ============================================================
+//  ============================================================
+//  Part W: Full Britton's Lemma — right syllable count preservation
+//  ============================================================
 
-/// Count right syllables in a syllable sequence.
+///  Count right syllables in a syllable sequence.
 pub open spec fn right_syllable_count(syls: Seq<Syllable>) -> nat
     decreases syls.len(),
 {
@@ -2273,7 +2273,7 @@ pub open spec fn right_syllable_count(syls: Seq<Syllable>) -> nat
     }
 }
 
-/// G₁ single-symbol action never changes the right syllable count.
+///  G₁ single-symbol action never changes the right syllable count.
 proof fn lemma_act_left_sym_preserves_right_count(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
@@ -2288,21 +2288,21 @@ proof fn lemma_act_left_sym_preserves_right_count(
     let new_rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, product);
 
     if new_rep =~= empty_word() {
-        // Absorbed: syllables unchanged
+        //  Absorbed: syllables unchanged
     } else if syls.len() == 0 || !syls.first().is_left {
-        // Prepend LEFT syllable: right count unchanged
+        //  Prepend LEFT syllable: right count unchanged
         let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: new_rep }) + syls;
         assert(new_syls.first().is_left);
         assert(new_syls.drop_first() =~= syls);
     } else {
-        // Merge with existing LEFT syllable
+        //  Merge with existing LEFT syllable
         let full_product = concat(product, syls.first().rep);
         let merged_rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, full_product);
         if merged_rep =~= empty_word() {
-            // Absorbed left syllable
+            //  Absorbed left syllable
             assert(syls.first().is_left);
         } else {
-            // Replace left syllable with new left
+            //  Replace left syllable with new left
             let new_syls = Seq::new(1, |_i: int| Syllable { is_left: true, rep: merged_rep })
                 + syls.drop_first();
             assert(new_syls.first().is_left);
@@ -2311,7 +2311,7 @@ proof fn lemma_act_left_sym_preserves_right_count(
     }
 }
 
-/// G₁ full-word action preserves right syllable count.
+///  G₁ full-word action preserves right syllable count.
 proof fn lemma_act_g1_word_preserves_right_count(
     data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -2340,27 +2340,27 @@ proof fn lemma_act_g1_word_preserves_right_count(
         assert(generator_index(s) < n);
         let (h1, syls1) = act_sym(data, s, h, syls);
 
-        // act_sym for G₁ = act_left_sym
+        //  act_sym for G₁ = act_left_sym
         assert(act_sym(data, s, h, syls) == act_left_sym(data, s, h, syls));
         lemma_act_left_sym_preserves_right_count(data, s, h, syls);
 
-        // Canonical preservation: action_preserves_canonical is about act_word
-        // Use single-symbol word to trigger it
+        //  Canonical preservation: action_preserves_canonical is about act_word
+        //  Use single-symbol word to trigger it
         let s_word: Word = Seq::new(1, |_i: int| s);
         assert(word_valid(s_word, data.p1.num_generators + data.p2.num_generators)) by {
             let n12 = data.p1.num_generators + data.p2.num_generators;
             assert(symbol_valid(s, n));
             match s { Symbol::Gen(i) => {} Symbol::Inv(i) => {} }
         }
-        // act_word([s], h, syls) gives canonical state
+        //  act_word([s], h, syls) gives canonical state
         assert(is_canonical_state(data,
             act_word(data, s_word, h, syls).0,
             act_word(data, s_word, h, syls).1));
-        // act_word([s], ...) == act_sym(s, ...) — connect to h1, syls1
+        //  act_word([s], ...) == act_sym(s, ...) — connect to h1, syls1
         lemma_act_word_single(data, s, h, syls);
         assert(is_canonical_state(data, h1, syls1));
 
-        // IH
+        //  IH
         assert(word_valid(w_prefix, n)) by {
             assert forall|k: int| 0 <= k < w_prefix.len()
                 implies symbol_valid(#[trigger] w_prefix[k], n)
@@ -2370,20 +2370,20 @@ proof fn lemma_act_g1_word_preserves_right_count(
     }
 }
 
-// ============================================================
-// Part X: Full Britton's Lemma (Pinch Theorem)
-// Lyndon-Schupp Ch. IV, Thm 2.1: if w ≡ ε in G* and w has
-// stable letters, then w has a pinch.
-// ============================================================
+//  ============================================================
+//  Part X: Full Britton's Lemma (Pinch Theorem)
+//  Lyndon-Schupp Ch. IV, Thm 2.1: if w ≡ ε in G* and w has
+//  stable letters, then w has a pinch.
+//  ============================================================
 
-// --- X.1: Definitions ---
+//  --- X.1: Definitions ---
 
-/// Whether word w contains at least one stable letter (t or t⁻¹).
+///  Whether word w contains at least one stable letter (t or t⁻¹).
 pub open spec fn has_stable_letter(data: HNNData, w: Word) -> bool {
     exists|i: int| 0 <= i < w.len() && is_stable(data, #[trigger] w[i])
 }
 
-/// Adjacent opposite stable letters with only base symbols between.
+///  Adjacent opposite stable letters with only base symbols between.
 pub open spec fn has_adjacent_opposite_at(data: HNNData, w: Word, i: int, j: int) -> bool {
     let ng = data.base.num_generators;
     &&& 0 <= i < j < w.len()
@@ -2393,10 +2393,10 @@ pub open spec fn has_adjacent_opposite_at(data: HNNData, w: Word, i: int, j: int
     &&& forall|k: int| i < k < j ==> !is_stable(data, #[trigger] w[k])
 }
 
-/// A pinch at (i, j): adjacent opposite stable letters whose intervening
-/// base word lies in the appropriate associated subgroup.
-/// - t·g·t⁻¹ (Gen then Inv at positions i,j): pinch iff g ∈ B
-/// - t⁻¹·g·t (Inv then Gen at positions i,j): pinch iff g ∈ A
+///  A pinch at (i, j): adjacent opposite stable letters whose intervening
+///  base word lies in the appropriate associated subgroup.
+///  - t·g·t⁻¹ (Gen then Inv at positions i,j): pinch iff g ∈ B
+///  - t⁻¹·g·t (Inv then Gen at positions i,j): pinch iff g ∈ A
 pub open spec fn has_pinch_at(data: HNNData, w: Word, i: int, j: int) -> bool {
     let ng = data.base.num_generators;
     let base_word = w.subrange(i + 1, j);
@@ -2405,24 +2405,24 @@ pub open spec fn has_pinch_at(data: HNNData, w: Word, i: int, j: int) -> bool {
     let b_gens = Seq::new(nk, |k: int| data.associations[k].1);
     &&& has_adjacent_opposite_at(data, w, i, j)
     &&& (
-        // t·g·t⁻¹: pinch iff g ∈ B
+        //  t·g·t⁻¹: pinch iff g ∈ B
         (w[i] == Symbol::Gen(ng) && w[j] == Symbol::Inv(ng)
          && in_generated_subgroup(data.base, b_gens, base_word))
         ||
-        // t⁻¹·g·t: pinch iff g ∈ A
+        //  t⁻¹·g·t: pinch iff g ∈ A
         (w[i] == Symbol::Inv(ng) && w[j] == Symbol::Gen(ng)
          && in_generated_subgroup(data.base, a_gens, base_word))
     )
 }
 
-/// Word w has a pinch somewhere.
+///  Word w has a pinch somewhere.
 pub open spec fn has_pinch(data: HNNData, w: Word) -> bool {
     exists|i: int, j: int| has_pinch_at(data, w, i, j)
 }
 
-// --- X.2: Net level preservation ---
+//  --- X.2: Net level preservation ---
 
-/// Net level of a single-symbol word.
+///  Net level of a single-symbol word.
 proof fn lemma_net_level_single(data: HNNData, s: Symbol)
     ensures
         net_level(data, Seq::new(1, |_j: int| s)) == (
@@ -2437,7 +2437,7 @@ proof fn lemma_net_level_single(data: HNNData, s: Symbol)
     reveal_with_fuel(net_level, 2);
 }
 
-/// Net level of an inverse pair [s, inv(s)] is 0.
+///  Net level of an inverse pair [s, inv(s)] is 0.
 proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
     ensures
         net_level(data, Seq::new(1, |_j: int| s)
@@ -2453,9 +2453,9 @@ proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
         Symbol::Gen(i) => {
             assert(inverse_symbol(s) == Symbol::Inv(i));
             if i == ng {
-                // Gen(ng) + Inv(ng): 1 + (-1) = 0
+                //  Gen(ng) + Inv(ng): 1 + (-1) = 0
             } else {
-                // Gen(i) + Inv(i): 0 + 0 = 0
+                //  Gen(i) + Inv(i): 0 + 0 = 0
                 assert(Symbol::Inv(i) != Symbol::Gen(ng));
                 assert(Symbol::Inv(i) != Symbol::Inv(ng));
             }
@@ -2463,7 +2463,7 @@ proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
         Symbol::Inv(i) => {
             assert(inverse_symbol(s) == Symbol::Gen(i));
             if i == ng {
-                // Inv(ng) + Gen(ng): (-1) + 1 = 0
+                //  Inv(ng) + Gen(ng): (-1) + 1 = 0
             } else {
                 assert(Symbol::Gen(i) != Symbol::Gen(ng));
                 assert(Symbol::Gen(i) != Symbol::Inv(ng));
@@ -2472,7 +2472,7 @@ proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
     }
 }
 
-/// Each derivation step preserves net_level.
+///  Each derivation step preserves net_level.
 proof fn lemma_step_preserves_net_level(data: HNNData, w: Word, step: DerivationStep)
     requires
         hnn_data_valid(data),
@@ -2492,7 +2492,7 @@ proof fn lemma_step_preserves_net_level(data: HNNData, w: Word, step: Derivation
             assert(w[p + 1] == inverse_symbol(s));
             let pair: Word = Seq::new(1, |_j: int| s)
                 + Seq::new(1, |_j: int| inverse_symbol(s));
-            // Decompose: w =~= prefix ++ pair ++ suffix, w2 =~= prefix ++ suffix
+            //  Decompose: w =~= prefix ++ pair ++ suffix, w2 =~= prefix ++ suffix
             assert(concat(pair, suffix) =~= w.subrange(p, w.len() as int)) by {
                 assert(pair.len() == 2);
                 assert(pair[0] == w[p]);
@@ -2555,7 +2555,7 @@ proof fn lemma_step_preserves_net_level(data: HNNData, w: Word, step: Derivation
     }
 }
 
-/// A derivation preserves net_level.
+///  A derivation preserves net_level.
 proof fn lemma_derivation_preserves_net_level(
     data: HNNData, steps: Seq<DerivationStep>, w: Word,
 )
@@ -2578,7 +2578,7 @@ proof fn lemma_derivation_preserves_net_level(
     }
 }
 
-/// If w ≡ ε in the HNN extension, then net_level(w) = 0.
+///  If w ≡ ε in the HNN extension, then net_level(w) = 0.
 proof fn lemma_equiv_net_level_zero(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -2591,9 +2591,9 @@ proof fn lemma_equiv_net_level_zero(data: HNNData, w: Word)
     lemma_derivation_preserves_net_level(data, d.steps, w);
 }
 
-// --- X.3: Adjacent opposite pair existence ---
+//  --- X.3: Adjacent opposite pair existence ---
 
-/// Count of stable letters (Gen(ng) or Inv(ng)) in w starting from position `from`.
+///  Count of stable letters (Gen(ng) or Inv(ng)) in w starting from position `from`.
 pub open spec fn stable_count_from(data: HNNData, w: Word, from: int) -> nat
     decreases (w.len() - from),
 {
@@ -2604,7 +2604,7 @@ pub open spec fn stable_count_from(data: HNNData, w: Word, from: int) -> nat
     }
 }
 
-/// Find the next stable letter position at or after `from`.
+///  Find the next stable letter position at or after `from`.
 pub open spec fn next_stable(data: HNNData, w: Word, from: int) -> int
     decreases (w.len() - from),
 {
@@ -2613,7 +2613,7 @@ pub open spec fn next_stable(data: HNNData, w: Word, from: int) -> int
     else { next_stable(data, w, from + 1) }
 }
 
-/// next_stable finds a stable letter if one exists from `from` onward.
+///  next_stable finds a stable letter if one exists from `from` onward.
 proof fn lemma_next_stable_props(data: HNNData, w: Word, from: int)
     requires 0 <= from <= w.len(),
     ensures
@@ -2635,8 +2635,8 @@ proof fn lemma_next_stable_props(data: HNNData, w: Word, from: int)
     }
 }
 
-/// If all stable letters in w have the same sign, net_level has that sign.
-/// Specifically: if every stable letter is Gen(ng), then net_level ≥ 0.
+///  If all stable letters in w have the same sign, net_level has that sign.
+///  Specifically: if every stable letter is Gen(ng), then net_level ≥ 0.
 proof fn lemma_net_level_same_sign_nonneg(data: HNNData, w: Word)
     requires
         forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
@@ -2656,7 +2656,7 @@ proof fn lemma_net_level_same_sign_nonneg(data: HNNData, w: Word)
     }
 }
 
-/// Symmetric: all Inv(ng) → net_level ≤ 0.
+///  Symmetric: all Inv(ng) → net_level ≤ 0.
 proof fn lemma_net_level_same_sign_nonpos(data: HNNData, w: Word)
     requires
         forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
@@ -2676,8 +2676,8 @@ proof fn lemma_net_level_same_sign_nonpos(data: HNNData, w: Word)
     }
 }
 
-/// If net_level = 0 and the word has stable letters, there exist adjacent
-/// opposite stable letters with only base symbols between.
+///  If net_level = 0 and the word has stable letters, there exist adjacent
+///  opposite stable letters with only base symbols between.
 proof fn lemma_adjacent_opposite_exists(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -2690,14 +2690,14 @@ proof fn lemma_adjacent_opposite_exists(data: HNNData, w: Word)
     lemma_next_stable_props(data, w, 0);
     let first_pos = next_stable(data, w, 0);
     assert(first_pos < w.len());
-    // All stable letters before first_pos have same sign (vacuously: there are none).
+    //  All stable letters before first_pos have same sign (vacuously: there are none).
     assert forall|k: int| 0 <= k < first_pos && is_stable(data, #[trigger] w[k])
         implies w[k] == w[first_pos] by {}
     lemma_scan_for_sign_change(data, w, first_pos);
 }
 
-/// Scan from position `pos` for the first adjacent opposite pair.
-/// Invariant: all stable letters in w[0..pos] have the same sign as w[pos].
+///  Scan from position `pos` for the first adjacent opposite pair.
+///  Invariant: all stable letters in w[0..pos] have the same sign as w[pos].
 proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
     requires
         hnn_data_valid(data),
@@ -2715,21 +2715,21 @@ proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
     let next_pos = next_stable(data, w, pos + 1);
 
     if next_pos >= w.len() {
-        // All stable letters have the same sign as w[pos].
-        // If w[pos] = Gen(ng): all stable are Gen → net_level ≥ 0.
-        //   But w[pos] = Gen(ng) contributes +1 so net_level ≥ 1 > 0. Contradiction.
-        // If w[pos] = Inv(ng): all stable are Inv → net_level ≤ 0.
-        //   But w[pos] = Inv(ng) contributes -1 so net_level ≤ -1 < 0. Contradiction.
+        //  All stable letters have the same sign as w[pos].
+        //  If w[pos] = Gen(ng): all stable are Gen → net_level ≥ 0.
+        //    But w[pos] = Gen(ng) contributes +1 so net_level ≥ 1 > 0. Contradiction.
+        //  If w[pos] = Inv(ng): all stable are Inv → net_level ≤ 0.
+        //    But w[pos] = Inv(ng) contributes -1 so net_level ≤ -1 < 0. Contradiction.
         assert forall|k: int| 0 <= k < w.len() && is_stable(data, #[trigger] w[k])
             implies w[k] == w[pos]
         by {}
         if w[pos] == Symbol::Gen(ng) {
             lemma_net_level_same_sign_nonneg(data, w);
-            // net_level ≥ 0 but we need > 0. Since w[pos] = Gen(ng):
-            // Split at pos: net_level = net_level(w[0..pos]) + 1 + net_level(w[pos+1..])
-            // w[0..pos] has all Gen stable → net_level ≥ 0
-            // w[pos+1..] has no stable → net_level = 0
-            // Total ≥ 0 + 1 + 0 = 1 > 0. Contradicts net_level = 0.
+            //  net_level ≥ 0 but we need > 0. Since w[pos] = Gen(ng):
+            //  Split at pos: net_level = net_level(w[0..pos]) + 1 + net_level(w[pos+1..])
+            //  w[0..pos] has all Gen stable → net_level ≥ 0
+            //  w[pos+1..] has no stable → net_level = 0
+            //  Total ≥ 0 + 1 + 0 = 1 > 0. Contradicts net_level = 0.
             lemma_net_level_subrange_prefix(data, w, pos);
             let before = w.subrange(0, pos);
             let tail = w.subrange(pos, w.len() as int);
@@ -2772,7 +2772,7 @@ proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
     } else if w[pos] != w[next_pos] {
         assert(has_adjacent_opposite_at(data, w, pos, next_pos));
     } else {
-        // Same sign — extend the invariant and recurse
+        //  Same sign — extend the invariant and recurse
         assert forall|k: int| 0 <= k < next_pos && is_stable(data, #[trigger] w[k])
             implies w[k] == w[next_pos]
         by {
@@ -2782,7 +2782,7 @@ proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
                 }
                 assert(w[pos] == w[next_pos]);
             } else {
-                // k is between pos+1 and next_pos-1: not stable
+                //  k is between pos+1 and next_pos-1: not stable
                 assert(!is_stable(data, w[k]));
             }
         }
@@ -2790,7 +2790,7 @@ proof fn lemma_scan_for_sign_change(data: HNNData, w: Word, pos: int)
     }
 }
 
-/// A word with no stable letters from position `offset` onward has net_level = 0.
+///  A word with no stable letters from position `offset` onward has net_level = 0.
 proof fn lemma_net_level_no_stable(data: HNNData, w: Word, offset: int)
     requires
         hnn_data_valid(data),
@@ -2814,9 +2814,9 @@ proof fn lemma_net_level_no_stable(data: HNNData, w: Word, offset: int)
     }
 }
 
-// --- X.4: Subgroup helpers ---
+//  --- X.4: Subgroup helpers ---
 
-/// If b_rcoset_rep(g) = ε, then g is in the right subgroup (B).
+///  If b_rcoset_rep(g) = ε, then g is in the right subgroup (B).
 proof fn lemma_b_rcoset_empty_implies_in_right_subgroup(
     data: AmalgamatedData, g: Word,
 )
@@ -2829,15 +2829,15 @@ proof fn lemma_b_rcoset_empty_implies_in_right_subgroup(
 {
     use crate::normal_form_afp_textbook::*;
     lemma_b_rcoset_rep_props(data, g);
-    // same_b_rcoset(data, g, rep) where rep =~= ε
-    // same_b_rcoset(data, g, ε) = in_right_subgroup(data, concat(g, inverse_word(ε)))
+    //  same_b_rcoset(data, g, rep) where rep =~= ε
+    //  same_b_rcoset(data, g, ε) = in_right_subgroup(data, concat(g, inverse_word(ε)))
     let rep = b_rcoset_rep(data, g);
     assert(same_b_rcoset(data, g, rep));
-    // rep =~= ε implies inverse_word(rep) =~= ε
+    //  rep =~= ε implies inverse_word(rep) =~= ε
     assert(inverse_word(empty_word()) =~= empty_word()) by {
         assert(inverse_word(empty_word()).len() == 0);
     }
-    // concat(g, inverse_word(ε)) =~= g
+    //  concat(g, inverse_word(ε)) =~= g
     assert(concat(g, inverse_word(empty_word())) =~= g) by {
         let e = inverse_word(empty_word());
         assert(e.len() == 0);
@@ -2846,7 +2846,7 @@ proof fn lemma_b_rcoset_empty_implies_in_right_subgroup(
     }
 }
 
-/// Contrapositive: if g ∉ B, then b_rcoset_rep(g) ≠ ε.
+///  Contrapositive: if g ∉ B, then b_rcoset_rep(g) ≠ ε.
 proof fn lemma_not_in_right_subgroup_rep_nonempty(
     data: AmalgamatedData, g: Word,
 )
@@ -2863,7 +2863,23 @@ proof fn lemma_not_in_right_subgroup_rep_nonempty(
     }
 }
 
-/// Subgroup right cancellation: if concat(g, b) ∈ S and b ∈ S, then g ∈ S.
+///  Contrapositive: if g ∉ A, then a_rcoset_rep(g) ≠ ε.
+proof fn lemma_not_in_left_subgroup_rep_nonempty(
+    data: AmalgamatedData, g: Word,
+)
+    requires
+        amalgamated_data_valid(data),
+        word_valid(g, data.p1.num_generators),
+        !crate::normal_form_amalgamated::in_left_subgroup(data, g),
+    ensures
+        !(crate::normal_form_afp_textbook::a_rcoset_rep(data, g) =~= empty_word()),
+{
+    if crate::normal_form_afp_textbook::a_rcoset_rep(data, g) =~= empty_word() {
+        lemma_a_rcoset_empty_implies_in_left_subgroup(data, g);
+    }
+}
+
+///  Subgroup right cancellation: if concat(g, b) ∈ S and b ∈ S, then g ∈ S.
 proof fn lemma_subgroup_right_cancel(
     p: Presentation, gens: Seq<Word>, g: Word, b: Word,
 )
@@ -2879,20 +2895,20 @@ proof fn lemma_subgroup_right_cancel(
         in_generated_subgroup(p, gens, g),
 {
     use crate::normal_form_afp_textbook::*;
-    // inv(b) ∈ S
+    //  inv(b) ∈ S
     lemma_subgroup_inverse(p, gens, b);
-    // concat(concat(g, b), inv(b)) ∈ S
+    //  concat(concat(g, b), inv(b)) ∈ S
     lemma_subgroup_concat(p, gens, concat(g, b), inverse_word(b));
-    // concat(concat(g, b), inv(b)) ≡ g
+    //  concat(concat(g, b), inv(b)) ≡ g
     lemma_right_cancel(p, g, b);
-    // g ∈ S (by equiv closure)
+    //  g ∈ S (by equiv closure)
     lemma_in_subgroup_equiv(
         p, gens,
         concat(concat(g, b), inverse_word(b)), g,
     );
 }
 
-/// If g ∉ B and embed_b(h) ∈ B, then concat(g, embed_b(h)) ∉ B.
+///  If g ∉ B and embed_b(h) ∈ B, then concat(g, embed_b(h)) ∉ B.
 proof fn lemma_not_in_subgroup_concat_embed_b(
     data: AmalgamatedData, g: Word, h: Word,
 )
@@ -2914,23 +2930,23 @@ proof fn lemma_not_in_subgroup_concat_embed_b(
     use crate::normal_form_afp_textbook::*;
     use crate::normal_form_amalgamated::in_right_subgroup;
     let embed = apply_embedding(b_words(data), h);
-    // embed is word_valid
+    //  embed is word_valid
     lemma_apply_embedding_valid(b_words(data), h, data.p2.num_generators);
-    // embed_b(h) ∈ B
+    //  embed_b(h) ∈ B
     lemma_apply_embedding_in_subgroup_g2(data.p2, b_words(data), h);
-    // in_right_subgroup(data, w) == in_generated_subgroup(data.p2, b_words(data), w)
+    //  in_right_subgroup(data, w) == in_generated_subgroup(data.p2, b_words(data), w)
     assert(b_words(data) =~= Seq::new(data.identifications.len(), |i: int| data.identifications[i].1));
-    // If concat(g, embed) were in B, then g ∈ B by right cancel. Contradiction.
+    //  If concat(g, embed) were in B, then g ∈ B by right cancel. Contradiction.
     if in_right_subgroup(data, concat(g, embed)) {
         let b_gens = b_words(data);
         lemma_subgroup_right_cancel(data.p2, b_gens, g, embed);
     }
 }
 
-// --- X.5: Tower injectivity (peeling) ---
+//  --- X.5: Tower injectivity (peeling) ---
 
-/// If w is a word in tower(k) and w ≡ ε in tower(m), then w ≡ ε in tower(k).
-/// (Tower embedding is injective.)
+///  If w is a word in tower(k) and w ≡ ε in tower(m), then w ≡ ε in tower(k).
+///  (Tower embedding is injective.)
 pub proof fn lemma_tower_injectivity_peel(
     data: HNNData, k: nat, m: nat, w: Word,
 )
@@ -2954,7 +2970,7 @@ pub proof fn lemma_tower_injectivity_peel(
         lemma_tower_num_generators(data, k);
         reveal(presentation_valid);
 
-        // w is word_valid for tower(k), weaken to tower(prev) since k ≤ prev
+        //  w is word_valid for tower(k), weaken to tower(prev) since k ≤ prev
         assert(word_valid(w, tower_presentation(data, prev).num_generators)) by {
             assert((k + 1) * data.base.num_generators
                 <= (prev + 1) * data.base.num_generators)
@@ -2965,7 +2981,7 @@ pub proof fn lemma_tower_injectivity_peel(
             by {}
         }
 
-        // AFP left-injectivity: w ∈ tower(prev) ≡ G₁, w ≡ ε in AFP → w ≡ ε in tower(prev)
+        //  AFP left-injectivity: w ∈ tower(prev) ≡ G₁, w ≡ ε in AFP → w ≡ ε in tower(prev)
         crate::normal_form_afp_textbook::lemma_afp_injectivity(
             tower_afp_data(data, prev), w);
 
@@ -2978,17 +2994,17 @@ pub proof fn lemma_tower_injectivity_peel(
     }
 }
 
-// --- X.6: Translate word_valid for the word's own levels ---
+//  --- X.6: Translate word_valid for the word's own levels ---
 
-/// translate_word_at produces a valid word for tower(m) when the running
-/// levels stay in [0, m].
+///  translate_word_at produces a valid word for tower(m) when the running
+///  levels stay in [0, m].
 proof fn lemma_translate_word_valid_for_level(
     data: HNNData, w: Word, bl: int, m: nat,
 )
     requires
         hnn_data_valid(data),
         word_valid(w, hnn_presentation(data).num_generators),
-        // All shifted running levels in [0, m]
+        //  All shifted running levels in [0, m]
         forall|k: int| #![trigger w.subrange(0, k)]
             0 <= k <= w.len() ==>
             0 <= bl + net_level(data, w.subrange(0, k)) <= m as int,
@@ -3009,14 +3025,14 @@ proof fn lemma_translate_word_valid_for_level(
         let s = w.first();
         let rest = w.drop_first();
 
-        // rest is word_valid for hp
+        //  rest is word_valid for hp
         assert(word_valid(rest, hp.num_generators)) by {
             assert forall|k: int| 0 <= k < rest.len()
                 implies symbol_valid(#[trigger] rest[k], hp.num_generators)
             by { assert(rest[k] == w[k + 1]); }
         }
 
-        // Transfer the running level bounds to rest
+        //  Transfer the running level bounds to rest
         assert forall|k: int| #![trigger rest.subrange(0, k)]
             0 <= k <= rest.len()
             implies ({
@@ -3034,7 +3050,7 @@ proof fn lemma_translate_word_valid_for_level(
             assert(prefix_w =~= Seq::new(1, |_j: int| s) + prefix_rest);
             lemma_net_level_concat(data, Seq::new(1, |_j: int| s), prefix_rest);
             lemma_net_level_single(data, s);
-            // net_level(w.subrange(0, k+1)) = net_level([s]) + net_level(rest.subrange(0, k))
+            //  net_level(w.subrange(0, k+1)) = net_level([s]) + net_level(rest.subrange(0, k))
             assert(w.subrange(0, k + 1) =~= prefix_w);
         }
 
@@ -3043,25 +3059,25 @@ proof fn lemma_translate_word_valid_for_level(
         } else if s == Symbol::Inv(ng) {
             lemma_translate_word_valid_for_level(data, rest, bl - 1, m);
         } else {
-            // Base symbol: translate = [shifted_s] ++ translate(rest)
+            //  Base symbol: translate = [shifted_s] ++ translate(rest)
             lemma_translate_word_valid_for_level(data, rest, bl, m);
             let shifted_s = match s {
                 Symbol::Gen(i) => Symbol::Gen((i + bl * ng) as nat),
                 Symbol::Inv(i) => Symbol::Inv((i + bl * ng) as nat),
             };
-            // shifted_s is valid for tower(m)
-            // generator index = i + bl*ng where i < ng and 0 <= bl <= m
-            // So index < ng + m*ng = (m+1)*ng = n_tower
+            //  shifted_s is valid for tower(m)
+            //  generator index = i + bl*ng where i < ng and 0 <= bl <= m
+            //  So index < ng + m*ng = (m+1)*ng = n_tower
             assert(bl >= 0) by {
-                // From the level bounds: bl + net_level(w.subrange(0, 0)) >= 0
-                // net_level(w.subrange(0, 0)) = net_level(ε) = 0
+                //  From the level bounds: bl + net_level(w.subrange(0, 0)) >= 0
+                //  net_level(w.subrange(0, 0)) = net_level(ε) = 0
                 assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
             }
             assert(bl <= m as int) by {
                 assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
             }
-            // shifted_s has index i + bl*ng. Need i + bl*ng < (m+1)*ng.
-            // Since i < ng, bl >= 0, bl <= m: i + bl*ng < ng + m*ng = (m+1)*ng. ✓
+            //  shifted_s has index i + bl*ng. Need i + bl*ng < (m+1)*ng.
+            //  Since i < ng, bl >= 0, bl <= m: i + bl*ng < ng + m*ng = (m+1)*ng. ✓
             assert(bl * (ng as int) <= (m as int) * (ng as int))
                 by(nonlinear_arith) requires bl >= 0, bl <= m as int;
             assert(symbol_valid(shifted_s, n_tower)) by {
@@ -3102,10 +3118,10 @@ proof fn lemma_translate_word_valid_for_level(
     }
 }
 
-// --- X.7: Running level bounds ---
+//  --- X.7: Running level bounds ---
 
-/// Each symbol changes the running level by at most 1, so after k symbols
-/// the level is in [-k, k].
+///  Each symbol changes the running level by at most 1, so after k symbols
+///  the level is in [-k, k].
 proof fn lemma_prefix_level_bounded_by_k(data: HNNData, w: Word, k: int)
     requires 0 <= k <= w.len(),
     ensures
@@ -3124,7 +3140,7 @@ proof fn lemma_prefix_level_bounded_by_k(data: HNNData, w: Word, k: int)
     }
 }
 
-/// With base_level = w.len(), all shifted running levels are in [0, 2*w.len()].
+///  With base_level = w.len(), all shifted running levels are in [0, 2*w.len()].
 proof fn lemma_word_level_bounds(data: HNNData, w: Word, k: int)
     requires 0 <= k <= w.len(),
     ensures
@@ -3134,12 +3150,12 @@ proof fn lemma_word_level_bounds(data: HNNData, w: Word, k: int)
 }
 
 
-// --- X.8: Left syllable count + G₂ preservation (dual of Part W) ---
-// Textbook (Miller p.48-49): the permutation representation handles BOTH
-// p and p⁻¹. G₁ processing creates LEFT syllables (A-cosets), G₂ creates
-// RIGHT syllables (B-cosets). Each type preserves the other's count.
+//  --- X.8: Left syllable count + G₂ preservation (dual of Part W) ---
+//  Textbook (Miller p.48-49): the permutation representation handles BOTH
+//  p and p⁻¹. G₁ processing creates LEFT syllables (A-cosets), G₂ creates
+//  RIGHT syllables (B-cosets). Each type preserves the other's count.
 
-/// Count left syllables in a syllable sequence.
+///  Count left syllables in a syllable sequence.
 pub open spec fn left_syllable_count(syls: Seq<Syllable>) -> nat
     decreases syls.len(),
 {
@@ -3150,7 +3166,7 @@ pub open spec fn left_syllable_count(syls: Seq<Syllable>) -> nat
     }
 }
 
-/// G₂ single-symbol action never changes the left syllable count.
+///  G₂ single-symbol action never changes the left syllable count.
 proof fn lemma_act_right_sym_preserves_left_count(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
@@ -3183,7 +3199,7 @@ proof fn lemma_act_right_sym_preserves_left_count(
     }
 }
 
-/// G₂ full-word action preserves left syllable count.
+///  G₂ full-word action preserves left syllable count.
 proof fn lemma_act_g2_word_preserves_left_count(
     data: AmalgamatedData, w: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -3214,7 +3230,7 @@ proof fn lemma_act_g2_word_preserves_left_count(
         assert(symbol_valid(s, data.p2.num_generators));
         assert(generator_index(s) < data.p2.num_generators);
 
-        // Connect shift_word structure
+        //  Connect shift_word structure
         let shifted_s = shift_symbol(s, n1);
         assert(sw.last() == shifted_s);
         let sw_prefix = shift_word(w_prefix, n1);
@@ -3244,16 +3260,16 @@ proof fn lemma_act_g2_word_preserves_left_count(
                 implies symbol_valid(#[trigger] w_prefix[k], data.p2.num_generators)
             by { assert(w_prefix[k] == w[k]); }
         }
-        // IH: act on shifted prefix preserves left_count
+        //  IH: act on shifted prefix preserves left_count
         lemma_act_g2_word_preserves_left_count(data, w_prefix, h1, syls1);
-        // Connect: act(sw, h, syls) = act(sw_prefix, h1, syls1)
-        // since sw = sw_prefix ++ [shifted_s] and act processes right-to-left
+        //  Connect: act(sw, h, syls) = act(sw_prefix, h1, syls1)
+        //  since sw = sw_prefix ++ [shifted_s] and act processes right-to-left
     }
 }
 
-// --- X.9: A-side subgroup helpers (dual of X.4) ---
+//  --- X.9: A-side subgroup helpers (dual of X.4) ---
 
-/// If a_rcoset_rep(g) = ε, then g is in the left subgroup (A).
+///  If a_rcoset_rep(g) = ε, then g is in the left subgroup (A).
 proof fn lemma_a_rcoset_empty_implies_in_left_subgroup(
     data: AmalgamatedData, g: Word,
 )
@@ -3277,7 +3293,7 @@ proof fn lemma_a_rcoset_empty_implies_in_left_subgroup(
     }
 }
 
-/// If g ∉ A and embed_a(h) ∈ A, then concat(g, embed_a(h)) ∉ A.
+///  If g ∉ A and embed_a(h) ∈ A, then concat(g, embed_a(h)) ∉ A.
 proof fn lemma_not_in_left_subgroup_concat_embed_a(
     data: AmalgamatedData, g: Word, h: Word,
 )
@@ -3310,10 +3326,10 @@ proof fn lemma_not_in_left_subgroup_concat_embed_a(
 
 
 
-// --- X.10: Translate of a Gen·base·Inv segment ---
+//  --- X.10: Translate of a Gen·base·Inv segment ---
 
-/// translate(Gen · g · Inv, bl) = shift(g, (bl+1)*ng) where g is a base word.
-/// This is the G₂ segment at junction bl↔(bl+1).
+///  translate(Gen · g · Inv, bl) = shift(g, (bl+1)*ng) where g is a base word.
+///  This is the G₂ segment at junction bl↔(bl+1).
 proof fn lemma_translate_gen_base_inv(data: HNNData, g: Word, bl: int)
     requires
         hnn_data_valid(data),
@@ -3334,48 +3350,48 @@ proof fn lemma_translate_gen_base_inv(data: HNNData, g: Word, bl: int)
     let inv_sym: Word = Seq::new(1, |_j: int| Symbol::Inv(ng));
     let segment = concat(gen_sym, concat(g, inv_sym));
 
-    // net_level: Gen(+1) + base(0) + Inv(-1) = 0
+    //  net_level: Gen(+1) + base(0) + Inv(-1) = 0
     lemma_net_level_concat(data, gen_sym, concat(g, inv_sym));
     lemma_net_level_single(data, Symbol::Gen(ng));
     lemma_net_level_concat(data, g, inv_sym);
     lemma_net_level_single(data, Symbol::Inv(ng));
     lemma_net_level_base_word(data, g);
 
-    // translate: Gen is skipped (bl→bl+1), g at level bl+1 → shift(g, (bl+1)*ng),
-    // Inv is skipped (bl+1→bl).
-    // translate(segment, bl) = translate(concat(g, inv_sym), bl + 1)
-    //   = concat(translate(g, bl+1), translate(inv_sym, bl+1))
-    //   = concat(shift(g, (bl+1)*ng), translate(Inv, bl+1))
-    //   = concat(shift(g, (bl+1)*ng), ε)   [Inv skipped]
-    //   =~= shift(g, (bl+1)*ng)
+    //  translate: Gen is skipped (bl→bl+1), g at level bl+1 → shift(g, (bl+1)*ng),
+    //  Inv is skipped (bl+1→bl).
+    //  translate(segment, bl) = translate(concat(g, inv_sym), bl + 1)
+    //    = concat(translate(g, bl+1), translate(inv_sym, bl+1))
+    //    = concat(shift(g, (bl+1)*ng), translate(Inv, bl+1))
+    //    = concat(shift(g, (bl+1)*ng), ε)   [Inv skipped]
+    //    =~= shift(g, (bl+1)*ng)
 
-    // The translate recursion: first symbol = Gen(ng), skipped, recurse with bl+1.
-    // After Gen: translate(concat(g, inv_sym), bl+1).
-    // g is a base word: translate(g, bl+1) = shift(g, (bl+1)*ng).
+    //  The translate recursion: first symbol = Gen(ng), skipped, recurse with bl+1.
+    //  After Gen: translate(concat(g, inv_sym), bl+1).
+    //  g is a base word: translate(g, bl+1) = shift(g, (bl+1)*ng).
     assert(bl + 1 >= 0);
     lemma_translate_base_word_at(data, g, (bl + 1) as nat);
-    // Then Inv: translate(inv_sym, bl+1) = translate(ε, bl+1-1) = ε.
+    //  Then Inv: translate(inv_sym, bl+1) = translate(ε, bl+1-1) = ε.
     lemma_translate_empty_at(data, bl);
 
-    // Connect: translate(segment, bl) starts with Gen → skip → translate(concat(g, inv_sym), bl+1)
-    // translate(concat(g, inv_sym), bl+1): by lemma_translate_concat:
-    // = concat(translate(g, bl+1), translate(inv_sym, bl+1 + net_level(g)))
-    // = concat(shift(g, (bl+1)*ng), translate(inv_sym, bl+1))  [net_level(g) = 0]
-    // = concat(shift(g, (bl+1)*ng), ε)
+    //  Connect: translate(segment, bl) starts with Gen → skip → translate(concat(g, inv_sym), bl+1)
+    //  translate(concat(g, inv_sym), bl+1): by lemma_translate_concat:
+    //  = concat(translate(g, bl+1), translate(inv_sym, bl+1 + net_level(g)))
+    //  = concat(shift(g, (bl+1)*ng), translate(inv_sym, bl+1))  [net_level(g) = 0]
+    //  = concat(shift(g, (bl+1)*ng), ε)
     lemma_translate_concat(data, g, inv_sym, bl + 1);
     lemma_net_level_base_word(data, g);
 
-    // Now: translate(inv_sym, bl+1): Inv at bl+1 → skip, translate(ε, bl) = ε.
+    //  Now: translate(inv_sym, bl+1): Inv at bl+1 → skip, translate(ε, bl) = ε.
     assert(translate_word_at(data, inv_sym, bl + 1) =~= empty_word()) by {
-        // inv_sym = [Inv(ng)]. translate: first sym = Inv(ng) → skip → translate(ε, bl) = ε.
+        //  inv_sym = [Inv(ng)]. translate: first sym = Inv(ng) → skip → translate(ε, bl) = ε.
         assert(inv_sym.first() == Symbol::Inv(ng));
         assert(inv_sym.drop_first() =~= Seq::<Symbol>::empty());
     }
 
-    // Combine:
-    // translate(segment, bl):
-    // first sym = Gen(ng) → skip → translate(concat(g, inv_sym), bl+1)
-    // = concat(shift(g, (bl+1)*ng), ε) =~= shift(g, (bl+1)*ng)
+    //  Combine:
+    //  translate(segment, bl):
+    //  first sym = Gen(ng) → skip → translate(concat(g, inv_sym), bl+1)
+    //  = concat(shift(g, (bl+1)*ng), ε) =~= shift(g, (bl+1)*ng)
     assert(segment.first() == Symbol::Gen(ng));
     assert(segment.drop_first() =~= concat(g, inv_sym));
     assert(concat(shift_word(g, ((bl + 1) * ng) as nat), empty_word())
@@ -3388,9 +3404,9 @@ proof fn lemma_translate_gen_base_inv(data: HNNData, g: Word, bl: int)
 }
 
 
-// --- X.10b: Max prefix level (re-added) ---
+//  --- X.10b: Max prefix level (re-added) ---
 
-/// Max prefix net level: max of net_level(w[0..k]) for k in [0, |w|].
+///  Max prefix net level: max of net_level(w[0..k]) for k in [0, |w|].
 pub open spec fn max_prefix_level(data: HNNData, w: Word) -> int
     decreases w.len(),
 {
@@ -3406,7 +3422,7 @@ pub open spec fn max_prefix_level(data: HNNData, w: Word) -> int
     }
 }
 
-/// max_prefix_level ≥ 0 and bounds all prefix levels.
+///  max_prefix_level ≥ 0 and bounds all prefix levels.
 proof fn lemma_max_prefix_bounds(data: HNNData, w: Word, k: int)
     requires 0 <= k <= w.len(),
     ensures
@@ -3429,7 +3445,7 @@ proof fn lemma_max_prefix_bounds(data: HNNData, w: Word, k: int)
     }
 }
 
-/// The max is achieved at some k.
+///  The max is achieved at some k.
 proof fn lemma_max_prefix_achieved(data: HNNData, w: Word)
     ensures
         exists|k: int| 0 <= k <= w.len()
@@ -3462,10 +3478,10 @@ proof fn lemma_max_prefix_achieved(data: HNNData, w: Word)
     }
 }
 
-// --- X.11: Gen-Inv pair when max_prefix_level ≥ 1 ---
+//  --- X.11: Gen-Inv pair when max_prefix_level ≥ 1 ---
 
-/// Forward scan: find first k in [from, bound] achieving max after a drop.
-/// Ensures the pair is at the max prefix level.
+///  Forward scan: find first k in [from, bound] achieving max after a drop.
+///  Ensures the pair is at the max prefix level.
 proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: int)
     requires
         hnn_data_valid(data),
@@ -3475,7 +3491,7 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
         1 <= from <= bound <= w.len(),
         net_level(data, w.subrange(0, bound)) == max_prefix_level(data, w),
         net_level(data, w.subrange(0, from - 1)) < max_prefix_level(data, w),
-        // Inductive invariant: all positions before from are below max
+        //  Inductive invariant: all positions before from are below max
         forall|k: int| 0 <= k < from ==>
             net_level(data, #[trigger] w.subrange(0, k)) < max_prefix_level(data, w),
     ensures
@@ -3484,7 +3500,7 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
             && w[i] == Symbol::Gen(data.base.num_generators)
             && w[j] == Symbol::Inv(data.base.num_generators)
             && net_level(data, w.subrange(0, i + 1)) == max_prefix_level(data, w)
-            // NEW: all positions before pair are below max (from forward scan)
+            //  NEW: all positions before pair are below max (from forward scan)
             && (forall|k: int| 0 <= k < i + 1 ==>
                 net_level(data, #[trigger] w.subrange(0, k)) < max_prefix_level(data, w)),
     decreases bound - from,
@@ -3529,70 +3545,70 @@ proof fn lemma_find_gen_inv_forward(data: HNNData, w: Word, from: int, bound: in
             assert(w[ns] == Symbol::Inv(ng));
             assert(has_adjacent_opposite_at(data, w, from - 1, ns));
             assert(w.subrange(0, (from - 1) + 1) =~= w.subrange(0, from));
-            // Prefix below max: for k < from = (from-1) + 1:
-            // net_level(w[0..k]) < max for k < from (from precondition: from-1 < max,
-            // and the scan only reaches from when all prior positions are < max).
-            // Specifically: from our requires: net_level(w[0..from-1]) < max.
-            // For k < from: either k < from-1 (recurse) or k = from-1.
-            // k = from-1: net_level(w[0..from-1]) < max (from requires).
-            // k < from-1: net_level(w[0..k]) ≤ max (from max_prefix_bounds).
-            // But we need STRICT < max. From the forward scan: all positions before
-            // from have level < max (since from is the FIRST achiever after a drop).
-            // The drop at from-1 means from-1 < max. But positions before from-1?
-            // We only know they're ≤ max. Some might = max.
-            // HOWEVER: the forward scan recurses with from-1 < max as a precondition.
-            // This means: at position from-1, level < max. At from: level = max.
-            // The scan found from as the first achiever where previous was < max.
-            // But positions BEFORE from-1 might have level = max!
-            // Wait: the scan starts at `from` = 1 initially, and recurses forward.
-            // At each recursion: net_level(w[0..from]) < max (from the else branch).
-            // So ALL positions from 1 to the achiever-1 have < max.
-            // And position 0 has level 0 < max (since max ≥ 1).
-            // So: all k < from have net_level(w[0..k]) < max. ✓
-            // But we need: all k < (from-1)+1 = from. Same thing. ✓
-            // The requires gives: net_level(w[0..from-1]) < max.
-            // And the recursion ensures all earlier positions are also < max
-            // (from the recursive calls' ensures).
-            // But we don't have this inductively — the requires only says from-1 < max.
-            // Actually: the CALLER ensures this by starting from position 1 with
-            // net_level(w[0..0]) = 0 < max, and recursing. Each recursive call
-            // has net_level(w[0..from-1]) < max AND all earlier positions < max
-            // (from the previous recursion's ensures not carrying through).
+            //  Prefix below max: for k < from = (from-1) + 1:
+            //  net_level(w[0..k]) < max for k < from (from precondition: from-1 < max,
+            //  and the scan only reaches from when all prior positions are < max).
+            //  Specifically: from our requires: net_level(w[0..from-1]) < max.
+            //  For k < from: either k < from-1 (recurse) or k = from-1.
+            //  k = from-1: net_level(w[0..from-1]) < max (from requires).
+            //  k < from-1: net_level(w[0..k]) ≤ max (from max_prefix_bounds).
+            //  But we need STRICT < max. From the forward scan: all positions before
+            //  from have level < max (since from is the FIRST achiever after a drop).
+            //  The drop at from-1 means from-1 < max. But positions before from-1?
+            //  We only know they're ≤ max. Some might = max.
+            //  HOWEVER: the forward scan recurses with from-1 < max as a precondition.
+            //  This means: at position from-1, level < max. At from: level = max.
+            //  The scan found from as the first achiever where previous was < max.
+            //  But positions BEFORE from-1 might have level = max!
+            //  Wait: the scan starts at `from` = 1 initially, and recurses forward.
+            //  At each recursion: net_level(w[0..from]) < max (from the else branch).
+            //  So ALL positions from 1 to the achiever-1 have < max.
+            //  And position 0 has level 0 < max (since max ≥ 1).
+            //  So: all k < from have net_level(w[0..k]) < max. ✓
+            //  But we need: all k < (from-1)+1 = from. Same thing. ✓
+            //  The requires gives: net_level(w[0..from-1]) < max.
+            //  And the recursion ensures all earlier positions are also < max
+            //  (from the recursive calls' ensures).
+            //  But we don't have this inductively — the requires only says from-1 < max.
+            //  Actually: the CALLER ensures this by starting from position 1 with
+            //  net_level(w[0..0]) = 0 < max, and recursing. Each recursive call
+            //  has net_level(w[0..from-1]) < max AND all earlier positions < max
+            //  (from the previous recursion's ensures not carrying through).
             //
-            // This is a gap in our induction. We need to CARRY the prefix property
-            // through the recursion. Let me add it as an additional requires.
-            // But that changes the lemma signature... For now: assert it from the
-            // specific properties.
+            //  This is a gap in our induction. We need to CARRY the prefix property
+            //  through the recursion. Let me add it as an additional requires.
+            //  But that changes the lemma signature... For now: assert it from the
+            //  specific properties.
             //
-            // Actually: the requires says net_level(w[0..from-1]) < max.
-            // We need: forall k < from: net_level(w[0..k]) < max.
-            // But from-1 < max doesn't give us k < from-1 < max.
-            // UNLESS we add it as an inductive invariant.
+            //  Actually: the requires says net_level(w[0..from-1]) < max.
+            //  We need: forall k < from: net_level(w[0..k]) < max.
+            //  But from-1 < max doesn't give us k < from-1 < max.
+            //  UNLESS we add it as an inductive invariant.
             //
-            // For now: the ensures doesn't carry the prefix property correctly
-            // for the general case. It works for the BASE case (from = 1, k = 0: 0 < max).
-            // For the recursive case: we need the invariant.
+            //  For now: the ensures doesn't carry the prefix property correctly
+            //  for the general case. It works for the BASE case (from = 1, k = 0: 0 < max).
+            //  For the recursive case: we need the invariant.
             //
-            // HACK: the prefix property can be derived from
-            // the fact that this is the FIRST achiever. The forward scan recurses
-            // only when net_level < max. So at position from: either = max (found) or
-            // < max (recurse). For the found case: all positions from 1 to from-1
-            // had < max (they were checked in prior recursions).
-            // But this isn't formally captured.
+            //  HACK: the prefix property can be derived from
+            //  the fact that this is the FIRST achiever. The forward scan recurses
+            //  only when net_level < max. So at position from: either = max (found) or
+            //  < max (recurse). For the found case: all positions from 1 to from-1
+            //  had < max (they were checked in prior recursions).
+            //  But this isn't formally captured.
             //
-            // Let me add the prefix property as an ADDITIONAL requires:
-            // forall k: from-1 <= k => already covered. Need for k < from-1.
-            // Actually: let me add forall k < from: net_level(w[0..k]) < max as requires.
-            // Then the recursive call provides it for from+1.
-            // Prefix below max: from the inductive invariant,
-            // all k < from have net_level < max. And from = (from-1) + 1 = i + 1.
+            //  Let me add the prefix property as an ADDITIONAL requires:
+            //  forall k: from-1 <= k => already covered. Need for k < from-1.
+            //  Actually: let me add forall k < from: net_level(w[0..k]) < max as requires.
+            //  Then the recursive call provides it for from+1.
+            //  Prefix below max: from the inductive invariant,
+            //  all k < from have net_level < max. And from = (from-1) + 1 = i + 1.
         }
     } else {
         lemma_find_gen_inv_forward(data, w, from + 1, bound);
     }
 }
 
-/// When max_prefix_level ≥ 1, there exists a Gen-Inv adjacent pair AT the max level.
+///  When max_prefix_level ≥ 1, there exists a Gen-Inv adjacent pair AT the max level.
 proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -3617,14 +3633,14 @@ proof fn lemma_gen_inv_pair_when_max_ge_1(data: HNNData, w: Word)
     assert(net_level(data, w.subrange(0, 0int)) < max_prefix_level(data, w)) by {
         assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
     }
-    // The initial call satisfies the new invariant: forall k < 1: k = 0, level = 0 < max.
+    //  The initial call satisfies the new invariant: forall k < 1: k = 0, level = 0 < max.
     lemma_find_gen_inv_forward(data, w, 1, any_k);
 }
 
-// --- X.12: Last max-level position ---
+//  --- X.12: Last max-level position ---
 
-/// Given a position achieving max, find the LAST such position (scanning forward).
-/// Everything after is strictly below max.
+///  Given a position achieving max, find the LAST such position (scanning forward).
+///  Everything after is strictly below max.
 proof fn lemma_last_max_position(data: HNNData, w: Word, pos: int)
     requires
         0 <= pos <= w.len(),
@@ -3641,19 +3657,19 @@ proof fn lemma_last_max_position(data: HNNData, w: Word, pos: int)
 {
     let max_lev = max_prefix_level(data, w);
     if pos >= w.len() as int {
-        // pos = w.len(). k = pos works. No k2 > pos ≤ w.len() exists.
+        //  pos = w.len(). k = pos works. No k2 > pos ≤ w.len() exists.
     } else {
         lemma_max_prefix_bounds(data, w, pos + 1);
         if net_level(data, w.subrange(0, pos + 1)) == max_lev {
             lemma_last_max_position(data, w, pos + 1);
         } else {
-            // pos+1 is < max. Scan forward for any later achiever.
+            //  pos+1 is < max. Scan forward for any later achiever.
             lemma_last_max_scan(data, w, pos, pos + 1);
         }
     }
 }
 
-/// Scan forward: either find a later achiever, or confirm last_known is the last.
+///  Scan forward: either find a later achiever, or confirm last_known is the last.
 proof fn lemma_last_max_scan(data: HNNData, w: Word, last_known: int, from: int)
     requires
         0 <= last_known < from <= w.len(),
@@ -3675,27 +3691,27 @@ proof fn lemma_last_max_scan(data: HNNData, w: Word, last_known: int, from: int)
     if from >= w.len() as int {
         lemma_max_prefix_bounds(data, w, w.len() as int);
         if net_level(data, w.subrange(0, w.len() as int)) == max_lev {
-            // w.len() is a later achiever. It's the last (nothing after).
+            //  w.len() is a later achiever. It's the last (nothing after).
             assert(w.subrange(0, w.len() as int) =~= w);
         } else {
-            // last_known is the last achiever.
+            //  last_known is the last achiever.
         }
     } else {
         lemma_max_prefix_bounds(data, w, from);
         if net_level(data, w.subrange(0, from)) == max_lev {
-            // from achieves max. Update last_known and continue scanning.
+            //  from achieves max. Update last_known and continue scanning.
             lemma_last_max_scan(data, w, from, from + 1);
         } else {
-            // from doesn't achieve max. Continue.
+            //  from doesn't achieve max. Continue.
             lemma_last_max_scan(data, w, last_known, from + 1);
         }
     }
 }
 
-// --- X.13: Rightmost Gen-Inv pair (suffix strictly below max) ---
+//  --- X.13: Rightmost Gen-Inv pair (suffix strictly below max) ---
 
-/// Find a Gen-Inv pair where the Inv is at the LAST max position.
-/// Everything after the Inv is strictly below max → suffix is G₁.
+///  Find a Gen-Inv pair where the Inv is at the LAST max position.
+///  Everything after the Inv is strictly below max → suffix is G₁.
 proof fn lemma_rightmost_gen_inv(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -3714,7 +3730,7 @@ proof fn lemma_rightmost_gen_inv(data: HNNData, w: Word)
     let ng = data.base.num_generators;
     let max_lev = max_prefix_level(data, w);
 
-    // Step 1: Find ANY Gen-Inv pair at max level (leftmost)
+    //  Step 1: Find ANY Gen-Inv pair at max level (leftmost)
     lemma_gen_inv_pair_when_max_ge_1(data, w);
     let first_i: int = choose|i: int|
         #[trigger] w[i] == Symbol::Gen(ng)
@@ -3726,7 +3742,7 @@ proof fn lemma_rightmost_gen_inv(data: HNNData, w: Word)
         && has_adjacent_opposite_at(data, w, first_i, j)
         && net_level(data, w.subrange(0, first_i + 1)) == max_lev;
 
-    // Step 2: first_i + 1 achieves max. Find the LAST position achieving max.
+    //  Step 2: first_i + 1 achieves max. Find the LAST position achieving max.
     assert(net_level(data, w.subrange(0, first_i + 1)) == max_lev);
     lemma_last_max_position(data, w, first_i + 1);
     let last_k: int = choose|k: int|
@@ -3736,76 +3752,76 @@ proof fn lemma_rightmost_gen_inv(data: HNNData, w: Word)
         && (forall|k2: int| k < k2 <= w.len()
             ==> net_level(data, w.subrange(0, k2)) < max_lev);
 
-    // Step 3: At last_k, the level = max. At last_k + 1, level < max.
-    // So w[last_k] contributed < 0, i.e., w[last_k] = Inv(ng) (going from max to max-1).
-    // Wait: last_k is the LAST position where prefix level = max.
-    // The position last_k has net_level(w[0..last_k]) = max.
-    // Position last_k + 1 (if exists) has net_level < max.
-    // Contribution of w[last_k] = net(w[0..last_k+1]) - net(w[0..last_k]) = (< max) - max < 0.
-    // So w[last_k] = Inv(ng).
-    // But last_k could = w.len() (if net(w) = max).
-    // Since net(w) = 0 < max ≥ 1: last_k < w.len().
+    //  Step 3: At last_k, the level = max. At last_k + 1, level < max.
+    //  So w[last_k] contributed < 0, i.e., w[last_k] = Inv(ng) (going from max to max-1).
+    //  Wait: last_k is the LAST position where prefix level = max.
+    //  The position last_k has net_level(w[0..last_k]) = max.
+    //  Position last_k + 1 (if exists) has net_level < max.
+    //  Contribution of w[last_k] = net(w[0..last_k+1]) - net(w[0..last_k]) = (< max) - max < 0.
+    //  So w[last_k] = Inv(ng).
+    //  But last_k could = w.len() (if net(w) = max).
+    //  Since net(w) = 0 < max ≥ 1: last_k < w.len().
     assert(last_k < w.len()) by {
         assert(w.subrange(0, w.len() as int) =~= w);
     }
 
-    // w[last_k] = Inv (contribution = net(w[0..last_k+1]) - max < 0)
+    //  w[last_k] = Inv (contribution = net(w[0..last_k+1]) - max < 0)
     let prev_word = w.subrange(0, last_k);
     let next_word = w.subrange(0, last_k + 1);
     assert(next_word =~= concat(prev_word, Seq::new(1, |_j: int| w[last_k])));
     lemma_net_level_concat(data, prev_word, Seq::new(1, |_j: int| w[last_k]));
     lemma_net_level_single(data, w[last_k]);
-    // net(next) = max + contribution. net(next) < max. So contribution < 0 → = -1 → Inv.
+    //  net(next) = max + contribution. net(next) < max. So contribution < 0 → = -1 → Inv.
     assert(w[last_k] == Symbol::Inv(ng));
 
-    // Step 4: Find the Gen that entered max before last_k.
-    // The level at last_k is max. Going left: find where it first rose to max.
-    // From last_k: level = max. last_k - 1: level might be max (plateau).
-    // Keep going left until level < max. That position + 1 was the Gen.
-    // Use forward scan from position 1 to last_k.
+    //  Step 4: Find the Gen that entered max before last_k.
+    //  The level at last_k is max. Going left: find where it first rose to max.
+    //  From last_k: level = max. last_k - 1: level might be max (plateau).
+    //  Keep going left until level < max. That position + 1 was the Gen.
+    //  Use forward scan from position 1 to last_k.
     assert(net_level(data, w.subrange(0, 0int)) < max_lev) by {
         assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
     }
     lemma_find_gen_inv_forward(data, w, 1, last_k);
 
-    // This gives a Gen-Inv pair (gen_pos, inv_pos) where:
-    // - gen_pos < inv_pos ≤ last_k (from forward scan up to last_k)
-    // - net_level(w[0..gen_pos+1]) = max
-    // - w[gen_pos] = Gen, w[inv_pos] = Inv
-    // But we need the Inv at last_k specifically for the suffix property.
+    //  This gives a Gen-Inv pair (gen_pos, inv_pos) where:
+    //  - gen_pos < inv_pos ≤ last_k (from forward scan up to last_k)
+    //  - net_level(w[0..gen_pos+1]) = max
+    //  - w[gen_pos] = Gen, w[inv_pos] = Inv
+    //  But we need the Inv at last_k specifically for the suffix property.
     //
-    // Actually: the forward scan finds a pair (i, j) with j ≤ w.len() (any Inv after Gen).
-    // It might find j < last_k. We need j such that after j, levels < max.
+    //  Actually: the forward scan finds a pair (i, j) with j ≤ w.len() (any Inv after Gen).
+    //  It might find j < last_k. We need j such that after j, levels < max.
     //
-    // Better: use last_k directly as the Inv position. We know w[last_k] = Inv.
-    // We need a Gen before last_k such that between them only base symbols.
-    // This is the Gen that first reached max level before last_k.
+    //  Better: use last_k directly as the Inv position. We know w[last_k] = Inv.
+    //  We need a Gen before last_k such that between them only base symbols.
+    //  This is the Gen that first reached max level before last_k.
     //
-    // Actually, the positions between first_i+1 and last_k are all at level max
-    // (they're between two max-achieving positions with no drop below max...
-    // wait, that's not necessarily true. There could be drops between first_i+1 and last_k.)
+    //  Actually, the positions between first_i+1 and last_k are all at level max
+    //  (they're between two max-achieving positions with no drop below max...
+    //  wait, that's not necessarily true. There could be drops between first_i+1 and last_k.)
     //
-    // Hmm. Let me just use the Gen-Inv pair from the forward scan.
-    // The pair (i, j) has net(w[0..i+1]) = max and all symbols between i and j are base.
-    // After j: the level drops. But does it come back to max later?
-    // If j < last_k: yes, it does (last_k achieves max again).
-    // In that case: the suffix after j is NOT strictly below max.
+    //  Hmm. Let me just use the Gen-Inv pair from the forward scan.
+    //  The pair (i, j) has net(w[0..i+1]) = max and all symbols between i and j are base.
+    //  After j: the level drops. But does it come back to max later?
+    //  If j < last_k: yes, it does (last_k achieves max again).
+    //  In that case: the suffix after j is NOT strictly below max.
     //
-    // So I need to find the Gen-Inv pair ending AT last_k.
-    // This means: the Gen before last_k, at the max plateau,
-    // with all base symbols between them.
+    //  So I need to find the Gen-Inv pair ending AT last_k.
+    //  This means: the Gen before last_k, at the max plateau,
+    //  with all base symbols between them.
     //
-    // last_k: net = max, w[last_k] = Inv.
-    // last_k - 1: if net = max → base symbol (contribution 0). Part of plateau.
-    //             if net < max → Gen (contribution +1 to reach max).
-    // Scan left from last_k to find where the plateau started.
-    // The position just before the plateau is at level max - 1 and has Gen.
+    //  last_k: net = max, w[last_k] = Inv.
+    //  last_k - 1: if net = max → base symbol (contribution 0). Part of plateau.
+    //              if net < max → Gen (contribution +1 to reach max).
+    //  Scan left from last_k to find where the plateau started.
+    //  The position just before the plateau is at level max - 1 and has Gen.
 
-    // Let me scan left from last_k.
+    //  Let me scan left from last_k.
     lemma_find_gen_before_last_inv(data, w, last_k);
 }
 
-/// Find the Gen entering the max-level plateau that ends at `inv_pos`.
+///  Find the Gen entering the max-level plateau that ends at `inv_pos`.
 proof fn lemma_find_gen_before_last_inv(data: HNNData, w: Word, inv_pos: int)
     requires
         hnn_data_valid(data),
@@ -3813,7 +3829,7 @@ proof fn lemma_find_gen_before_last_inv(data: HNNData, w: Word, inv_pos: int)
         max_prefix_level(data, w) >= 1,
         net_level(data, w.subrange(0, inv_pos)) == max_prefix_level(data, w),
         w[inv_pos] == Symbol::Inv(data.base.num_generators),
-        // Everything after inv_pos is strictly below max
+        //  Everything after inv_pos is strictly below max
         forall|k: int| inv_pos < k <= w.len()
             ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
     ensures
@@ -3830,10 +3846,10 @@ proof fn lemma_find_gen_before_last_inv(data: HNNData, w: Word, inv_pos: int)
     let max_lev = max_prefix_level(data, w);
     lemma_max_prefix_bounds(data, w, inv_pos - 1);
 
-    // net(w[0..inv_pos - 1]) vs max
+    //  net(w[0..inv_pos - 1]) vs max
     if net_level(data, w.subrange(0, inv_pos - 1)) < max_lev {
-        // inv_pos - 1 is below max. So w[inv_pos - 1] brought us to max.
-        // Contribution = max - (< max) ≥ 1 → = 1 → w[inv_pos - 1] = Gen.
+        //  inv_pos - 1 is below max. So w[inv_pos - 1] brought us to max.
+        //  Contribution = max - (< max) ≥ 1 → = 1 → w[inv_pos - 1] = Gen.
         let prev = w.subrange(0, inv_pos - 1);
         let curr = w.subrange(0, inv_pos);
         assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[inv_pos - 1])));
@@ -3841,52 +3857,52 @@ proof fn lemma_find_gen_before_last_inv(data: HNNData, w: Word, inv_pos: int)
         lemma_net_level_single(data, w[inv_pos - 1]);
         assert(w[inv_pos - 1] == Symbol::Gen(ng));
 
-        // The pair is (inv_pos - 1, inv_pos): Gen followed immediately by Inv.
-        // No base symbols between. This IS a valid adjacent opposite pair.
-        // has_adjacent_opposite_at: no symbols between (j = i + 1).
+        //  The pair is (inv_pos - 1, inv_pos): Gen followed immediately by Inv.
+        //  No base symbols between. This IS a valid adjacent opposite pair.
+        //  has_adjacent_opposite_at: no symbols between (j = i + 1).
         assert(has_adjacent_opposite_at(data, w, inv_pos - 1, inv_pos));
-        // net_level(w[0..(inv_pos-1)+1]) = net(w[0..inv_pos]) = max. ✓
+        //  net_level(w[0..(inv_pos-1)+1]) = net(w[0..inv_pos]) = max. ✓
         assert(w.subrange(0, (inv_pos - 1) + 1) =~= w.subrange(0, inv_pos));
-        // Suffix property: forall k > inv_pos: already in our requires. ✓
+        //  Suffix property: forall k > inv_pos: already in our requires. ✓
     } else {
-        // inv_pos - 1 also at max. w[inv_pos - 1] has contribution 0 → base symbol.
+        //  inv_pos - 1 also at max. w[inv_pos - 1] has contribution 0 → base symbol.
         let prev = w.subrange(0, inv_pos - 1);
         let curr = w.subrange(0, inv_pos);
         assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[inv_pos - 1])));
         lemma_net_level_concat(data, prev, Seq::new(1, |_j: int| w[inv_pos - 1]));
         lemma_net_level_single(data, w[inv_pos - 1]);
-        // contribution = max - max = 0 → base symbol (not stable)
+        //  contribution = max - max = 0 → base symbol (not stable)
         assert(!is_stable(data, w[inv_pos - 1]));
 
-        // Find the Inv that ENTERS this plateau segment.
-        // The plateau extends from inv_pos back to some earlier position.
-        // At the start of the plateau: a Gen entered from level max-1.
-        // We need an Inv at the end of the plateau → that's our inv_pos.
-        // But there might be earlier Inv's within the plateau? No:
-        // within the plateau, all symbols have contribution 0 → base symbols.
-        // Inv has contribution -1 ≠ 0. So inv_pos is the only Inv in the plateau.
+        //  Find the Inv that ENTERS this plateau segment.
+        //  The plateau extends from inv_pos back to some earlier position.
+        //  At the start of the plateau: a Gen entered from level max-1.
+        //  We need an Inv at the end of the plateau → that's our inv_pos.
+        //  But there might be earlier Inv's within the plateau? No:
+        //  within the plateau, all symbols have contribution 0 → base symbols.
+        //  Inv has contribution -1 ≠ 0. So inv_pos is the only Inv in the plateau.
 
-        // The Gen entering the plateau is somewhere before inv_pos - 1.
-        // Recurse: look for the Gen before this base-symbol plateau.
+        //  The Gen entering the plateau is somewhere before inv_pos - 1.
+        //  Recurse: look for the Gen before this base-symbol plateau.
         if inv_pos == 1 {
-            // inv_pos - 1 = 0, net(w[0..0]) = 0. For this = max ≥ 1: impossible.
+            //  inv_pos - 1 = 0, net(w[0..0]) = 0. For this = max ≥ 1: impossible.
             assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
         } else {
-            // Find the Gen-Inv pair where the Inv is at inv_pos and the Gen
-            // is wherever the level first rose to max in this plateau.
-            // The plateau: positions from some start_pos to inv_pos-1, all at max.
-            // The Gen is at start_pos - 1 (contribution +1 → level from max-1 to max).
-            // And the pair is (start_pos - 1, inv_pos) with all base between.
-            // Everything between start_pos and inv_pos - 1 is at max → base → non-stable. ✓
+            //  Find the Gen-Inv pair where the Inv is at inv_pos and the Gen
+            //  is wherever the level first rose to max in this plateau.
+            //  The plateau: positions from some start_pos to inv_pos-1, all at max.
+            //  The Gen is at start_pos - 1 (contribution +1 → level from max-1 to max).
+            //  And the pair is (start_pos - 1, inv_pos) with all base between.
+            //  Everything between start_pos and inv_pos - 1 is at max → base → non-stable. ✓
 
-            // To find this: recurse leftward, maintaining that all positions from
-            // inv_pos - 1 down to the current position are at max (base symbols).
+            //  To find this: recurse leftward, maintaining that all positions from
+            //  inv_pos - 1 down to the current position are at max (base symbols).
             lemma_find_plateau_gen(data, w, inv_pos - 1, inv_pos);
         }
     }
 }
 
-/// Scan left through a max-level plateau to find the Gen that entered it.
+///  Scan left through a max-level plateau to find the Gen that entered it.
 proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
     requires
         hnn_data_valid(data),
@@ -3895,9 +3911,9 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
         net_level(data, w.subrange(0, pos)) == max_prefix_level(data, w),
         w[inv_pos] == Symbol::Inv(data.base.num_generators),
         net_level(data, w.subrange(0, inv_pos)) == max_prefix_level(data, w),
-        // All symbols from pos to inv_pos-1 are base (non-stable)
+        //  All symbols from pos to inv_pos-1 are base (non-stable)
         forall|k: int| pos <= k < inv_pos ==> !is_stable(data, #[trigger] w[k]),
-        // Everything after inv_pos is strictly below max
+        //  Everything after inv_pos is strictly below max
         forall|k: int| inv_pos < k <= w.len()
             ==> net_level(data, w.subrange(0, k)) < max_prefix_level(data, w),
     ensures
@@ -3915,7 +3931,7 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
     lemma_max_prefix_bounds(data, w, pos - 1);
 
     if net_level(data, w.subrange(0, pos - 1)) < max_lev {
-        // Found the Gen! w[pos-1] contributed +1 to reach max.
+        //  Found the Gen! w[pos-1] contributed +1 to reach max.
         let prev = w.subrange(0, pos - 1);
         let curr = w.subrange(0, pos);
         assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[pos - 1])));
@@ -3923,13 +3939,13 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
         lemma_net_level_single(data, w[pos - 1]);
         assert(w[pos - 1] == Symbol::Gen(ng));
 
-        // The pair is (pos-1, inv_pos).
-        // Between them (pos to inv_pos-1): all base (from our requires).
-        // Also w[pos-1] = Gen (stable) is not in the "between" range.
+        //  The pair is (pos-1, inv_pos).
+        //  Between them (pos to inv_pos-1): all base (from our requires).
+        //  Also w[pos-1] = Gen (stable) is not in the "between" range.
         assert(has_adjacent_opposite_at(data, w, pos - 1, inv_pos));
         assert(w.subrange(0, (pos - 1) + 1) =~= w.subrange(0, pos));
     } else {
-        // pos-1 also at max. Contribution = 0 → base symbol.
+        //  pos-1 also at max. Contribution = 0 → base symbol.
         let prev = w.subrange(0, pos - 1);
         let curr = w.subrange(0, pos);
         assert(curr =~= concat(prev, Seq::new(1, |_j: int| w[pos - 1])));
@@ -3939,13 +3955,13 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
 
         if pos == 1 {
             assert(w.subrange(0, 0int) =~= Seq::<Symbol>::empty());
-            // net(w[0..0]) = 0 = max ≥ 1. Contradiction.
+            //  net(w[0..0]) = 0 = max ≥ 1. Contradiction.
         } else {
-            // Extend the plateau and recurse.
+            //  Extend the plateau and recurse.
             assert forall|k: int| pos - 1 <= k < inv_pos
                 implies !is_stable(data, #[trigger] w[k])
             by {
-                if k >= pos {} // from requires
+                if k >= pos {} //  from requires
                 else { assert(k == pos - 1); }
             }
             lemma_find_plateau_gen(data, w, pos - 1, inv_pos);
@@ -3953,9 +3969,9 @@ proof fn lemma_find_plateau_gen(data: HNNData, w: Word, pos: int, inv_pos: int)
     }
 }
 
-// --- X.14: Tower setup for the rightmost Gen-Inv pair ---
+//  --- X.14: Tower setup for the rightmost Gen-Inv pair ---
 
-/// Set up tower at the max level, get translate ≡ ε, return (bl, pair_level).
+///  Set up tower at the max level, get translate ≡ ε, return (bl, pair_level).
 proof fn lemma_tower_setup(data: HNNData, w: Word) -> (result: (nat, nat))
     requires
         hnn_data_valid(data),
@@ -4002,7 +4018,7 @@ proof fn lemma_tower_setup(data: HNNData, w: Word) -> (result: (nat, nat))
     lemma_translate_empty_at(data, bl as int);
     lemma_tower_textbook_chain_from_hnn_iso(data, m);
 
-    // tw valid for tower(pl)
+    //  tw valid for tower(pl)
     assert forall|k: int| #![trigger w.subrange(0, k)]
         0 <= k <= w.len() ==>
         0 <= bl as int + net_level(data, w.subrange(0, k)) <= pl as int
@@ -4014,7 +4030,7 @@ proof fn lemma_tower_setup(data: HNNData, w: Word) -> (result: (nat, nat))
     }
     lemma_translate_word_valid_for_level(data, w, bl as int, pl);
 
-    // Peel to tower(pl)
+    //  Peel to tower(pl)
     assert(pl <= m) by {
         lemma_max_prefix_achieved(data, w);
         let kk: int = choose|k: int| 0 <= k <= w.len()
@@ -4027,11 +4043,11 @@ proof fn lemma_tower_setup(data: HNNData, w: Word) -> (result: (nat, nat))
 }
 
 
-// --- X.15: Suffix level bound ---
+//  --- X.15: Suffix level bound ---
 
-/// Key lemma: the suffix of w after a concat split has net_level equal to
-/// the difference of the full word's prefix levels.
-/// Specifically: if w = w1 · w2, then net_level(w2[0..k]) = net_level(w[0..w1.len()+k]) - net_level(w1).
+///  Key lemma: the suffix of w after a concat split has net_level equal to
+///  the difference of the full word's prefix levels.
+///  Specifically: if w = w1 · w2, then net_level(w2[0..k]) = net_level(w[0..w1.len()+k]) - net_level(w1).
 proof fn lemma_suffix_net_level(data: HNNData, w: Word, split: int, k: int)
     requires
         0 <= split <= w.len(),
@@ -4055,10 +4071,10 @@ proof fn lemma_suffix_net_level(data: HNNData, w: Word, split: int, k: int)
     lemma_net_level_concat(data, prefix, suffix_k);
 }
 
-// --- X.16: Suffix is G₁ at the top junction ---
+//  --- X.16: Suffix is G₁ at the top junction ---
 
-/// The suffix w[split..] has all shifted running levels ≤ junc (strictly < pair_level).
-/// Stated in terms of w.subrange to avoid =~= issues with net_level.
+///  The suffix w[split..] has all shifted running levels ≤ junc (strictly < pair_level).
+///  Stated in terms of w.subrange to avoid =~= issues with net_level.
 proof fn lemma_suffix_levels_bounded(
     data: HNNData, w: Word, split: int, bl: int, pl: nat,
 )
@@ -4073,7 +4089,7 @@ proof fn lemma_suffix_levels_bounded(
         bl + net_level(data, w.subrange(0, split)) <= (pl - 1) as int,
         bl >= w.len(),
     ensures
-        // All shifted levels of suffix positions are in [0, junc]
+        //  All shifted levels of suffix positions are in [0, junc]
         forall|k: int| #![trigger w.subrange(0, split + k)]
             0 <= k <= w.len() - split ==>
             0 <= bl + net_level(data, w.subrange(0, split + k)) <= (pl - 1) as int,
@@ -4084,17 +4100,17 @@ proof fn lemma_suffix_levels_bounded(
     by {
         if 0 <= k && k <= w.len() - split {
             lemma_prefix_level_bounded_by_k(data, w, split + k);
-            // bl ≥ w.len() ≥ split + k, so bl + net_level ≥ bl - (split+k) ≥ 0
-            // net_level(w[0..split+k]) < max (from requires, since split+k ≥ split)
-            // bl + net_level < bl + max = pl → ≤ pl - 1 = junc
+            //  bl ≥ w.len() ≥ split + k, so bl + net_level ≥ bl - (split+k) ≥ 0
+            //  net_level(w[0..split+k]) < max (from requires, since split+k ≥ split)
+            //  bl + net_level < bl + max = pl → ≤ pl - 1 = junc
         }
     }
 }
 
-// --- X.17: Small helpers for the action chain ---
+//  --- X.17: Small helpers for the action chain ---
 
-/// The Gen·base·Inv segment has net_level 0, so the level after pair_j+1
-/// returns to prefix_level.
+///  The Gen·base·Inv segment has net_level 0, so the level after pair_j+1
+///  returns to prefix_level.
 proof fn lemma_pair_net_level_return(
     data: HNNData, w: Word, pair_i: int, pair_j: int,
 )
@@ -4110,26 +4126,26 @@ proof fn lemma_pair_net_level_return(
             == net_level(data, w.subrange(0, pair_i)),
 {
     let ng = data.base.num_generators;
-    // net(w[0..pair_j+1]) = net(w[0..pair_i]) + net(w[pair_i..pair_j+1])
-    // net(w[pair_i..pair_j+1]) = net([Gen]) + net(base) + net([Inv]) = 1 + 0 + (-1) = 0
-    // So net(w[0..pair_j+1]) = net(w[0..pair_i]) = prefix_level.
+    //  net(w[0..pair_j+1]) = net(w[0..pair_i]) + net(w[pair_i..pair_j+1])
+    //  net(w[pair_i..pair_j+1]) = net([Gen]) + net(base) + net([Inv]) = 1 + 0 + (-1) = 0
+    //  So net(w[0..pair_j+1]) = net(w[0..pair_i]) = prefix_level.
     lemma_suffix_net_level(data, w, pair_i, pair_j + 1 - pair_i);
-    // net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - net(w[0..pair_i])
-    // We need net(w.subrange(pair_i, pair_j+1)) = 0.
-    // The subrange pair_i..pair_j+1 contains Gen at pair_i, base, Inv at pair_j.
-    // Each non-stable symbol between pair_i+1 and pair_j-1 contributes 0.
-    // Gen contributes +1, Inv contributes -1. Base contributes 0.
-    // Total contribution: 1 + 0 + (-1) = 0.
-    // Express this via subrange decompositions:
+    //  net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - net(w[0..pair_i])
+    //  We need net(w.subrange(pair_i, pair_j+1)) = 0.
+    //  The subrange pair_i..pair_j+1 contains Gen at pair_i, base, Inv at pair_j.
+    //  Each non-stable symbol between pair_i+1 and pair_j-1 contributes 0.
+    //  Gen contributes +1, Inv contributes -1. Base contributes 0.
+    //  Total contribution: 1 + 0 + (-1) = 0.
+    //  Express this via subrange decompositions:
     lemma_suffix_net_level(data, w, pair_i, 1);
-    // net(w.subrange(pair_i, pair_i+1)) = net(w[0..pair_i+1]) - net(w[0..pair_i])
-    //   = max_prefix_level - prefix_level = 1  (since max = prefix_level + 1 from requires)
+    //  net(w.subrange(pair_i, pair_i+1)) = net(w[0..pair_i+1]) - net(w[0..pair_i])
+    //    = max_prefix_level - prefix_level = 1  (since max = prefix_level + 1 from requires)
     lemma_suffix_net_level(data, w, pair_i + 1, pair_j - pair_i - 1);
-    // net(w.subrange(pair_i+1, pair_j)) = net(w[0..pair_j]) - net(w[0..pair_i+1])
-    // = net(w[0..pair_j]) - max_prefix_level
+    //  net(w.subrange(pair_i+1, pair_j)) = net(w[0..pair_j]) - net(w[0..pair_i+1])
+    //  = net(w[0..pair_j]) - max_prefix_level
 
-    // Base word between pair: all non-stable.
-    // net of base word = 0 (from lemma_net_level_no_stable on the base word)
+    //  Base word between pair: all non-stable.
+    //  net of base word = 0 (from lemma_net_level_no_stable on the base word)
     let base_word = w.subrange(pair_i + 1, pair_j);
     assert forall|k: int| 0 <= k < base_word.len()
         implies !is_stable(data, #[trigger] base_word[k])
@@ -4138,19 +4154,19 @@ proof fn lemma_pair_net_level_return(
     }
     lemma_net_level_no_stable(data, base_word, 0);
 
-    // net(w.subrange(pair_i+1, pair_j)) = 0 (same as base_word)
+    //  net(w.subrange(pair_i+1, pair_j)) = 0 (same as base_word)
     assert(w.subrange(pair_i + 1, pair_j) =~= base_word);
 
-    // Now: net(w.subrange(pair_i, pair_j+1)) = 1 + 0 + (-1) = 0
-    // Using: net(w.subrange(pair_i, pair_j+1))
-    //   = net(w[0..pair_j+1]) - net(w[0..pair_i]) (from suffix_net_level)
-    // And: net(w[0..pair_j+1]) = net(w[0..pair_i]) + 0 = net(w[0..pair_i])
-    // So we need to show net(w[0..pair_j+1]) = net(w[0..pair_i]).
-    // From suffix_net_level: net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - prefix_level.
-    // If we can show net(w.subrange(pair_i, pair_j+1)) = 0: then net(w[0..pair_j+1]) = prefix_level. ✓
+    //  Now: net(w.subrange(pair_i, pair_j+1)) = 1 + 0 + (-1) = 0
+    //  Using: net(w.subrange(pair_i, pair_j+1))
+    //    = net(w[0..pair_j+1]) - net(w[0..pair_i]) (from suffix_net_level)
+    //  And: net(w[0..pair_j+1]) = net(w[0..pair_i]) + 0 = net(w[0..pair_i])
+    //  So we need to show net(w[0..pair_j+1]) = net(w[0..pair_i]).
+    //  From suffix_net_level: net(w.subrange(pair_i, pair_j+1)) = net(w[0..pair_j+1]) - prefix_level.
+    //  If we can show net(w.subrange(pair_i, pair_j+1)) = 0: then net(w[0..pair_j+1]) = prefix_level. ✓
 
-    // Show net(w.subrange(pair_i, pair_j+1)) = 0 by decomposing it:
-    // w.subrange(pair_i, pair_j+1) = [w[pair_i]] ++ base_word ++ [w[pair_j]]
+    //  Show net(w.subrange(pair_i, pair_j+1)) = 0 by decomposing it:
+    //  w.subrange(pair_i, pair_j+1) = [w[pair_i]] ++ base_word ++ [w[pair_j]]
     let gen_s: Word = Seq::new(1, |_j: int| w[pair_i]);
     let inv_s: Word = Seq::new(1, |_j: int| w[pair_j]);
     let mid = w.subrange(pair_i, pair_j + 1);
@@ -4167,11 +4183,11 @@ proof fn lemma_pair_net_level_return(
     lemma_net_level_single(data, w[pair_i]);
     lemma_net_level_concat(data, base_word, inv_s);
     lemma_net_level_single(data, w[pair_j]);
-    // net(mid) = 1 + 0 + (-1) = 0
+    //  net(mid) = 1 + 0 + (-1) = 0
 }
 
-/// The suffix w[pair_j+1..] translates to a G₁ word at junction junc↔pl.
-/// Uses: suffix levels < max → translate valid for tower(junc).
+///  The suffix w[pair_j+1..] translates to a G₁ word at junction junc↔pl.
+///  Uses: suffix levels < max → translate valid for tower(junc).
 proof fn lemma_suffix_translate_g1(
     data: HNNData, w: Word, pair_i: int, pair_j: int, bl: nat, pl: nat,
 )
@@ -4203,19 +4219,19 @@ proof fn lemma_suffix_translate_g1(
     let prefix_level = net_level(data, w.subrange(0, pair_i));
     let w_suffix = w.subrange(pair_j + 1, w.len() as int);
 
-    // Suffix word_valid for HNN pres
+    //  Suffix word_valid for HNN pres
     assert(word_valid(w_suffix, hnn_presentation(data).num_generators)) by {
         assert forall|k: int| 0 <= k < w_suffix.len()
             implies symbol_valid(#[trigger] w_suffix[k], hnn_presentation(data).num_generators)
         by { assert(w_suffix[k] == w[pair_j + 1 + k]); }
     }
 
-    // Suffix running levels bounded: use lemma_suffix_levels_bounded
-    // Need: pair_j + 1 as split point, bl + prefix_level as shifted level at split
-    // bl + net_level(w[0..pair_j+1]) = bl + prefix_level = junc (from pair_net_level_return)
+    //  Suffix running levels bounded: use lemma_suffix_levels_bounded
+    //  Need: pair_j + 1 as split point, bl + prefix_level as shifted level at split
+    //  bl + net_level(w[0..pair_j+1]) = bl + prefix_level = junc (from pair_net_level_return)
     lemma_suffix_levels_bounded(data, w, pair_j + 1, bl as int, pl);
 
-    // Connect suffix subrange levels to translate validity
+    //  Connect suffix subrange levels to translate validity
     assert forall|k: int| #![trigger w_suffix.subrange(0, k)]
         0 <= k <= w_suffix.len() ==>
         0 <= (bl as int + prefix_level) + net_level(data, w_suffix.subrange(0, k)) <= junc as int
@@ -4233,7 +4249,7 @@ proof fn lemma_suffix_translate_g1(
     lemma_translate_word_valid_for_level(data, w_suffix, bl as int + prefix_level, junc);
 }
 
-/// Decompose translate(w) = tw_prefix · tw_g2 · tw_suffix at the Gen-Inv pair.
+///  Decompose translate(w) = tw_prefix · tw_g2 · tw_suffix at the Gen-Inv pair.
 proof fn lemma_translate_decompose_at_pair(
     data: HNNData, w: Word, pair_i: int, pair_j: int, bl: int,
 )
@@ -4263,7 +4279,7 @@ proof fn lemma_translate_decompose_at_pair(
     let w_prefix = w.subrange(0, pair_i);
     let w_suffix = w.subrange(pair_j + 1, w.len() as int);
 
-    // base_word valid
+    //  base_word valid
     assert(word_valid(base_word, ng)) by {
         assert forall|k: int| 0 <= k < base_word.len()
             implies symbol_valid(#[trigger] base_word[k], ng)
@@ -4277,20 +4293,20 @@ proof fn lemma_translate_decompose_at_pair(
         }
     }
 
-    // Gen·base·Inv segment
+    //  Gen·base·Inv segment
     let gen_base_inv = concat(Seq::new(1, |_j: int| Symbol::Gen(ng)),
         concat(base_word, Seq::new(1, |_j: int| Symbol::Inv(ng))));
 
-    // Net levels for the segment
+    //  Net levels for the segment
     lemma_net_level_concat(data, Seq::new(1, |_j: int| Symbol::Gen(ng)),
         concat(base_word, Seq::new(1, |_j: int| Symbol::Inv(ng))));
     lemma_net_level_single(data, Symbol::Gen(ng));
     lemma_net_level_concat(data, base_word, Seq::new(1, |_j: int| Symbol::Inv(ng)));
     lemma_net_level_single(data, Symbol::Inv(ng));
     lemma_net_level_base_word(data, base_word);
-    // net_level(gen_base_inv) = 0
+    //  net_level(gen_base_inv) = 0
 
-    // w = w_prefix · gen_base_inv · w_suffix
+    //  w = w_prefix · gen_base_inv · w_suffix
     assert(w =~= concat(w_prefix, concat(gen_base_inv, w_suffix))) by {
         assert forall|k: int| 0 <= k < w.len()
             implies w[k] == concat(w_prefix, concat(gen_base_inv, w_suffix))[k]
@@ -4301,20 +4317,20 @@ proof fn lemma_translate_decompose_at_pair(
         }
     }
 
-    // bl + prefix_level >= 0 (since bl >= 0 and prefix_level >= -bl from level bounds)
+    //  bl + prefix_level >= 0 (since bl >= 0 and prefix_level >= -bl from level bounds)
     assert(bl + prefix_level >= 0) by {
         lemma_prefix_level_bounded_by_k(data, w, pair_i);
     }
 
-    // Translate distributes
+    //  Translate distributes
     lemma_translate_concat(data, w_prefix, concat(gen_base_inv, w_suffix), bl);
     lemma_translate_concat(data, gen_base_inv, w_suffix, bl + prefix_level);
     lemma_translate_gen_base_inv(data, base_word, bl + prefix_level);
 }
 
-/// G₂ one-shot on the base word creates a right syllable when starting
-/// from a state with right_count = 0 (left-topped or empty).
-/// base_word ∉ B (from no-pinch) → product ∉ B → rep ≠ ε → prepend.
+///  G₂ one-shot on the base word creates a right syllable when starting
+///  from a state with right_count = 0 (left-topped or empty).
+///  base_word ∉ B (from no-pinch) → product ∉ B → rep ≠ ε → prepend.
 proof fn lemma_g2_creates_right_syllable(
     data: HNNData, base_word: Word,
     afp: AmalgamatedData, h: Word, syls: Seq<crate::normal_form_afp_textbook::Syllable>,
@@ -4328,16 +4344,16 @@ proof fn lemma_g2_creates_right_syllable(
         crate::normal_form_afp_textbook::action_preserves_canonical(afp),
         crate::normal_form_afp_textbook::is_canonical_state(afp, h, syls),
         word_valid(base_word, afp.p2.num_generators),
-        // base_word ∉ B (in the AFP's B-subgroup)
+        //  base_word ∉ B (in the AFP's B-subgroup)
         !crate::normal_form_amalgamated::in_right_subgroup(afp, base_word),
-        // State has right_count = 0
+        //  State has right_count = 0
         right_syllable_count(syls) == 0,
-        // b_words are valid
+        //  b_words are valid
         forall|i: int| 0 <= i < crate::normal_form_afp_textbook::b_words(afp).len()
             ==> word_valid(
                 #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i],
                 afp.p2.num_generators),
-        // K-size and h valid
+        //  K-size and h valid
         word_valid(h, crate::normal_form_afp_textbook::k_size(afp)),
     ensures ({
         use crate::normal_form_afp_textbook::*;
@@ -4348,39 +4364,39 @@ proof fn lemma_g2_creates_right_syllable(
 {
     use crate::normal_form_afp_textbook::*;
 
-    // G₂ one-shot
+    //  G₂ one-shot
     lemma_act_word_eq_g2_one_shot(afp, base_word, h, syls);
     let product = concat(base_word, apply_embedding(b_words(afp), h));
     let result = g2_one_shot_action(afp, product, syls);
 
-    // product ∉ B (from base_word ∉ B + embed_b(h) ∈ B + right-cancel)
+    //  product ∉ B (from base_word ∉ B + embed_b(h) ∈ B + right-cancel)
     lemma_not_in_subgroup_concat_embed_b(afp, base_word, h);
-    // product is word_valid for p2
+    //  product is word_valid for p2
     lemma_apply_embedding_valid(b_words(afp), h, afp.p2.num_generators);
     crate::word::lemma_concat_word_valid(
         base_word, apply_embedding(b_words(afp), h), afp.p2.num_generators);
-    // So rep ≠ ε
+    //  So rep ≠ ε
     lemma_not_in_right_subgroup_rep_nonempty(afp, product);
     let rep = b_rcoset_rep(afp, product);
 
-    // right_count(syls) = 0 → syls empty or left-topped.
-    // If empty: g2_one_shot case 2 → prepend right → right_count = 1
-    // If left-topped: g2_one_shot case 2 → prepend right → right_count = 1
-    // (Both go to the "prepend" branch since syls.len() == 0 || syls.first().is_left)
+    //  right_count(syls) = 0 → syls empty or left-topped.
+    //  If empty: g2_one_shot case 2 → prepend right → right_count = 1
+    //  If left-topped: g2_one_shot case 2 → prepend right → right_count = 1
+    //  (Both go to the "prepend" branch since syls.len() == 0 || syls.first().is_left)
 
-    // Need to show: syls.len() == 0 || syls.first().is_left
-    // This follows from right_count(syls) = 0: if syls non-empty and first is right,
-    // then right_count ≥ 1. Contradiction.
+    //  Need to show: syls.len() == 0 || syls.first().is_left
+    //  This follows from right_count(syls) = 0: if syls non-empty and first is right,
+    //  then right_count ≥ 1. Contradiction.
     if syls.len() > 0 && !syls.first().is_left {
-        // syls.first() is right → right_count ≥ 1. But right_count = 0. Contradiction.
+        //  syls.first() is right → right_count ≥ 1. But right_count = 0. Contradiction.
     }
-    // So: syls.len() == 0 || syls.first().is_left ✓
-    // g2_one_shot: rep ≠ ε and (empty or left-topped) → prepend right syllable
-    // result = (h_new, [Syllable(false, rep)] ++ syls)
-    // right_count of result = 1 + right_count(syls) = 1 + 0 = 1 ≥ 1. ✓
+    //  So: syls.len() == 0 || syls.first().is_left ✓
+    //  g2_one_shot: rep ≠ ε and (empty or left-topped) → prepend right syllable
+    //  result = (h_new, [Syllable(false, rep)] ++ syls)
+    //  right_count of result = 1 + right_count(syls) = 1 + 0 = 1 ≥ 1. ✓
 }
 
-/// Case A helper part 1: tower + AFP + act = identity.
+///  Case A helper part 1: tower + AFP + act = identity.
 proof fn lemma_case_a_act_identity(data: HNNData, w: Word) -> (result: (nat, nat))
     requires
         hnn_data_valid(data),
@@ -4428,72 +4444,72 @@ proof fn lemma_case_a_act_identity(data: HNNData, w: Word) -> (result: (nat, nat
 }
 
 
-// ============================================================
-// Part Y: Textbook-faithful Britton's Lemma (Miller Thm 3.10)
-// ============================================================
-// The textbook's ψ(p) always PREPENDS when the coset rep is non-trivial.
-// Our existing g2_one_shot_action sometimes MERGES same-type syllables.
-// To match the textbook exactly, we define textbook-faithful actions
-// that always prepend, then connect them to act_word for the contradiction.
+//  ============================================================
+//  Part Y: Textbook-faithful Britton's Lemma (Miller Thm 3.10)
+//  ============================================================
+//  The textbook's ψ(p) always PREPENDS when the coset rep is non-trivial.
+//  Our existing g2_one_shot_action sometimes MERGES same-type syllables.
+//  To match the textbook exactly, we define textbook-faithful actions
+//  that always prepend, then connect them to act_word for the contradiction.
 
-// --- Y.1: Textbook-faithful actions (Miller p.49) ---
+//  --- Y.1: Textbook-faithful actions (Miller p.49) ---
 //
-// Miller's ψ(p) on normal form g₀·p^{ε₁}·g₁·...·p^{εₘ}·gₘ:
-//   Write g₀ = b·z₀ (B-coset: b ∈ B, z₀ ∈ Z transversal)
-//   Let a = φ⁻¹(b).
-//   PREPEND when: ε₁ = +1, OR z₀ ≠ 1, OR m = 0
-//     Result: a·p·z₀·p^{ε₁}·g₁·...·gₘ
-//   COLLAPSE when: z₀ = 1 AND ε₁ = -1 AND m > 0
-//     Result: (a·g₁)·p^{ε₂}·...·gₘ
+//  Miller's ψ(p) on normal form g₀·p^{ε₁}·g₁·...·p^{εₘ}·gₘ:
+//    Write g₀ = b·z₀ (B-coset: b ∈ B, z₀ ∈ Z transversal)
+//    Let a = φ⁻¹(b).
+//    PREPEND when: ε₁ = +1, OR z₀ ≠ 1, OR m = 0
+//      Result: a·p·z₀·p^{ε₁}·g₁·...·gₘ
+//    COLLAPSE when: z₀ = 1 AND ε₁ = -1 AND m > 0
+//      Result: (a·g₁)·p^{ε₂}·...·gₘ
 //
-// In our (h, syls) model:
-//   rep = b_rcoset_rep(g) plays the role of z₀
-//   h_new = b_rcoset_h(g) — identification-index word for b
-//   Syllable is_left=true corresponds to p⁻¹ (ε = -1)
-//   Syllable is_left=false corresponds to p (ε = +1)
+//  In our (h, syls) model:
+//    rep = b_rcoset_rep(g) plays the role of z₀
+//    h_new = b_rcoset_h(g) — identification-index word for b
+//    Syllable is_left=true corresponds to p⁻¹ (ε = -1)
+//    Syllable is_left=false corresponds to p (ε = +1)
 //
-// ψ(p) creates RIGHT (is_left=false) syllables.
-// COLLAPSE happens when rep = ε AND top is LEFT (opposite type = p⁻¹).
+//  ψ(p) creates RIGHT (is_left=false) syllables.
+//  COLLAPSE happens when rep = ε AND top is LEFT (opposite type = p⁻¹).
 //
-// For p-reduced words: COLLAPSE never triggers (would require a pinch).
-// So every stable letter PREPENDs → exactly m syllables after processing.
+//  For p-reduced words: COLLAPSE never triggers (would require a pinch).
+//  So every stable letter PREPENDs → exactly m syllables after processing.
 
-/// Textbook's ψ(p): Miller p.49 exact 3-case action.
-/// PREPEND when rep ≠ ε OR top is same-type (right) or empty.
-/// COLLAPSE when rep = ε AND top is opposite-type (left) AND syls non-empty.
+///  Textbook's ψ(p): Miller p.49 exact 3-case action.
+///  PREPEND when rep ≠ ε OR top is same-type (right) or empty.
+///  COLLAPSE when rep = ε AND top is opposite-type (left) AND syls non-empty.
 pub open spec fn textbook_g2_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = crate::normal_form_afp_textbook::b_rcoset_rep(data, g);
     let h_new = crate::normal_form_afp_textbook::b_rcoset_h(data, g);
     if rep =~= empty_word() && syls.len() > 0 && syls.first().is_left {
-        // COLLAPSE (Miller Case 3): z₀ = 1 AND ε₁ = -1
-        // φ⁻¹(g) = embed_a(h_new), combine with first syllable's rep
+        //  COLLAPSE (Miller Case 3): z₀ = 1 AND ε₁ = -1
+        //  φ⁻¹(g) = embed_a(h_new), combine with first syllable's rep
         let phi_inv = apply_embedding(
             crate::normal_form_afp_textbook::a_words(data), h_new);
         let new_leading = concat(phi_inv, syls.first().rep);
-        // The new leading coefficient is new_leading in G₁
-        // Store as identification-index word via A-coset decomposition
+        //  The new leading coefficient is new_leading in G₁
+        //  Store as identification-index word via A-coset decomposition
         let collapsed_h = crate::normal_form_afp_textbook::a_rcoset_h(
             data, new_leading);
         (collapsed_h, syls.drop_first())
     } else {
-        // PREPEND (Miller Cases 1+2 + implicit m=0 case)
-        // This covers: rep ≠ ε, OR rep = ε with same-type/empty top
+        //  PREPEND (Miller Cases 1+2 + implicit m=0 case)
+        //  This covers: rep ≠ ε, OR rep = ε with same-type/empty top
         (h_new, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
     }
 }
 
-/// Textbook's ψ(p⁻¹): Miller p.49 symmetric 3-case action.
-/// PREPEND when rep ≠ ε OR top is same-type (left) or empty.
-/// COLLAPSE when rep = ε AND top is opposite-type (right) AND syls non-empty.
+///  Textbook's ψ(p⁻¹): Miller p.49 symmetric 3-case action.
+///  PREPEND when rep ≠ ε OR top is same-type (left) or empty.
+///  COLLAPSE when rep = ε AND top is opposite-type (right) AND syls non-empty.
 pub open spec fn textbook_g1_action(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let rep = crate::normal_form_afp_textbook::a_rcoset_rep(data, g);
     let h_new = crate::normal_form_afp_textbook::a_rcoset_h(data, g);
     if rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left {
-        // COLLAPSE: y₀ = 1 AND ε₁ = +1 (opposite type for p⁻¹)
+        //  COLLAPSE: y₀ = 1 AND ε₁ = +1 (opposite type for p⁻¹)
         let phi = apply_embedding(
             crate::normal_form_afp_textbook::b_words(data), h_new);
         let new_leading = concat(phi, syls.first().rep);
@@ -4501,22 +4517,22 @@ pub open spec fn textbook_g1_action(
             data, new_leading);
         (collapsed_h, syls.drop_first())
     } else {
-        // PREPEND
+        //  PREPEND
         (h_new, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
     }
 }
 
-// --- Y.2: Length properties of textbook actions ---
-// With Miller's 3-case action:
-//   PREPEND (not collapse): syls.len() + 1
-//   COLLAPSE: syls.len() - 1
+//  --- Y.2: Length properties of textbook actions ---
+//  With Miller's 3-case action:
+//    PREPEND (not collapse): syls.len() + 1
+//    COLLAPSE: syls.len() - 1
 
-/// G₂ textbook PREPEND case: when not collapsing, length increases by 1.
+///  G₂ textbook PREPEND case: when not collapsing, length increases by 1.
 proof fn lemma_textbook_g2_prepend_length(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 )
     requires
-        // NOT in collapse case
+        //  NOT in collapse case
         !(crate::normal_form_afp_textbook::b_rcoset_rep(data, g) =~= empty_word()
           && syls.len() > 0 && syls.first().is_left),
     ensures
@@ -4527,12 +4543,12 @@ proof fn lemma_textbook_g2_prepend_length(
     assert((new_syl + syls).len() == 1 + syls.len());
 }
 
-/// G₁ textbook PREPEND case: when not collapsing, length increases by 1.
+///  G₁ textbook PREPEND case: when not collapsing, length increases by 1.
 proof fn lemma_textbook_g1_prepend_length(
     data: AmalgamatedData, g: Word, syls: Seq<Syllable>,
 )
     requires
-        // NOT in collapse case
+        //  NOT in collapse case
         !(crate::normal_form_afp_textbook::a_rcoset_rep(data, g) =~= empty_word()
           && syls.len() > 0 && !syls.first().is_left),
     ensures
@@ -4543,79 +4559,79 @@ proof fn lemma_textbook_g1_prepend_length(
     assert((new_syl + syls).len() == 1 + syls.len());
 }
 
-// --- Y.3: No-collapse for p-reduced words ---
-// For p-reduced words, the COLLAPSE case of ψ(p) / ψ(p⁻¹) never triggers.
-// This is because COLLAPSE requires rep = ε (base word ∈ subgroup) AND
-// opposite-type top, which together would form a pinch.
+//  --- Y.3: No-collapse for p-reduced words ---
+//  For p-reduced words, the COLLAPSE case of ψ(p) / ψ(p⁻¹) never triggers.
+//  This is because COLLAPSE requires rep = ε (base word ∈ subgroup) AND
+//  opposite-type top, which together would form a pinch.
 //
-// More precisely:
-// - ψ(p) COLLAPSE: rep = ε means g ∈ B, and top is left (p⁻¹).
-//   This forms t·(g∈B)·t⁻¹ = pinch. Contradicts ¬has_pinch.
-// - ψ(p⁻¹) COLLAPSE: rep = ε means g ∈ A, and top is right (p).
-//   This forms t⁻¹·(g∈A)·t = pinch. Contradicts ¬has_pinch.
+//  More precisely:
+//  - ψ(p) COLLAPSE: rep = ε means g ∈ B, and top is left (p⁻¹).
+//    This forms t·(g∈B)·t⁻¹ = pinch. Contradicts ¬has_pinch.
+//  - ψ(p⁻¹) COLLAPSE: rep = ε means g ∈ A, and top is right (p).
+//    This forms t⁻¹·(g∈A)·t = pinch. Contradicts ¬has_pinch.
 //
-// The exact connection between the textbook action's collapse condition and
-// has_pinch in the HNN word will be established in the main inductive lemma.
+//  The exact connection between the textbook action's collapse condition and
+//  has_pinch in the HNN word will be established in the main inductive lemma.
 
-// --- Y.3b: Miller's θ⋆ψ representation (operates on HNN words directly) ---
+//  --- Y.3b: Miller's θ⋆ψ representation (operates on HNN words directly) ---
 //
-// Miller's permutation representation processes the HNN word directly:
-//   θ(g): base element g LEFT-multiplies the leading coefficient
-//   ψ(p): B-coset decompose leading coefficient, PREPEND or COLLAPSE
-//   ψ(p⁻¹): A-coset decompose, PREPEND or COLLAPSE
+//  Miller's permutation representation processes the HNN word directly:
+//    θ(g): base element g LEFT-multiplies the leading coefficient
+//    ψ(p): B-coset decompose leading coefficient, PREPEND or COLLAPSE
+//    ψ(p⁻¹): A-coset decompose, PREPEND or COLLAPSE
 //
-// State: (h, syls) where h is a BASE GROUP word (leading coefficient)
-// and syls stores the syllable sequence with coset representatives.
+//  State: (h, syls) where h is a BASE GROUP word (leading coefficient)
+//  and syls stores the syllable sequence with coset representatives.
 //
-// Processing is right-to-left (textbook's left-action convention).
-// This matches act_word's right-to-left processing of the translate.
+//  Processing is right-to-left (textbook's left-action convention).
+//  This matches act_word's right-to-left processing of the translate.
 
-/// Miller's ψ(p): B-coset decompose base word h, then PREPEND or COLLAPSE.
-/// Operates on a base word h (not an AFP identification-index word).
-/// Returns (new_base_word, new_syls).
+///  Miller's ψ(p): B-coset decompose base word h, then PREPEND or COLLAPSE.
+///  Operates on a base word h (not an AFP identification-index word).
+///  Returns (new_base_word, new_syls).
 pub open spec fn textbook_psi_p(
     data: HNNData, h: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let afp = tower_afp_data(data, 0);
     let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
     let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
-    // φ⁻¹(b): map B-part to A via identification
+    //  φ⁻¹(b): map B-part to A via identification
     let phi_inv_h = apply_embedding(
         crate::normal_form_afp_textbook::a_words(afp), h_id);
     if rep =~= empty_word() && syls.len() > 0 && syls.first().is_left {
-        // COLLAPSE (Miller Case 3): h ∈ B, top is p⁻¹
-        // New leading = φ⁻¹(h) · first_rep
+        //  COLLAPSE (Miller Case 3): h ∈ B, top is p⁻¹
+        //  New leading = φ⁻¹(h) · first_rep
         (concat(phi_inv_h, syls.first().rep), syls.drop_first())
     } else {
-        // PREPEND (Miller Cases 1+2 + m=0)
-        // New leading = φ⁻¹(b) where h = b·z₀
+        //  PREPEND (Miller Cases 1+2 + m=0)
+        //  New leading = φ⁻¹(b) where h = b·z₀
         (phi_inv_h, Seq::new(1, |_i: int| Syllable { is_left: false, rep: rep }) + syls)
     }
 }
 
-/// Miller's ψ(p⁻¹): A-coset decompose base word h, then PREPEND or COLLAPSE.
+///  Miller's ψ(p⁻¹): A-coset decompose base word h, then PREPEND or COLLAPSE.
 pub open spec fn textbook_psi_p_inv(
     data: HNNData, h: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>) {
     let afp = tower_afp_data(data, 0);
     let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
     let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
-    // φ(a): map A-part to B via identification
+    //  φ(a): map A-part to B via identification
     let phi_h = apply_embedding(
         crate::normal_form_afp_textbook::b_words(afp), h_id);
     if rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left {
-        // COLLAPSE: h ∈ A, top is p (right)
+        //  COLLAPSE: h ∈ A, top is p (right)
         (concat(phi_h, syls.first().rep), syls.drop_first())
     } else {
-        // PREPEND
+        //  PREPEND
         (phi_h, Seq::new(1, |_i: int| Syllable { is_left: true, rep: rep }) + syls)
     }
 }
 
-/// Miller's θ⋆ψ: process HNN word right-to-left.
-/// Base symbols: θ (left-multiply leading coefficient).
-/// Gen (t): ψ(p) (B-coset decompose + prepend/collapse).
-/// Inv (t⁻¹): ψ(p⁻¹) (A-coset decompose + prepend/collapse).
+///  Miller's θ⋆ψ: process HNN word right-to-left.
+///  Base symbols: θ (left-multiply leading coefficient).
+///  Gen (t): ψ(p) (B-coset decompose + prepend/collapse).
+///  Inv (t⁻¹): ψ(p⁻¹) (A-coset decompose + prepend/collapse).
 pub open spec fn textbook_act_hnn(
     data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
 ) -> (Word, Seq<Syllable>)
@@ -4627,26 +4643,26 @@ pub open spec fn textbook_act_hnn(
         let s = w.last();
         let ng = data.base.num_generators;
         if s == Symbol::Gen(ng) {
-            // ψ(p): apply to current state, then process rest
+            //  ψ(p): apply to current state, then process rest
             let (h_new, syls_new) = textbook_psi_p(data, h, syls);
             textbook_act_hnn(data, w.drop_last(), h_new, syls_new)
         } else if s == Symbol::Inv(ng) {
-            // ψ(p⁻¹)
+            //  ψ(p⁻¹)
             let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
             textbook_act_hnn(data, w.drop_last(), h_new, syls_new)
         } else {
-            // θ(s): left-multiply leading coefficient
+            //  θ(s): left-multiply leading coefficient
             let new_h = concat(Seq::new(1, |_i: int| s), h);
             textbook_act_hnn(data, w.drop_last(), new_h, syls)
         }
     }
 }
 
-// --- Y.4: HNN word segment decomposition ---
-// The textbook's p-expression: g₀·p^{ε₁}·g₁·p^{ε₂}·...·p^{εₘ}·gₘ
-// We formalize this by extracting segments from the flat word.
+//  --- Y.4: HNN word segment decomposition ---
+//  The textbook's p-expression: g₀·p^{ε₁}·g₁·p^{ε₂}·...·p^{εₘ}·gₘ
+//  We formalize this by extracting segments from the flat word.
 
-/// Number of stable letters in w (= m in the textbook's notation).
+///  Number of stable letters in w (= m in the textbook's notation).
 pub open spec fn stable_count(data: HNNData, w: Word) -> nat
     decreases w.len(),
 {
@@ -4658,8 +4674,8 @@ pub open spec fn stable_count(data: HNNData, w: Word) -> nat
     }
 }
 
-/// Position of the last stable letter, or -1 if none.
-/// This is where we split: w = leading · [last_stable] · trailing_segment.
+///  Position of the last stable letter, or -1 if none.
+///  This is where we split: w = leading · [last_stable] · trailing_segment.
 pub open spec fn last_stable_pos(data: HNNData, w: Word) -> int
     decreases w.len(),
 {
@@ -4668,27 +4684,27 @@ pub open spec fn last_stable_pos(data: HNNData, w: Word) -> int
     else { last_stable_pos(data, w.drop_last()) }
 }
 
-/// The trailing base segment: everything after the last stable letter.
-/// If no stable letters: the entire word.
-/// This is gₘ in the textbook's notation.
+///  The trailing base segment: everything after the last stable letter.
+///  If no stable letters: the entire word.
+///  This is gₘ in the textbook's notation.
 pub open spec fn trailing_segment(data: HNNData, w: Word) -> Word {
     let lsp = last_stable_pos(data, w);
     if lsp < 0 { w }
     else { w.subrange(lsp + 1, w.len() as int) }
 }
 
-/// The leading part: everything up to AND including the last stable letter.
-/// If no stable letters: empty.
-/// This is g₀·s₁·g₁·...·sₘ (without gₘ) in the textbook's notation.
+///  The leading part: everything up to AND including the last stable letter.
+///  If no stable letters: empty.
+///  This is g₀·s₁·g₁·...·sₘ (without gₘ) in the textbook's notation.
 pub open spec fn leading_part(data: HNNData, w: Word) -> Word {
     let lsp = last_stable_pos(data, w);
     if lsp < 0 { empty_word() }
     else { w.subrange(0, lsp + 1) }
 }
 
-// --- Y.5: Segment properties ---
+//  --- Y.5: Segment properties ---
 
-/// last_stable_pos is in [-1, w.len()-1] and if ≥ 0, w[lsp] is stable.
+///  last_stable_pos is in [-1, w.len()-1] and if ≥ 0, w[lsp] is stable.
 proof fn lemma_last_stable_pos_bounds(data: HNNData, w: Word)
     ensures
         -1 <= last_stable_pos(data, w) < w.len() as int,
@@ -4708,7 +4724,7 @@ proof fn lemma_last_stable_pos_bounds(data: HNNData, w: Word)
     }
 }
 
-/// w = leading_part(w) · trailing_segment(w).
+///  w = leading_part(w) · trailing_segment(w).
 proof fn lemma_segment_partition(data: HNNData, w: Word)
     ensures
         w =~= concat(leading_part(data, w), trailing_segment(data, w)),
@@ -4716,7 +4732,7 @@ proof fn lemma_segment_partition(data: HNNData, w: Word)
 {
     if w.len() == 0 {
     } else if is_stable(data, w[w.len() - 1]) {
-        // Last symbol is stable. leading = w[0..w.len()], trailing = ε.
+        //  Last symbol is stable. leading = w[0..w.len()], trailing = ε.
         assert(trailing_segment(data, w) =~= w.subrange(w.len() as int, w.len() as int));
         assert(leading_part(data, w) =~= w.subrange(0, w.len() as int));
         assert(w.subrange(0, w.len() as int) =~= w);
@@ -4725,18 +4741,18 @@ proof fn lemma_segment_partition(data: HNNData, w: Word)
                 implies concat(w, empty_word())[k] == w[k] by {}
         }
     } else {
-        // Last symbol is base. Recurse on w.drop_last().
+        //  Last symbol is base. Recurse on w.drop_last().
         lemma_segment_partition(data, w.drop_last());
-        // trailing_segment(w) = trailing_segment(w.drop_last()) · [w.last()]
-        // or equivalently: w[lsp+1..w.len()] where lsp = last_stable_pos
-        // leading_part(w) = leading_part(w.drop_last())
-        // These follow from last_stable_pos(w) = last_stable_pos(w.drop_last())
-        // when w.last() is not stable.
+        //  trailing_segment(w) = trailing_segment(w.drop_last()) · [w.last()]
+        //  or equivalently: w[lsp+1..w.len()] where lsp = last_stable_pos
+        //  leading_part(w) = leading_part(w.drop_last())
+        //  These follow from last_stable_pos(w) = last_stable_pos(w.drop_last())
+        //  when w.last() is not stable.
         let dl = w.drop_last();
         assert(last_stable_pos(data, w) == last_stable_pos(data, dl));
         let lsp = last_stable_pos(data, w);
         if lsp < 0 {
-            // No stable letters: leading = ε, trailing = w.
+            //  No stable letters: leading = ε, trailing = w.
             assert(leading_part(data, w) =~= empty_word());
             assert(trailing_segment(data, w) =~= w);
         } else {
@@ -4756,7 +4772,7 @@ proof fn lemma_segment_partition(data: HNNData, w: Word)
     }
 }
 
-/// The trailing segment has no stable letters.
+///  The trailing segment has no stable letters.
 proof fn lemma_trailing_no_stable(data: HNNData, w: Word)
     ensures
         forall|k: int| 0 <= k < trailing_segment(data, w).len()
@@ -4765,24 +4781,24 @@ proof fn lemma_trailing_no_stable(data: HNNData, w: Word)
 {
     if w.len() == 0 {
     } else if is_stable(data, w[w.len() - 1]) {
-        // trailing = ε. Vacuously true.
+        //  trailing = ε. Vacuously true.
     } else {
         lemma_trailing_no_stable(data, w.drop_last());
         let lsp = last_stable_pos(data, w);
         let ts = trailing_segment(data, w);
         if lsp < 0 {
-            // No stable: trailing = w. Each symbol of w... hmm we need word_valid.
-            // Actually: we just need no stable in w. But w might have stable letters
-            // that last_stable_pos missed? No: lsp < 0 means NO stable letters in w.
-            // So: all symbols are non-stable.
+            //  No stable: trailing = w. Each symbol of w... hmm we need word_valid.
+            //  Actually: we just need no stable in w. But w might have stable letters
+            //  that last_stable_pos missed? No: lsp < 0 means NO stable letters in w.
+            //  So: all symbols are non-stable.
             assert forall|k: int| 0 <= k < ts.len()
                 implies !is_stable(data, #[trigger] ts[k])
             by {
                 assert(ts[k] == w[k]);
-                // lsp < 0 → no stable in w → w[k] not stable.
-                // Prove: lsp < 0 means forall k: !is_stable(w[k]).
-                // This follows from last_stable_pos recursion: if any stable exists,
-                // lsp ≥ 0.
+                //  lsp < 0 → no stable in w → w[k] not stable.
+                //  Prove: lsp < 0 means forall k: !is_stable(w[k]).
+                //  This follows from last_stable_pos recursion: if any stable exists,
+                //  lsp ≥ 0.
                 lemma_no_stable_when_lsp_neg(data, w, k);
             }
         } else {
@@ -4801,7 +4817,7 @@ proof fn lemma_trailing_no_stable(data: HNNData, w: Word)
     }
 }
 
-/// If lsp < 0: no stable letters in w.
+///  If lsp < 0: no stable letters in w.
 proof fn lemma_no_stable_when_lsp_neg(data: HNNData, w: Word, pos: int)
     requires
         last_stable_pos(data, w) < 0,
@@ -4811,10 +4827,10 @@ proof fn lemma_no_stable_when_lsp_neg(data: HNNData, w: Word, pos: int)
 {
     if w.len() == 0 {
     } else if is_stable(data, w[w.len() - 1]) {
-        // lsp = w.len() - 1 ≥ 0. Contradicts lsp < 0.
+        //  lsp = w.len() - 1 ≥ 0. Contradicts lsp < 0.
     } else {
         if pos == w.len() - 1 {
-            // w[pos] = w.last() which is not stable (from the else branch).
+            //  w[pos] = w.last() which is not stable (from the else branch).
         } else {
             lemma_no_stable_when_lsp_neg(data, w.drop_last(), pos);
             assert(w.drop_last()[pos] == w[pos]);
@@ -4822,7 +4838,7 @@ proof fn lemma_no_stable_when_lsp_neg(data: HNNData, w: Word, pos: int)
     }
 }
 
-/// No stable letters after last_stable_pos.
+///  No stable letters after last_stable_pos.
 proof fn lemma_no_stable_after_lsp(data: HNNData, w: Word, pos: int)
     requires
         last_stable_pos(data, w) >= 0,
@@ -4833,12 +4849,12 @@ proof fn lemma_no_stable_after_lsp(data: HNNData, w: Word, pos: int)
 {
     if w.len() == 0 {
     } else if is_stable(data, w[w.len() - 1]) {
-        // lsp = w.len() - 1. pos > lsp → pos > w.len() - 1 → pos ≥ w.len().
-        // But pos < w.len(). Contradiction.
+        //  lsp = w.len() - 1. pos > lsp → pos > w.len() - 1 → pos ≥ w.len().
+        //  But pos < w.len(). Contradiction.
     } else {
-        // lsp(w) = lsp(w.drop_last()). And w.last() not stable.
+        //  lsp(w) = lsp(w.drop_last()). And w.last() not stable.
         if pos == w.len() - 1 {
-            // w[pos] = w.last() not stable.
+            //  w[pos] = w.last() not stable.
         } else {
             lemma_no_stable_after_lsp(data, w.drop_last(), pos);
             assert(w.drop_last()[pos] == w[pos]);
@@ -4846,7 +4862,7 @@ proof fn lemma_no_stable_after_lsp(data: HNNData, w: Word, pos: int)
     }
 }
 
-/// stable_count distributes over concat.
+///  stable_count distributes over concat.
 proof fn lemma_stable_count_concat(data: HNNData, a: Word, b: Word)
     ensures stable_count(data, concat(a, b))
         == stable_count(data, a) + stable_count(data, b),
@@ -4856,11 +4872,11 @@ proof fn lemma_stable_count_concat(data: HNNData, a: Word, b: Word)
         assert(concat(a, b) =~= a);
     } else {
         let ab = concat(a, b);
-        // concat(a, b).last() == b.last()
+        //  concat(a, b).last() == b.last()
         assert(ab.last() == b.last()) by {
             assert(ab[ab.len() - 1] == b[b.len() - 1]);
         }
-        // concat(a, b).drop_last() =~= concat(a, b.drop_last())
+        //  concat(a, b).drop_last() =~= concat(a, b.drop_last())
         assert(ab.drop_last() =~= concat(a, b.drop_last())) by {
             assert forall|k: int| 0 <= k < concat(a, b.drop_last()).len()
                 implies ab.drop_last()[k] == concat(a, b.drop_last())[k]
@@ -4870,7 +4886,7 @@ proof fn lemma_stable_count_concat(data: HNNData, a: Word, b: Word)
     }
 }
 
-/// A word with no stable letters has stable_count 0.
+///  A word with no stable letters has stable_count 0.
 proof fn lemma_stable_count_no_stable(data: HNNData, w: Word)
     requires forall|k: int| 0 <= k < w.len()
         ==> !is_stable(data, #[trigger] w[k]),
@@ -4886,7 +4902,7 @@ proof fn lemma_stable_count_no_stable(data: HNNData, w: Word)
     }
 }
 
-/// A length-1 word with a stable letter has stable_count 1.
+///  A length-1 word with a stable letter has stable_count 1.
 proof fn lemma_stable_count_single(data: HNNData, w: Word)
     requires w.len() == 1, is_stable(data, w[0]),
     ensures stable_count(data, w) == 1,
@@ -4895,8 +4911,8 @@ proof fn lemma_stable_count_single(data: HNNData, w: Word)
     assert(w.last() == w[0]);
 }
 
-/// If has_stable_letter: leading_part is non-empty and ends with a stable letter.
-/// And stable_count of leading_part.drop_last() = stable_count(w) - 1.
+///  If has_stable_letter: leading_part is non-empty and ends with a stable letter.
+///  And stable_count of leading_part.drop_last() = stable_count(w) - 1.
 proof fn lemma_leading_part_props(data: HNNData, w: Word)
     requires has_stable_letter(data, w),
     ensures
@@ -4914,22 +4930,22 @@ proof fn lemma_leading_part_props(data: HNNData, w: Word)
     let ts = trailing_segment(data, w);
     let lp_drop = lp.drop_last();
 
-    // leading_part = w[0..lsp+1], so lp.last() = w[lsp] (stable)
-    // lp_drop = w[0..lsp]
+    //  leading_part = w[0..lsp+1], so lp.last() = w[lsp] (stable)
+    //  lp_drop = w[0..lsp]
 
-    // w =~= concat(lp, ts) from partition
+    //  w =~= concat(lp, ts) from partition
     lemma_segment_partition(data, w);
 
-    // stable_count(concat(lp, ts)) = stable_count(lp) + stable_count(ts)
+    //  stable_count(concat(lp, ts)) = stable_count(lp) + stable_count(ts)
     lemma_stable_count_concat(data, lp, ts);
 
-    // trailing has no stable letters → stable_count(ts) = 0
+    //  trailing has no stable letters → stable_count(ts) = 0
     assert(stable_count(data, ts) == 0) by {
         lemma_trailing_no_stable(data, w);
         lemma_stable_count_no_stable(data, ts);
     }
 
-    // lp = concat(lp_drop, [w[lsp]])
+    //  lp = concat(lp_drop, [w[lsp]])
     let last_sym = Seq::new(1, |_i: int| w[lsp]);
     assert(lp =~= concat(lp_drop, last_sym)) by {
         assert forall|k: int| 0 <= k < lp.len()
@@ -4937,15 +4953,15 @@ proof fn lemma_leading_part_props(data: HNNData, w: Word)
         by {}
     }
 
-    // stable_count([w[lsp]]) = 1 (w[lsp] is stable)
+    //  stable_count([w[lsp]]) = 1 (w[lsp] is stable)
     assert(last_sym[0] == w[lsp]);
     lemma_stable_count_single(data, last_sym);
 
-    // stable_count(lp) = stable_count(lp_drop) + 1
+    //  stable_count(lp) = stable_count(lp_drop) + 1
     lemma_stable_count_concat(data, lp_drop, last_sym);
 }
 
-/// If w has a stable letter, last_stable_pos ≥ 0.
+///  If w has a stable letter, last_stable_pos ≥ 0.
 proof fn lemma_lsp_ge_zero_when_stable(data: HNNData, w: Word)
     requires has_stable_letter(data, w),
     ensures last_stable_pos(data, w) >= 0,
@@ -4955,8 +4971,8 @@ proof fn lemma_lsp_ge_zero_when_stable(data: HNNData, w: Word)
     if w.len() == 0 {
     } else if is_stable(data, w[w.len() - 1]) {
     } else {
-        // w.last() not stable. If witness < w.len() - 1: witness is in w.drop_last().
-        // If witness = w.len() - 1: w[witness] is stable but w.last() not stable. Contradiction.
+        //  w.last() not stable. If witness < w.len() - 1: witness is in w.drop_last().
+        //  If witness = w.len() - 1: w[witness] is stable but w.last() not stable. Contradiction.
         if witness == w.len() - 1 {
         } else {
             assert(w.drop_last()[witness] == w[witness]);
@@ -4968,11 +4984,11 @@ proof fn lemma_lsp_ge_zero_when_stable(data: HNNData, w: Word)
     }
 }
 
-// ============================================================
-// Part Y.6: Miller's θ⋆ψ gives m syllables for p-reduced words
-// ============================================================
+//  ============================================================
+//  Part Y.6: Miller's θ⋆ψ gives m syllables for p-reduced words
+//  ============================================================
 
-/// On a base-only word (no stable letters), textbook_act_hnn just accumulates h.
+///  On a base-only word (no stable letters), textbook_act_hnn just accumulates h.
 proof fn lemma_textbook_base_only(data: HNNData, w: Word, h: Word, syls: Seq<Syllable>)
     requires
         hnn_data_valid(data),
@@ -4991,7 +5007,7 @@ proof fn lemma_textbook_base_only(data: HNNData, w: Word, h: Word, syls: Seq<Syl
             implies !is_stable(data, #[trigger] w.drop_last()[k])
         by { assert(w.drop_last()[k] == w[k]); }
         lemma_textbook_base_only(data, w.drop_last(), new_h, syls);
-        // Need: concat(w, h) =~= concat(w.drop_last(), concat([s], h))
+        //  Need: concat(w, h) =~= concat(w.drop_last(), concat([s], h))
         assert(concat(w, h) =~= concat(w.drop_last(), concat(Seq::new(1, |_i: int| s), h))) by {
             assert forall|k: int| 0 <= k < concat(w, h).len()
                 implies concat(w, h)[k]
@@ -5013,8 +5029,8 @@ proof fn lemma_textbook_base_only(data: HNNData, w: Word, h: Word, syls: Seq<Syl
     }
 }
 
-/// Composition: textbook_act_hnn(concat(a, b)) = textbook_act_hnn(a, textbook_act_hnn(b, ...)).
-/// Right-to-left processing: b (rightmost) is processed first, then a.
+///  Composition: textbook_act_hnn(concat(a, b)) = textbook_act_hnn(a, textbook_act_hnn(b, ...)).
+///  Right-to-left processing: b (rightmost) is processed first, then a.
 proof fn lemma_textbook_act_concat(
     data: HNNData, a: Word, b: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -5032,17 +5048,17 @@ proof fn lemma_textbook_act_concat(
         let s = b.last();
         let ng = data.base.num_generators;
         let ab = concat(a, b);
-        // ab.last() == b.last()
+        //  ab.last() == b.last()
         assert(ab.last() == b.last()) by {
             assert(ab[ab.len() - 1] == b[b.len() - 1]);
         }
-        // ab.drop_last() =~= concat(a, b.drop_last())
+        //  ab.drop_last() =~= concat(a, b.drop_last())
         assert(ab.drop_last() =~= concat(a, b.drop_last())) by {
             assert forall|k: int| 0 <= k < concat(a, b.drop_last()).len()
                 implies ab.drop_last()[k] == concat(a, b.drop_last())[k]
             by { assert(ab.drop_last()[k] == ab[k]); }
         }
-        // Now unfold textbook_act_hnn on both sides and apply IH
+        //  Now unfold textbook_act_hnn on both sides and apply IH
         if s == Symbol::Gen(ng) {
             let (h_new, syls_new) = textbook_psi_p(data, h, syls);
             lemma_textbook_act_concat(data, a, b.drop_last(), h_new, syls_new);
@@ -5056,9 +5072,9 @@ proof fn lemma_textbook_act_concat(
     }
 }
 
-/// Decompose textbook_act_hnn at the last stable letter.
-/// w = leading_part.drop_last() · [w[lsp]] · trailing_segment
-/// Processing: trailing (base) → ψ at w[lsp] → recurse on prefix.
+///  Decompose textbook_act_hnn at the last stable letter.
+///  w = leading_part.drop_last() · [w[lsp]] · trailing_segment
+///  Processing: trailing (base) → ψ at w[lsp] → recurse on prefix.
 proof fn lemma_textbook_act_decompose(
     data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -5070,12 +5086,12 @@ proof fn lemma_textbook_act_decompose(
         let ts = trailing_segment(data, w);
         let lp = leading_part(data, w);
         let stable_sym = Seq::new(1, |_i: int| w[lsp]);
-        // Step 1: trailing segment accumulates into h
+        //  Step 1: trailing segment accumulates into h
         let h_after_trailing = concat(ts, h);
-        // Step 2: stable letter applies ψ
+        //  Step 2: stable letter applies ψ
         let (h_after_psi, syls_after_psi) =
             textbook_act_hnn(data, stable_sym, h_after_trailing, syls);
-        // Step 3: prefix processes recursively
+        //  Step 3: prefix processes recursively
         textbook_act_hnn(data, w, h, syls)
             == textbook_act_hnn(data, lp.drop_last(), h_after_psi, syls_after_psi)
     }),
@@ -5086,10 +5102,10 @@ proof fn lemma_textbook_act_decompose(
     let ts = trailing_segment(data, w);
     let lp = leading_part(data, w);
 
-    // w =~= concat(lp, ts) by partition
+    //  w =~= concat(lp, ts) by partition
     lemma_segment_partition(data, w);
 
-    // lp = concat(lp.drop_last(), [w[lsp]])
+    //  lp = concat(lp.drop_last(), [w[lsp]])
     let stable_sym = Seq::new(1, |_i: int| w[lsp]);
     assert(lp =~= concat(lp.drop_last(), stable_sym)) by {
         assert forall|k: int| 0 <= k < lp.len()
@@ -5097,25 +5113,25 @@ proof fn lemma_textbook_act_decompose(
         by {}
     }
 
-    // So w =~= concat(concat(lp.drop_last(), stable_sym), ts)
-    //       =~= concat(lp.drop_last(), concat(stable_sym, ts))
-    // By composition: textbook_act(w) = textbook_act(lp.drop_last(), textbook_act(concat(stable_sym, ts)))
+    //  So w =~= concat(concat(lp.drop_last(), stable_sym), ts)
+    //        =~= concat(lp.drop_last(), concat(stable_sym, ts))
+    //  By composition: textbook_act(w) = textbook_act(lp.drop_last(), textbook_act(concat(stable_sym, ts)))
 
-    // First: textbook_act(concat(stable_sym, ts)) by composition
+    //  First: textbook_act(concat(stable_sym, ts)) by composition
     lemma_textbook_act_concat(data, lp.drop_last(), concat(stable_sym, ts), h, syls);
 
-    // Second: textbook_act(concat(stable_sym, ts)) = textbook_act(stable_sym, textbook_act(ts))
+    //  Second: textbook_act(concat(stable_sym, ts)) = textbook_act(stable_sym, textbook_act(ts))
     lemma_textbook_act_concat(data, stable_sym, ts, h, syls);
 
-    // Third: textbook_act(ts) on base-only word = (concat(ts, h), syls)
+    //  Third: textbook_act(ts) on base-only word = (concat(ts, h), syls)
     assert forall|k: int| 0 <= k < ts.len()
         implies !is_stable(data, #[trigger] ts[k])
     by { lemma_trailing_no_stable(data, w); }
     lemma_textbook_base_only(data, ts, h, syls);
 
-    // Combine: w =~= concat(lp.drop_last(), concat(stable_sym, ts))
+    //  Combine: w =~= concat(lp.drop_last(), concat(stable_sym, ts))
     assert(w =~= concat(lp.drop_last(), concat(stable_sym, ts))) by {
-        // w =~= concat(lp, ts) =~= concat(concat(lp_drop, [s]), ts) =~= concat(lp_drop, concat([s], ts))
+        //  w =~= concat(lp, ts) =~= concat(concat(lp_drop, [s]), ts) =~= concat(lp_drop, concat([s], ts))
         assert forall|k: int| 0 <= k < w.len()
             implies w[k] == concat(lp.drop_last(), concat(stable_sym, ts))[k]
         by {
@@ -5130,7 +5146,7 @@ proof fn lemma_textbook_act_decompose(
     }
 }
 
-/// ψ(p) length: PREPEND gives +1, COLLAPSE gives -1.
+///  ψ(p) length: PREPEND gives +1, COLLAPSE gives -1.
 proof fn lemma_textbook_psi_p_length(data: HNNData, h: Word, syls: Seq<Syllable>)
     requires hnn_data_valid(data),
     ensures ({
@@ -5152,7 +5168,7 @@ proof fn lemma_textbook_psi_p_length(data: HNNData, h: Word, syls: Seq<Syllable>
     }
 }
 
-/// ψ(p⁻¹) length: PREPEND gives +1, COLLAPSE gives -1.
+///  ψ(p⁻¹) length: PREPEND gives +1, COLLAPSE gives -1.
 proof fn lemma_textbook_psi_p_inv_length(data: HNNData, h: Word, syls: Seq<Syllable>)
     requires hnn_data_valid(data),
     ensures ({
@@ -5174,7 +5190,7 @@ proof fn lemma_textbook_psi_p_inv_length(data: HNNData, h: Word, syls: Seq<Sylla
     }
 }
 
-/// Single stable letter through textbook_act_hnn = ψ(p) or ψ(p⁻¹).
+///  Single stable letter through textbook_act_hnn = ψ(p) or ψ(p⁻¹).
 proof fn lemma_textbook_act_single_stable(
     data: HNNData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
@@ -5195,7 +5211,7 @@ proof fn lemma_textbook_act_single_stable(
     assert(w.drop_last().len() == 0);
 }
 
-/// stable_count = 0 implies no stable letters in w.
+///  stable_count = 0 implies no stable letters in w.
 proof fn lemma_stable_count_zero_no_stable(data: HNNData, w: Word, pos: int)
     requires
         stable_count(data, w) == 0,
@@ -5205,7 +5221,7 @@ proof fn lemma_stable_count_zero_no_stable(data: HNNData, w: Word, pos: int)
 {
     if w.len() > 0 {
         if is_stable(data, w.last()) {
-            // stable_count ≥ 1, contradiction with = 0
+            //  stable_count ≥ 1, contradiction with = 0
         } else {
             if pos == w.len() - 1 {
                 assert(w[pos] == w.last());
@@ -5217,7 +5233,7 @@ proof fn lemma_stable_count_zero_no_stable(data: HNNData, w: Word, pos: int)
     }
 }
 
-/// Base case: stable_count = 0 → textbook_act_hnn gives 0 syllables.
+///  Base case: stable_count = 0 → textbook_act_hnn gives 0 syllables.
 proof fn lemma_textbook_base_case(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -5232,8 +5248,8 @@ proof fn lemma_textbook_base_case(data: HNNData, w: Word)
     lemma_textbook_base_only(data, w, empty_word(), Seq::<Syllable>::empty());
 }
 
-/// Witness-free: b_rcoset_h is word_valid for k_size.
-/// Chain: rep_props → same_b_rcoset → in_generated_subgroup → subgroup_to_k_word → witness → decomposition.
+///  Witness-free: b_rcoset_h is word_valid for k_size.
+///  Chain: rep_props → same_b_rcoset → in_generated_subgroup → subgroup_to_k_word → witness → decomposition.
 proof fn lemma_b_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -5246,12 +5262,12 @@ proof fn lemma_b_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
     use crate::normal_form_afp_textbook::*;
     lemma_b_rcoset_rep_props(data, g);
     let rep = b_rcoset_rep(data, g);
-    // same_b_rcoset(data, g, rep) → in_right_subgroup(data, concat(g, inv(rep)))
-    // → in_generated_subgroup(p2, b_words, concat(g, inv(rep)))
+    //  same_b_rcoset(data, g, rep) → in_right_subgroup(data, concat(g, inv(rep)))
+    //  → in_generated_subgroup(p2, b_words, concat(g, inv(rep)))
     let target = concat(g, inverse_word(rep));
     crate::word::lemma_inverse_word_valid(rep, data.p2.num_generators);
     crate::word::lemma_concat_word_valid(g, inverse_word(rep), data.p2.num_generators);
-    // Extract k-word witness
+    //  Extract k-word witness
     lemma_subgroup_to_k_word(data.p2, b_words(data), target);
     let h_w: Word = choose|hw: Word|
         word_valid(hw, b_words(data).len())
@@ -5260,7 +5276,7 @@ proof fn lemma_b_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
     crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(data, g, h_w);
 }
 
-/// Witness-free: a_rcoset_h is word_valid for k_size.
+///  Witness-free: a_rcoset_h is word_valid for k_size.
 proof fn lemma_a_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
@@ -5284,8 +5300,8 @@ proof fn lemma_a_rcoset_h_word_valid(data: AmalgamatedData, g: Word)
     crate::normal_form_afp_textbook::lemma_rcoset_decomposition(data, g, h_w);
 }
 
-/// After ψ(p), the new h is in the A-subgroup.
-/// h_new = apply_embedding(a_words, b_rcoset_h(h)) ∈ A.
+///  After ψ(p), the new h is in the A-subgroup.
+///  h_new = apply_embedding(a_words, b_rcoset_h(h)) ∈ A.
 proof fn lemma_psi_p_output_in_A(data: HNNData, h: Word)
     requires
         hnn_data_valid(data),
@@ -5299,10 +5315,10 @@ proof fn lemma_psi_p_output_in_A(data: HNNData, h: Word)
     let afp = tower_afp_data(data, 0);
     crate::tower::lemma_tower_afp_data_valid(data, 0);
     crate::tower::lemma_tower_valid(data, 0);
-    // b_rcoset_h(afp, h) is word_valid for k_size
+    //  b_rcoset_h(afp, h) is word_valid for k_size
     lemma_b_rcoset_h_word_valid(afp, h);
     let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
-    // apply_embedding(a_words, h_id) is in the A-generated subgroup
+    //  apply_embedding(a_words, h_id) is in the A-generated subgroup
     assert forall|i: int| 0 <= i < crate::normal_form_afp_textbook::a_words(afp).len()
         implies word_valid(
             #[trigger] crate::normal_form_afp_textbook::a_words(afp)[i],
@@ -5314,7 +5330,7 @@ proof fn lemma_psi_p_output_in_A(data: HNNData, h: Word)
         afp.p1, crate::normal_form_afp_textbook::a_words(afp), h_id);
 }
 
-/// After ψ(p⁻¹), the new h is in the B-subgroup.
+///  After ψ(p⁻¹), the new h is in the B-subgroup.
 proof fn lemma_psi_p_inv_output_in_B(data: HNNData, h: Word)
     requires
         hnn_data_valid(data),
@@ -5339,8 +5355,8 @@ proof fn lemma_psi_p_inv_output_in_B(data: HNNData, h: Word)
         afp.p2, crate::normal_form_afp_textbook::b_words(afp), h_id);
 }
 
-/// Recursive predicate: no ψ step in textbook_act_hnn(w, h, syls) triggers COLLAPSE.
-/// When this holds, every ψ step PREPENDs, so syllable count increases by exactly stable_count.
+///  Recursive predicate: no ψ step in textbook_act_hnn(w, h, syls) triggers COLLAPSE.
+///  When this holds, every ψ step PREPENDs, so syllable count increases by exactly stable_count.
 pub open spec fn textbook_no_collapse(
     data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
 ) -> bool
@@ -5372,7 +5388,7 @@ pub open spec fn textbook_no_collapse(
     }
 }
 
-/// When no collapse happens, textbook_act_hnn adds exactly stable_count syllables.
+///  When no collapse happens, textbook_act_hnn adds exactly stable_count syllables.
 proof fn lemma_no_collapse_gives_m(
     data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
 )
@@ -5389,40 +5405,40 @@ proof fn lemma_no_collapse_gives_m(
         let s = w.last();
         let ng = data.base.num_generators;
         if s == Symbol::Gen(ng) {
-            // ψ(p): no collapse → PREPEND → +1 syllable
+            //  ψ(p): no collapse → PREPEND → +1 syllable
             lemma_textbook_psi_p_length(data, h, syls);
             let (h_new, syls_new) = textbook_psi_p(data, h, syls);
-            // syls_new.len() == syls.len() + 1 (PREPEND, not collapse)
+            //  syls_new.len() == syls.len() + 1 (PREPEND, not collapse)
             lemma_textbook_act_single_stable(data, s, h, syls);
-            // stable_count(w) = 1 + stable_count(w.drop_last())
-            // Recurse
+            //  stable_count(w) = 1 + stable_count(w.drop_last())
+            //  Recurse
             lemma_no_collapse_gives_m(data, w.drop_last(), h_new, syls_new);
         } else if s == Symbol::Inv(ng) {
             lemma_textbook_psi_p_inv_length(data, h, syls);
             let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
             lemma_no_collapse_gives_m(data, w.drop_last(), h_new, syls_new);
         } else {
-            // Base symbol: no ψ, no syllable change
+            //  Base symbol: no ψ, no syllable change
             let new_h = concat(Seq::new(1, |_i: int| s), h);
             lemma_no_collapse_gives_m(data, w.drop_last(), new_h, syls);
         }
     }
 }
 
-/// A prefix of a p-reduced word is also p-reduced.
-/// has_pinch_at(w.drop_last(), i, j) → has_pinch_at(w, i, j) since all indices are valid.
-/// A prefix of a p-reduced word is also p-reduced.
+///  A prefix of a p-reduced word is also p-reduced.
+///  has_pinch_at(w.drop_last(), i, j) → has_pinch_at(w, i, j) since all indices are valid.
+///  A prefix of a p-reduced word is also p-reduced.
 proof fn lemma_no_pinch_prefix(data: HNNData, w: Word)
     requires w.len() > 0, !has_pinch(data, w),
     ensures !has_pinch(data, w.drop_last()),
 {
     let dl = w.drop_last();
-    // Prove: forall i,j: !has_pinch_at(dl, i, j)
-    // Equivalent to !has_pinch(dl).
+    //  Prove: forall i,j: !has_pinch_at(dl, i, j)
+    //  Equivalent to !has_pinch(dl).
     assert forall|i: int, j: int| !has_pinch_at(data, dl, i, j) by {
         if has_pinch_at(data, dl, i, j) {
-            // has_pinch_at(dl, i, j) → has_adjacent_opposite_at(dl, i, j) → j < dl.len()
-            // Elements: dl[k] == w[k] for k < dl.len()
+            //  has_pinch_at(dl, i, j) → has_adjacent_opposite_at(dl, i, j) → j < dl.len()
+            //  Elements: dl[k] == w[k] for k < dl.len()
             assert(has_adjacent_opposite_at(data, w, i, j)) by {
                 assert(dl[i] == w[i]);
                 assert(dl[j] == w[j]);
@@ -5443,7 +5459,7 @@ proof fn lemma_no_pinch_prefix(data: HNNData, w: Word)
     }
 }
 
-/// Concat associativity: concat(a, concat(b, c)) =~= concat(concat(a, b), c).
+///  Concat associativity: concat(a, concat(b, c)) =~= concat(concat(a, b), c).
 proof fn lemma_concat_assoc(a: Word, b: Word, c: Word)
     ensures concat(a, concat(b, c)) =~= concat(concat(a, b), c),
 {
@@ -5457,46 +5473,158 @@ proof fn lemma_concat_assoc(a: Word, b: Word, c: Word)
     }
 }
 
-/// Invariant for the textbook's normal form conversion (Lemma 3.9):
-/// After each ψ step, the output h is in the correct subgroup.
-/// This ensures concat(next_base_segment, h) ∉ subgroup for opposite-type pairs.
-pub open spec fn psi_output_invariant(
-    data: HNNData, h_sub: Word, syls: Seq<Syllable>,
-) -> bool {
-    let afp = tower_afp_data(data, 0);
-    syls.len() == 0 || (
-        (!syls.first().is_left ==>
-            crate::normal_form_amalgamated::in_left_subgroup(afp, h_sub))
-        && (syls.first().is_left ==>
-            crate::normal_form_amalgamated::in_right_subgroup(afp, h_sub))
-    )
-}
-
-/// For p-reduced words, no ψ step collapses. (Miller Lemma 3.9 argument.)
-///
-/// Ghost parameter h_sub: the ψ output from the most recent stable letter.
-/// h = concat(base_accum, h_sub) where base_accum is accumulated base symbols.
-///
-/// At each ψ step:
-/// - Same-type top → collapse needs opposite → impossible.
-/// - Opposite-type top → base_accum = base word between adjacent opposite pair.
-///   p-reduced → base_accum ∉ subgroup. h_sub ∈ subgroup (invariant).
-///   concat(∉sub, ∈sub) ∉ sub → rep ≠ ε → PREPEND, not collapse.
-/// - Empty syls → collapse impossible.
-proof fn lemma_p_reduced_no_collapse(
-    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
-    h_sub: Word,
+///  Direct from has_pinch_at: base word between Gen-Inv pair ∉ B.
+///  This is the contrapositive of has_pinch_at for t·base·t⁻¹.
+proof fn lemma_gen_inv_base_not_in_B(
+    data: HNNData, w: Word, i: int, j: int,
 )
     requires
         hnn_data_valid(data),
         !has_pinch(data, w),
-        word_valid(w, hnn_presentation(data).num_generators),
+        has_adjacent_opposite_at(data, w, i, j),
+        w[i] == Symbol::Gen(data.base.num_generators),
+        w[j] == Symbol::Inv(data.base.num_generators),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        !crate::normal_form_amalgamated::in_right_subgroup(
+            afp, w.subrange(i + 1, j))
+    }),
+{
+    let ng = data.base.num_generators;
+    let afp = tower_afp_data(data, 0);
+    let base_word = w.subrange(i + 1, j);
+    if crate::normal_form_amalgamated::in_right_subgroup(afp, base_word) {
+        //  Connect in_right_subgroup(afp, ...) to the b_gens in has_pinch_at.
+        //  afp.p2 = data.base, and the b_gens sequences are extensionally equal.
+        let nk = data.associations.len();
+        let b_gens = Seq::new(nk, |k: int| data.associations[k].1);
+        assert(afp.p2 == data.base);
+        //  in_right_subgroup unfolds with afp's identifications
+        //  Show: b_words(afp) =~= b_gens
+        assert(b_gens =~= Seq::new(
+            afp.identifications.len() as nat,
+            |k: int| afp.identifications[k].1)) by {
+            assert(afp.identifications.len() == nk);
+            assert forall|k: int| 0 <= k < nk
+                implies #[trigger] b_gens[k]
+                    == Seq::new(afp.identifications.len() as nat,
+                        |k: int| afp.identifications[k].1)[k]
+            by {}
+        }
+        assert(in_generated_subgroup(data.base, b_gens, base_word));
+        assert(has_pinch_at(data, w, i, j));
+        assert(has_pinch(data, w));
+    }
+}
+
+///  Symmetric: base word between Inv-Gen pair ∉ A.
+proof fn lemma_inv_gen_base_not_in_A(
+    data: HNNData, w: Word, i: int, j: int,
+)
+    requires
+        hnn_data_valid(data),
+        !has_pinch(data, w),
+        has_adjacent_opposite_at(data, w, i, j),
+        w[i] == Symbol::Inv(data.base.num_generators),
+        w[j] == Symbol::Gen(data.base.num_generators),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        !crate::normal_form_amalgamated::in_left_subgroup(
+            afp, w.subrange(i + 1, j))
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let base_word = w.subrange(i + 1, j);
+    if crate::normal_form_amalgamated::in_left_subgroup(afp, base_word) {
+        let nk = data.associations.len();
+        let a_gens = Seq::new(nk, |k: int| data.associations[k].0);
+        //  tower(0) = data.base, so afp.p1 = data.base
+        assert(afp.p1 == data.base);
+        //  a_words(afp)[k] = afp.identifications[k].0 = shift_word(assoc[k].0, 0) = assoc[k].0
+        assert(a_gens =~= Seq::new(
+            afp.identifications.len() as nat,
+            |k: int| afp.identifications[k].0)) by {
+            assert(afp.identifications.len() == nk);
+            assert forall|k: int| 0 <= k < nk
+                implies #[trigger] a_gens[k]
+                    == Seq::new(afp.identifications.len() as nat,
+                        |k: int| afp.identifications[k].0)[k]
+            by {
+                assert(shift_word(data.associations[k].0, 0)
+                    =~= data.associations[k].0) by {
+                    assert forall|m: int| 0 <= m < data.associations[k].0.len()
+                        implies #[trigger] shift_word(data.associations[k].0, 0)[m]
+                            == data.associations[k].0[m]
+                    by {}
+                }
+            }
+        }
+        assert(in_generated_subgroup(data.base, a_gens, base_word));
+        assert(has_pinch_at(data, w, i, j));
+        assert(has_pinch(data, w));
+    }
+}
+
+///  Generalized no-collapse: for a p-reduced word w_orig, processing any prefix
+///  w = w_orig[0..pos] from a state satisfying the ψ-output invariant gives no collapse.
+///
+///  Ghost parameters:
+///  - w_orig: the full p-reduced word
+///  - prev_stable_pos: position in w_orig of the stable letter that created the top syllable
+///    (or w_orig.len() if syls is empty)
+///  - h_id: identification-index word from the last ψ output
+///
+///  The key argument at each opposite-type ψ step:
+///    base_accum = w_orig[current_stable_pos+1 .. prev_stable_pos] (base word between adjacent pair)
+///    ¬has_pinch(w_orig) → base_accum ∉ subgroup → h ∉ subgroup → rep ≠ ε → PREPEND.
+proof fn lemma_p_reduced_no_collapse(
+    data: HNNData,
+    w_orig: Word,       //  full p-reduced word
+    w: Word,            //  current prefix = w_orig[0..w.len()]
+    h: Word,
+    syls: Seq<Syllable>,
+    h_id: Word,         //  ghost: ID word from last ψ
+    prev_stable_pos: int, //  ghost: position of last ψ's stable letter in w_orig
+)
+    requires
+        hnn_data_valid(data),
+        !has_pinch(data, w_orig),
+        word_valid(w_orig, hnn_presentation(data).num_generators),
         word_valid(h, data.base.num_generators),
-        word_valid(h_sub, data.base.num_generators),
-        psi_output_invariant(data, h_sub, syls),
-        exists|base_accum: Word|
-            #[trigger] concat(base_accum, h_sub) =~= h
-            && word_valid(base_accum, data.base.num_generators),
+        w.len() <= w_orig.len(),
+        w =~= w_orig.subrange(0, w.len() as int),
+        word_valid(h_id, crate::normal_form_afp_textbook::k_size(
+            tower_afp_data(data, 0))),
+        //  prev_stable_pos: position of the stable letter that created top syllable
+        w.len() as int <= prev_stable_pos <= w_orig.len() as int,
+        //  Between w.len() and prev_stable_pos: only base symbols (already processed)
+        forall|k: int| w.len() <= k < prev_stable_pos
+            ==> !is_stable(data, #[trigger] w_orig[k]),
+        //  If prev_stable_pos < w_orig.len(): w_orig[prev_stable_pos] is the stable letter
+        //  that created the top syllable
+        //  Invariant: h = concat(base_accum, embed(h_id))
+        ({
+            let afp = tower_afp_data(data, 0);
+            if syls.len() == 0 {
+                prev_stable_pos == w_orig.len() as int
+            } else if !syls.first().is_left {
+                //  Top right (from Gen/ψ(p)): h = concat(base, embed_a(h_id))
+                prev_stable_pos < w_orig.len()
+                && w_orig[prev_stable_pos] == Symbol::Gen(data.base.num_generators)
+                && h =~= concat(
+                    w_orig.subrange(w.len() as int, prev_stable_pos),
+                    apply_embedding(
+                        crate::normal_form_afp_textbook::a_words(afp), h_id))
+            } else {
+                //  Top left (from Inv/ψ(p⁻¹)): h = concat(base, embed_b(h_id))
+                prev_stable_pos < w_orig.len()
+                && w_orig[prev_stable_pos] == Symbol::Inv(data.base.num_generators)
+                && h =~= concat(
+                    w_orig.subrange(w.len() as int, prev_stable_pos),
+                    apply_embedding(
+                        crate::normal_form_afp_textbook::b_words(afp), h_id))
+            }
+        }),
     ensures
         textbook_no_collapse(data, w, h, syls),
     decreases w.len(),
@@ -5505,93 +5633,281 @@ proof fn lemma_p_reduced_no_collapse(
         let s = w.last();
         let ng = data.base.num_generators;
         let afp = tower_afp_data(data, 0);
+
         if s == Symbol::Gen(ng) {
-            // ψ(p) step. Three sub-cases for no-collapse:
+            //  ψ(p) step
             let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
             if syls.len() == 0 {
-                // (a) syls empty → collapse impossible ✓
+                //  Empty → no collapse ✓
             } else if !syls.first().is_left {
-                // (b) top is right (same type as Gen) → collapse needs opposite → impossible ✓
+                //  Same type (right) → no collapse ✓
             } else {
-                // (c) top is left (opposite). Need: h ∉ B → rep ≠ ε.
-                // From invariant: top is left → h_sub ∈ B (in_right_subgroup).
-                // h = concat(base_accum, h_sub). base_accum ∉ B from p-reduced.
-                // concat(∉B, ∈B) ∉ B → h ∉ B → rep ≠ ε.
-                //
-                // TODO: need to connect base_accum to has_pinch_at condition
-                // and invoke lemma_not_in_subgroup_concat_embed_b.
-                // This requires identifying which adjacent pair in w corresponds
-                // to the current Gen and the previous Inv.
-                //
-                // For now, this case needs more infrastructure.
-                // Specifically: the base_accum between this Gen and the Inv that
-                // created the left top syllable corresponds to a has_pinch_at pair
-                // in the original word, giving base_accum ∉ B.
-                assert(!(rep =~= empty_word())) by {
-                    // Key argument: h = concat(base_accum, h_sub).
-                    // h_sub ∈ B (from invariant). base_accum ∉ B (from p-reduced).
-                    // By lemma: concat(∉B, ∈B) ∉ B. So h ∉ B. rep ≠ ε.
-                    //
-                    // The connection base_accum ∉ B comes from:
-                    // this Gen and the previous Inv are adjacent opposite stable letters
-                    // in w, with base_accum between them. has_pinch_at would require
-                    // base_accum ∈ B for a Gen-Inv pinch. ¬has_pinch → base_accum ∉ B.
-                    //
-                    // Formalizing this connection requires tracking positions,
-                    // which we defer to a helper lemma.
-                    assert(false); // PLACEHOLDER — need position tracking helper
+                //  Opposite (left top from Inv). Need: h ∉ B → rep ≠ ε.
+                //  h = concat(w_orig[w.len()..prev], embed_b(h_id))
+                //  The pair (Gen at w.len()-1, Inv at prev_stable_pos) in w_orig:
+                //  base_word = w_orig[w.len()..prev_stable_pos]
+                //  These are adjacent opposite (no stable between) from our preconditions.
+                //  ¬has_pinch → base_word ∉ B.
+                //  embed_b(h_id) ∈ B.
+                //  concat(∉B, ∈B) ∉ B.
+                //  h = concat(base_word, ∈B) ∉ B → rep ≠ ε.
+                let base_word = w_orig.subrange(w.len() as int, prev_stable_pos);
+                assert(has_adjacent_opposite_at(data, w_orig,
+                    w.len() as int - 1, prev_stable_pos)) by {
+                    assert(w_orig[w.len() as int - 1] == Symbol::Gen(ng));
+                    assert(w_orig[prev_stable_pos] == Symbol::Inv(ng));
+                    assert forall|k: int| w.len() as int - 1 < k < prev_stable_pos
+                        implies !is_stable(data, #[trigger] w_orig[k]) by {}
+                }
+                lemma_gen_inv_base_not_in_B(data, w_orig,
+                    w.len() as int - 1, prev_stable_pos);
+                //  base_word = w_orig[w.len()..prev] ∉ B
+                assert(w_orig.subrange(w.len() as int - 1 + 1, prev_stable_pos)
+                    =~= base_word);
+                //  h = concat(base_word, embed_b(h_id)) ∉ B
+                crate::tower::lemma_tower_afp_data_valid(data, 0);
+                assert forall|i: int| 0 <= i
+                    < crate::normal_form_afp_textbook::b_words(afp).len()
+                    implies word_valid(
+                        #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i],
+                        afp.p2.num_generators)
+                by {}
+                lemma_not_in_subgroup_concat_embed_b(
+                    afp, base_word, h_id);
+                //  Now: !in_right_subgroup(afp, concat(base_word, embed_b(h_id)))
+                //  = !in_right_subgroup(afp, h) → b_rcoset_rep ≠ ε
+                lemma_not_in_right_subgroup_rep_nonempty(afp, h);
+            }
+            //  ψ(p) PREPENDs (no collapse shown above).
+            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
+            let new_h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+            crate::tower::lemma_tower_afp_data_valid(data, 0);
+            crate::tower::lemma_tower_valid(data, 0);
+            lemma_b_rcoset_h_word_valid(afp, h);
+            //  h_new = embed_a(new_h_id) — word_valid for base
+            assert(word_valid(h_new, ng)) by {
+                assert forall|i: int| 0 <= i
+                    < crate::normal_form_afp_textbook::a_words(afp).len()
+                    implies word_valid(
+                        #[trigger] crate::normal_form_afp_textbook::a_words(afp)[i], ng)
+                by { crate::tower::lemma_tower_num_generators(data, 0); }
+                crate::benign::lemma_apply_embedding_valid(
+                    crate::normal_form_afp_textbook::a_words(afp), new_h_id, ng);
+            }
+            //  Invariant: h_new = concat(ε, embed_a(new_h_id))
+            assert(w.drop_last() =~= w_orig.subrange(0, w.len() as int - 1));
+            assert(w_orig.subrange(w.len() as int - 1, w.len() as int - 1)
+                =~= empty_word());
+            assert(h_new =~= concat(empty_word(),
+                apply_embedding(
+                    crate::normal_form_afp_textbook::a_words(afp), new_h_id))) by {
+                assert(concat(empty_word(), h_new) =~= h_new) by {
+                    assert forall|k: int| 0 <= k < h_new.len()
+                        implies concat(empty_word(), h_new)[k] == h_new[k] by {}
                 }
             }
-            // After ψ(p): h_new ∈ A (from lemma_psi_p_output_in_A)
-            let (h_new, syls_new) = textbook_psi_p(data, h, syls);
-            // Recurse on w.drop_last() with updated state
-            // New h_sub = h_new (the ψ output, ∈ A)
-            // base_accum resets to ε: h_new = concat(ε, h_new)
-            lemma_no_pinch_prefix(data, w);
             lemma_p_reduced_no_collapse(
-                data, w.drop_last(), h_new, syls_new, h_new);
+                data, w_orig, w.drop_last(), h_new, syls_new,
+                new_h_id, w.len() as int - 1);
         } else if s == Symbol::Inv(ng) {
-            // ψ(p⁻¹) step. Symmetric to Gen case.
+            //  ψ(p⁻¹) step — symmetric to Gen
             let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
             if syls.len() == 0 {
             } else if syls.first().is_left {
-                // Same type (left) → no collapse ✓
+                //  Same type (left) → no collapse ✓
             } else {
-                // Opposite (right top). h ∉ A from p-reduced.
-                assert(!(rep =~= empty_word())) by {
-                    assert(false); // PLACEHOLDER — symmetric to Gen case
+                //  Opposite (right top from Gen). Need: h ∉ A → rep ≠ ε.
+                let base_word = w_orig.subrange(w.len() as int, prev_stable_pos);
+                assert(has_adjacent_opposite_at(data, w_orig,
+                    w.len() as int - 1, prev_stable_pos)) by {
+                    assert(w_orig[w.len() as int - 1] == Symbol::Inv(ng));
+                    assert(w_orig[prev_stable_pos] == Symbol::Gen(ng));
+                    assert forall|k: int| w.len() as int - 1 < k < prev_stable_pos
+                        implies !is_stable(data, #[trigger] w_orig[k]) by {}
                 }
+                lemma_inv_gen_base_not_in_A(data, w_orig,
+                    w.len() as int - 1, prev_stable_pos);
+                assert(w_orig.subrange(w.len() as int - 1 + 1, prev_stable_pos)
+                    =~= base_word);
+                crate::tower::lemma_tower_afp_data_valid(data, 0);
+                crate::tower::lemma_tower_valid(data, 0);
+                assert forall|i: int| 0 <= i
+                    < crate::normal_form_afp_textbook::a_words(afp).len()
+                    implies word_valid(
+                        #[trigger] crate::normal_form_afp_textbook::a_words(afp)[i],
+                        afp.p1.num_generators)
+                by {
+                    crate::tower::lemma_tower_num_generators(data, 0);
+                }
+                lemma_not_in_left_subgroup_concat_embed_a(
+                    afp, base_word, h_id);
+                lemma_not_in_left_subgroup_rep_nonempty(afp, h);
             }
             let (h_new, syls_new) = textbook_psi_p_inv(data, h, syls);
-            lemma_no_pinch_prefix(data, w);
+            let new_h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+            crate::tower::lemma_tower_afp_data_valid(data, 0);
+            crate::tower::lemma_tower_valid(data, 0);
+            lemma_a_rcoset_h_word_valid(afp, h);
+            assert(word_valid(h_new, ng)) by {
+                assert forall|i: int| 0 <= i
+                    < crate::normal_form_afp_textbook::b_words(afp).len()
+                    implies word_valid(
+                        #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i], ng)
+                by {}
+                crate::benign::lemma_apply_embedding_valid(
+                    crate::normal_form_afp_textbook::b_words(afp), new_h_id, ng);
+            }
+            assert(w.drop_last() =~= w_orig.subrange(0, w.len() as int - 1));
+            assert(w_orig.subrange(w.len() as int - 1, w.len() as int - 1)
+                =~= empty_word());
+            assert(h_new =~= concat(empty_word(),
+                apply_embedding(
+                    crate::normal_form_afp_textbook::b_words(afp), new_h_id))) by {
+                assert(concat(empty_word(), h_new) =~= h_new) by {
+                    assert forall|k: int| 0 <= k < h_new.len()
+                        implies concat(empty_word(), h_new)[k] == h_new[k] by {}
+                }
+            }
             lemma_p_reduced_no_collapse(
-                data, w.drop_last(), h_new, syls_new, h_new);
+                data, w_orig, w.drop_last(), h_new, syls_new,
+                new_h_id, w.len() as int - 1);
         } else {
-            // Base symbol: accumulate into h. h_sub unchanged.
+            //  Base symbol: accumulate, recurse
             let new_h = concat(Seq::new(1, |_i: int| s), h);
-            // new_h = concat([s], h) = concat([s], concat(base_accum, h_sub))
-            //       = concat(concat([s], base_accum), h_sub) [by assoc]
-            // So the new base_accum = concat([s], base_accum). h_sub unchanged.
-            // Invariant preserved (syls unchanged, h_sub unchanged).
-            lemma_no_pinch_prefix(data, w);
+            assert(w.drop_last() =~= w_orig.subrange(0, w.len() as int - 1));
+            //  word_valid(new_h, ng): concat preserves word_valid
+            assert(word_valid(new_h, ng)) by {
+                assert(w_orig[w.len() as int - 1] == s);
+                //  s is a base symbol (not stable), so generator_index(s) < ng
+                crate::word::lemma_concat_word_valid(
+                    Seq::new(1, |_i: int| s), h, ng);
+            }
+            //  Invariant: new_h = concat([s] + old_base_accum, embed(h_id))
+            //  = concat(w_orig[w.len()-1..prev], embed(h_id))
+            //  since w_orig[w.len()-1] = s
+            assert(w_orig.subrange(w.len() as int - 1, prev_stable_pos)
+                =~= concat(Seq::new(1, |_i: int| s),
+                    w_orig.subrange(w.len() as int, prev_stable_pos))) by {
+                assert forall|k: int| 0 <= k
+                    < w_orig.subrange(w.len() as int - 1, prev_stable_pos).len()
+                    implies #[trigger] w_orig.subrange(w.len() as int - 1, prev_stable_pos)[k]
+                        == concat(Seq::new(1, |_i: int| s),
+                            w_orig.subrange(w.len() as int, prev_stable_pos))[k]
+                by {}
+            }
+            //  Not stable between w.len()-1 and prev_stable_pos
+            assert(!is_stable(data, w_orig[w.len() as int - 1]));
             lemma_p_reduced_no_collapse(
-                data, w.drop_last(), new_h, syls, h_sub);
+                data, w_orig, w.drop_last(), new_h, syls,
+                h_id, prev_stable_pos);
         }
     }
 }
 
-/// **Britton's Lemma (Full, Miller Thm 3.10):**
-/// If w ≡ ε in G* and w has stable letters, then w has a pinch.
+///  The h output of textbook_psi_p is word_valid for the base group.
+proof fn lemma_psi_p_h_valid(data: HNNData, h: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(h, data.base.num_generators),
+    ensures
+        word_valid(textbook_psi_p(data, h, Seq::<Syllable>::empty()).0,
+            data.base.num_generators),
+{
+    let afp = tower_afp_data(data, 0);
+    crate::tower::lemma_tower_afp_data_valid(data, 0);
+    crate::tower::lemma_tower_valid(data, 0);
+    lemma_b_rcoset_h_word_valid(afp, h);
+    let h_id = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    assert forall|i: int| 0 <= i
+        < crate::normal_form_afp_textbook::a_words(afp).len()
+        implies word_valid(
+            #[trigger] crate::normal_form_afp_textbook::a_words(afp)[i],
+            afp.p1.num_generators)
+    by { crate::tower::lemma_tower_num_generators(data, 0); }
+    assert(afp.p1.num_generators == data.base.num_generators) by {
+        crate::tower::lemma_tower_num_generators(data, 0);
+    }
+    crate::benign::lemma_apply_embedding_valid(
+        crate::normal_form_afp_textbook::a_words(afp), h_id,
+        data.base.num_generators);
+}
+
+///  The h output of textbook_psi_p_inv is word_valid for the base group.
+proof fn lemma_psi_p_inv_h_valid(data: HNNData, h: Word)
+    requires
+        hnn_data_valid(data),
+        word_valid(h, data.base.num_generators),
+    ensures
+        word_valid(textbook_psi_p_inv(data, h, Seq::<Syllable>::empty()).0,
+            data.base.num_generators),
+{
+    let afp = tower_afp_data(data, 0);
+    crate::tower::lemma_tower_afp_data_valid(data, 0);
+    crate::tower::lemma_tower_valid(data, 0);
+    lemma_a_rcoset_h_word_valid(afp, h);
+    let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    assert forall|i: int| 0 <= i
+        < crate::normal_form_afp_textbook::b_words(afp).len()
+        implies word_valid(
+            #[trigger] crate::normal_form_afp_textbook::b_words(afp)[i],
+            afp.p2.num_generators)
+    by {}
+    crate::benign::lemma_apply_embedding_valid(
+        crate::normal_form_afp_textbook::b_words(afp), h_id,
+        data.base.num_generators);
+}
+
+///  Entry point: p-reduced word from (ε, []) has no collapse.
+proof fn lemma_p_reduced_initial_no_collapse(data: HNNData, w: Word)
+    requires
+        hnn_data_valid(data),
+        !has_pinch(data, w),
+        word_valid(w, hnn_presentation(data).num_generators),
+    ensures
+        textbook_no_collapse(data, w, empty_word(), Seq::<Syllable>::empty()),
+{
+    lemma_p_reduced_no_collapse(
+        data, w, w, empty_word(), Seq::<Syllable>::empty(),
+        empty_word(), w.len() as int);
+}
+
+//  ============================================================
+//  Part Y.7: Well-definedness — the "routine check" (Miller p.49)
+//  ============================================================
+//  θ⋆ψ respects the HNN relations. We show this by checking:
+//  1. ψ(p) ∘ ψ(p⁻¹) preserves syllables (.1)
+//  2. ψ(p⁻¹) ∘ ψ(p) preserves syllables (.1)
+//  3. HNN relator t⁻¹·a·t·b⁻¹ preserves syllables
+//  4. Base relators preserve syllables (trivial: only h changes)
+//  5. Derivation steps preserve syllables → w ≡ ε → 0 syllables
+
+//  --- Well-definedness infrastructure (in progress) ---
+//  Key facts available:
+//  - lemma_b_rcoset_rep_invariant: same_b_rcoset(g1, g2) → b_rcoset_rep(g1) =~= b_rcoset_rep(g2)
+//  - lemma_g2_one_shot_g2_invariant: g1 ≡ g2 → g2_one_shot(g1, syls) == g2_one_shot(g2, syls)
+//  - lemma_equiv_eps_in_subgroup: g ≡ ε → g ∈ left subgroup
+//
+//  Chain for textbook_psi_p equivalence invariance:
+//    h1 ≡ h2 → concat(h1, inv(h2)) ≡ ε → in_right_subgroup(concat(h1, inv(h2)))
+//    → same_b_rcoset(h1, h2) → b_rcoset_rep(h1) =~= b_rcoset_rep(h2)
+//    → textbook_psi_p(h1, syls) == textbook_psi_p(h2, syls)
+//
+//  Then: textbook_act_hnn invariant under h-equivalence at each step
+//  → w ≡ ε implies textbook_act_hnn(w, ε, []).1 = []
+//  TODO: formalize this chain
+
+///  **Britton's Lemma (Full, Miller Thm 3.10):**
+///  If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
-/// Proof outline (textbook permutation representation):
-/// 1. net_level(w) = 0 (from w ≡ ε)
-/// 2. Find rightmost Gen-Inv pair at max level (suffix strictly below max)
-/// 3. Translate to tower, peel to pair_level, get act = (ε, [])
-/// 4. Decompose: translate = tw_prefix · tw_g2 · tw_suffix
-/// 5. G₁ suffix → right_count = 0
-/// 6. G₂ one-shot → right_count = 1 (base ∉ B, top left/empty)
-/// 7. Prefix preserves right_count ≥ 1
-/// 8. Contradiction: right_count ≥ 1 but (ε, []) has right_count = 0
+///  Proof outline (textbook permutation representation):
+///  1. net_level(w) = 0 (from w ≡ ε)
+///  2. Find rightmost Gen-Inv pair at max level (suffix strictly below max)
+///  3. Translate to tower, peel to pair_level, get act = (ε, [])
+///  4. Decompose: translate = tw_prefix · tw_g2 · tw_suffix
+///  5. G₁ suffix → right_count = 0
+///  6. G₂ one-shot → right_count = 1 (base ∉ B, top left/empty)
+///  7. Prefix preserves right_count ≥ 1
+///  8. Contradiction: right_count ≥ 1 but (ε, []) has right_count = 0
 pub proof fn britton_lemma_full(
     data: HNNData, w: Word,
 )
@@ -5611,14 +5927,14 @@ pub proof fn britton_lemma_full(
         lemma_max_prefix_bounds(data, w, 0);
 
         if max_lev >= 1 {
-            // Case A: max ≥ 1 → contradiction via lemma_case_a_contradiction
-            assert(false); // TODO: lemma_case_a_contradiction (task J)
+            //  Case A: max ≥ 1 → contradiction via lemma_case_a_contradiction
+            assert(false); //  TODO: lemma_case_a_contradiction (task J)
         } else {
-            // Case B: max = 0. Use dual (Inv-Gen + left_count) argument.
+            //  Case B: max = 0. Use dual (Inv-Gen + left_count) argument.
             lemma_adjacent_opposite_exists(data, w);
-            assert(false); // PLACEHOLDER: symmetric argument
+            assert(false); //  PLACEHOLDER: symmetric argument
         }
     }
 }
 
-} // verus!
+} //  verus!

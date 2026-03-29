@@ -7,14 +7,14 @@ use crate::presentation::*;
 
 verus! {
 
-// ============================================================
-// Normal form uniqueness and decidability
-// ============================================================
+//  ============================================================
+//  Normal form uniqueness and decidability
+//  ============================================================
 //
-// Separated into its own module to keep the Z3 context clean.
-// These proofs only need rewrite.rs specs + rewrite_sound lemmas.
+//  Separated into its own module to keep the Z3 context clean.
+//  These proofs only need rewrite.rs specs + rewrite_sound lemmas.
 
-/// If two irreducible words are joinable, they are equal.
+///  If two irreducible words are joinable, they are equal.
 pub proof fn lemma_unique_normal_form(
     sys: RewriteSystem,
     nf1: Word, nf2: Word,
@@ -31,7 +31,7 @@ pub proof fn lemma_unique_normal_form(
     lemma_irreducible_only_rewrites_to_self(sys, nf2, w3);
 }
 
-/// An irreducible word can only rewrite to itself.
+///  An irreducible word can only rewrite to itself.
 pub proof fn lemma_irreducible_only_rewrites_to_self(
     sys: RewriteSystem, w: Word, w2: Word,
 )
@@ -66,7 +66,7 @@ proof fn lemma_irreducible_only_rewrites_to_self_aux(
     }
 }
 
-/// The easy direction: same normal form implies equivalence.
+///  The easy direction: same normal form implies equivalence.
 pub proof fn lemma_same_normal_form_implies_equiv(
     sys: RewriteSystem, p: Presentation,
     w1: Word, w2: Word,
@@ -91,4 +91,4 @@ pub proof fn lemma_same_normal_form_implies_equiv(
     lemma_equiv_transitive(p, w1, nf, w2);
 }
 
-} // verus!
+} //  verus!

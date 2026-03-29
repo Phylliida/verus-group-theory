@@ -96,13 +96,13 @@ Six layers, each building on the previous:
 **Definitions:**
 
 ```rust
-// Compare words: shorter is smaller; equal length → lexicographic by generator index
+//  Compare words: shorter is smaller; equal length → lexicographic by generator index
 pub open spec fn shortlex_lt(w1: Word, w2: Word) -> bool {
     w1.len() < w2.len() || (w1.len() == w2.len() && lex_lt(w1, w2))
 }
 
-// Lexicographic comparison using a total order on symbols
-// Symbols ordered: Gen(0) < Inv(0) < Gen(1) < Inv(1) < ...
+//  Lexicographic comparison using a total order on symbols
+//  Symbols ordered: Gen(0) < Inv(0) < Gen(1) < Inv(1) < ...
 pub open spec fn symbol_ord(s: Symbol) -> nat;
 pub open spec fn lex_lt(w1: Word, w2: Word) -> bool;
 ```
@@ -140,40 +140,40 @@ lexicographic tuples.
 
 ```rust
 pub struct RewriteRule {
-    pub lhs: Word,  // left-hand side (the larger word)
-    pub rhs: Word,  // right-hand side (the smaller word)
+    pub lhs: Word,  //  left-hand side (the larger word)
+    pub rhs: Word,  //  right-hand side (the smaller word)
 }
 
 pub struct RewriteSystem {
     pub rules: Seq<RewriteRule>,
 }
 
-// Rule is well-formed: lhs is strictly greater in the ordering
+//  Rule is well-formed: lhs is strictly greater in the ordering
 pub open spec fn rule_wf(rule: RewriteRule) -> bool {
     shortlex_lt(rule.rhs, rule.lhs) && rule.lhs.len() > 0
 }
 
-// Subword match: w[pos..pos+lhs.len()] == rule.lhs
+//  Subword match: w[pos..pos+lhs.len()] == rule.lhs
 pub open spec fn matches_at(w: Word, rule: RewriteRule, pos: int) -> bool {
     pos >= 0 && pos + rule.lhs.len() <= w.len()
     && w.subrange(pos, pos + rule.lhs.len()) == rule.lhs
 }
 
-// Apply rule at position: replace lhs with rhs
+//  Apply rule at position: replace lhs with rhs
 pub open spec fn apply_rule_at(w: Word, rule: RewriteRule, pos: int) -> Word {
     w.subrange(0, pos) + rule.rhs + w.subrange(pos + rule.lhs.len(), w.len() as int)
 }
 
-// One-step rewrite: exists a rule and position
+//  One-step rewrite: exists a rule and position
 pub open spec fn rewrites_one_step(sys: RewriteSystem, w1: Word, w2: Word) -> bool;
 
-// Multi-step rewrite (transitive-reflexive closure)
+//  Multi-step rewrite (transitive-reflexive closure)
 pub open spec fn rewrites_to(sys: RewriteSystem, w1: Word, w2: Word) -> bool;
 
-// No rule applies
+//  No rule applies
 pub open spec fn is_irreducible(sys: RewriteSystem, w: Word) -> bool;
 
-// Normal form under the rewrite system
+//  Normal form under the rewrite system
 pub open spec fn rewrite_normal_form(sys: RewriteSystem, w: Word) -> Word;
 ```
 
@@ -196,13 +196,13 @@ and `rhs = []`. The generalization is straightforward.
 **Definitions:**
 
 ```rust
-// A rewrite system is sound for a presentation if every rule lhs ≡ rhs
+//  A rewrite system is sound for a presentation if every rule lhs ≡ rhs
 pub open spec fn system_sound(sys: RewriteSystem, p: Presentation) -> bool {
     forall|i: int| 0 <= i < sys.rules.len() ==>
         equiv_in_presentation(p, sys.rules[i].lhs, sys.rules[i].rhs)
 }
 
-// A rewrite system is complete if equivalent words have the same normal form
+//  A rewrite system is complete if equivalent words have the same normal form
 pub open spec fn system_complete(sys: RewriteSystem, p: Presentation) -> bool {
     forall|w1: Word, w2: Word|
         equiv_in_presentation(p, w1, w2) ==>
@@ -236,13 +236,13 @@ system subsumes free reduction, and we can reuse `lemma_freely_equivalent_implie
 ```rust
 proof fn lemma_newman(sys: RewriteSystem, w: Word, w1: Word, w2: Word)
     requires
-        system_terminating(sys),      // all rules decrease shortlex
-        system_locally_confluent(sys), // all local forks are joinable
+        system_terminating(sys),      //  all rules decrease shortlex
+        system_locally_confluent(sys), //  all local forks are joinable
         rewrites_to(sys, w, w1),
         rewrites_to(sys, w, w2),
     ensures
         exists|w3: Word| rewrites_to(sys, w1, w3) && rewrites_to(sys, w2, w3)
-    decreases shortlex_rank(w)        // or (w.len(), lex_rank(w))
+    decreases shortlex_rank(w)        //  or (w.len(), lex_rank(w))
 ```
 
 **Proof sketch (follows `lemma_confluence` in reduction.rs):**
@@ -280,8 +280,8 @@ This is the largest and most novel layer.
 **Definitions:**
 
 ```rust
-// An overlap: a suffix of r1.lhs of length `overlap` matches a prefix of r2.lhs
-// where 1 ≤ overlap ≤ min(|r1.lhs|, |r2.lhs|)
+//  An overlap: a suffix of r1.lhs of length `overlap` matches a prefix of r2.lhs
+//  where 1 ≤ overlap ≤ min(|r1.lhs|, |r2.lhs|)
 pub open spec fn is_overlap(r1: RewriteRule, r2: RewriteRule, overlap: nat) -> bool {
     overlap >= 1
     && overlap <= r1.lhs.len()
@@ -290,28 +290,28 @@ pub open spec fn is_overlap(r1: RewriteRule, r2: RewriteRule, overlap: nat) -> b
        == r2.lhs.subrange(0, overlap)
 }
 
-// The critical pair from an overlap:
-// The overlapping word is: r1.lhs + r2.lhs[overlap..]
-// Applying r1 gives: r1.rhs + r2.lhs[overlap..]
-// Applying r2 gives: r1.lhs[..len-overlap] + r2.rhs
+//  The critical pair from an overlap:
+//  The overlapping word is: r1.lhs + r2.lhs[overlap..]
+//  Applying r1 gives: r1.rhs + r2.lhs[overlap..]
+//  Applying r2 gives: r1.lhs[..len-overlap] + r2.rhs
 pub open spec fn critical_pair(
     r1: RewriteRule, r2: RewriteRule, overlap: nat
 ) -> (Word, Word);
 
-// An inclusion: r2.lhs appears as a subword of r1.lhs at position pos
+//  An inclusion: r2.lhs appears as a subword of r1.lhs at position pos
 pub open spec fn is_inclusion(r1: RewriteRule, r2: RewriteRule, pos: nat) -> bool {
     pos + r2.lhs.len() <= r1.lhs.len()
     && r1.lhs.subrange(pos, pos + r2.lhs.len()) == r2.lhs
 }
 
-// The critical pair from an inclusion:
-// Applying r1 to the whole word gives: r1.rhs
-// Applying r2 at position pos gives: r1.lhs[..pos] + r2.rhs + r1.lhs[pos+|r2.lhs|..]
+//  The critical pair from an inclusion:
+//  Applying r1 to the whole word gives: r1.rhs
+//  Applying r2 at position pos gives: r1.lhs[..pos] + r2.rhs + r1.lhs[pos+|r2.lhs|..]
 pub open spec fn inclusion_critical_pair(
     r1: RewriteRule, r2: RewriteRule, pos: nat
 ) -> (Word, Word);
 
-// All critical pairs are joinable under the system
+//  All critical pairs are joinable under the system
 pub open spec fn all_critical_pairs_joinable(sys: RewriteSystem) -> bool;
 ```
 
@@ -377,7 +377,7 @@ exec fn knuth_bendix(p: &Presentation, max_rules: usize) -> Option<RewriteSystem
             system_sound(sys, p)
             && system_terminating(sys)
             && system_confluent(sys)
-            // Therefore decides the word problem for p
+            //  Therefore decides the word problem for p
         }
 ```
 

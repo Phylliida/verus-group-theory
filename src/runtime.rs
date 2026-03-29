@@ -7,14 +7,14 @@ use crate::homomorphism::*;
 
 verus! {
 
-/// Runtime symbol using usize indices (mirrors Symbol which uses nat).
+///  Runtime symbol using usize indices (mirrors Symbol which uses nat).
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum RuntimeSymbol {
     Gen(usize),
     Inv(usize),
 }
 
-/// View: RuntimeSymbol → Symbol.
+///  View: RuntimeSymbol → Symbol.
 pub open spec fn runtime_symbol_view(s: RuntimeSymbol) -> Symbol {
     match s {
         RuntimeSymbol::Gen(i) => Symbol::Gen(i as nat),
@@ -22,14 +22,14 @@ pub open spec fn runtime_symbol_view(s: RuntimeSymbol) -> Symbol {
     }
 }
 
-/// View: Vec<RuntimeSymbol> → Word (Seq<Symbol>).
+///  View: Vec<RuntimeSymbol> → Word (Seq<Symbol>).
 pub open spec fn runtime_word_view(w: Seq<RuntimeSymbol>) -> Word {
     Seq::new(w.len(), |i: int| runtime_symbol_view(w[i]))
 }
 
-// --- Exec functions ---
+//  --- Exec functions ---
 
-/// Check if two runtime symbols form an inverse pair.
+///  Check if two runtime symbols form an inverse pair.
 pub fn is_inverse_pair_exec(s1: &RuntimeSymbol, s2: &RuntimeSymbol) -> (out: bool)
     ensures
         out == is_inverse_pair(runtime_symbol_view(*s1), runtime_symbol_view(*s2)),
@@ -41,7 +41,7 @@ pub fn is_inverse_pair_exec(s1: &RuntimeSymbol, s2: &RuntimeSymbol) -> (out: boo
     }
 }
 
-/// Find the first cancellation position, or return w.len() if none.
+///  Find the first cancellation position, or return w.len() if none.
 pub fn find_cancellation_exec(w: &Vec<RuntimeSymbol>) -> (out: usize)
     requires
         w@.len() < usize::MAX,
@@ -68,7 +68,7 @@ pub fn find_cancellation_exec(w: &Vec<RuntimeSymbol>) -> (out: usize)
     w.len()
 }
 
-/// Reduce at position pos: remove elements at pos and pos+1.
+///  Reduce at position pos: remove elements at pos and pos+1.
 pub fn reduce_at_exec(w: &Vec<RuntimeSymbol>, pos: usize) -> (out: Vec<RuntimeSymbol>)
     requires
         has_cancellation_at(runtime_word_view(w@), pos as int),
@@ -88,7 +88,7 @@ pub fn reduce_at_exec(w: &Vec<RuntimeSymbol>, pos: usize) -> (out: Vec<RuntimeSy
         result.push(w[i]);
         i = i + 1;
     }
-    // Skip pos and pos+1
+    //  Skip pos and pos+1
     let mut j: usize = pos + 2;
     while j < w.len()
         invariant
@@ -107,14 +107,14 @@ pub fn reduce_at_exec(w: &Vec<RuntimeSymbol>, pos: usize) -> (out: Vec<RuntimeSy
         let wv = runtime_word_view(w@);
         let rv = runtime_word_view(result@);
         let expected = reduce_at(wv, pos as int);
-        // expected = wv.subrange(0, pos) + wv.subrange(pos + 2, wv.len())
+        //  expected = wv.subrange(0, pos) + wv.subrange(pos + 2, wv.len())
         assert(rv.len() == expected.len());
         assert(rv =~= expected);
     }
     result
 }
 
-/// Reduce a word to normal form.
+///  Reduce a word to normal form.
 pub fn reduce_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
     requires
         w@.len() < usize::MAX,
@@ -124,14 +124,14 @@ pub fn reduce_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
     let mut current = w.clone();
     let original_view: Ghost<Word> = Ghost(runtime_word_view(w@));
 
-    // fuel = w.len() / 2 is enough (each step removes 2 symbols)
-    // But we use w.len() for simplicity since reduce_n_steps uses w.len()
+    //  fuel = w.len() / 2 is enough (each step removes 2 symbols)
+    //  But we use w.len() for simplicity since reduce_n_steps uses w.len()
     let mut fuel: usize = w.len();
 
     proof {
         assert(runtime_word_view(current@) == runtime_word_view(w@));
-        // normal_form(wv) == reduce_n_steps(wv, wv.len())
-        // We'll maintain: normal_form(original) == reduce_n_steps(current_view, fuel)
+        //  normal_form(wv) == reduce_n_steps(wv, wv.len())
+        //  We'll maintain: normal_form(original) == reduce_n_steps(current_view, fuel)
     }
 
     while fuel > 0
@@ -147,13 +147,13 @@ pub fn reduce_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
             proof {
                 let cv = runtime_word_view(current@);
                 assert(find_cancellation_from(cv, 0) >= cv.len());
-                // No cancellation → word is reduced
+                //  No cancellation → word is reduced
                 assert(!has_cancellation(cv)) by {
                     if has_cancellation(cv) {
                         let i = choose|i: int| has_cancellation_at(cv, i);
-                        // i >= 0 and i < cv.len() - 1
+                        //  i >= 0 and i < cv.len() - 1
                         lemma_find_cancellation_from_none(cv, 0, i);
-                        // contradiction: not is_inverse_pair but has_cancellation_at
+                        //  contradiction: not is_inverse_pair but has_cancellation_at
                     }
                 }
                 assert(is_reduced(cv));
@@ -182,11 +182,11 @@ pub fn reduce_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
     current
 }
 
-// ============================================================
-// Runtime Homomorphism Application
-// ============================================================
+//  ============================================================
+//  Runtime Homomorphism Application
+//  ============================================================
 
-/// Check that a runtime symbol's generator index is within the image array.
+///  Check that a runtime symbol's generator index is within the image array.
 pub open spec fn runtime_symbol_valid_for_hom(s: RuntimeSymbol, num_images: int) -> bool {
     match s {
         RuntimeSymbol::Gen(i) => (i as int) < num_images,
@@ -194,13 +194,13 @@ pub open spec fn runtime_symbol_valid_for_hom(s: RuntimeSymbol, num_images: int)
     }
 }
 
-/// Runtime homomorphism data: generator images as Vec of words.
+///  Runtime homomorphism data: generator images as Vec of words.
 pub struct RuntimeHomData {
     pub source_gen_count: usize,
     pub generator_images: Vec<Vec<RuntimeSymbol>>,
 }
 
-/// View RuntimeHomData as HomomorphismData (with placeholder presentations).
+///  View RuntimeHomData as HomomorphismData (with placeholder presentations).
 pub open spec fn runtime_hom_view(h: &RuntimeHomData) -> HomomorphismData {
     HomomorphismData {
         source: Presentation {
@@ -208,7 +208,7 @@ pub open spec fn runtime_hom_view(h: &RuntimeHomData) -> HomomorphismData {
             relators: Seq::empty(),
         },
         target: Presentation {
-            num_generators: 0, // placeholder — not used by apply_hom
+            num_generators: 0, //  placeholder — not used by apply_hom
             relators: Seq::empty(),
         },
         generator_images: Seq::new(h.generator_images@.len(), |i: int|
@@ -216,7 +216,7 @@ pub open spec fn runtime_hom_view(h: &RuntimeHomData) -> HomomorphismData {
     }
 }
 
-/// Inverse a runtime word: reverse and invert each symbol.
+///  Inverse a runtime word: reverse and invert each symbol.
 pub fn inverse_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
     ensures
         runtime_word_view(out@) =~= inverse_word(runtime_word_view(w@)),
@@ -254,13 +254,13 @@ pub fn inverse_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
         let expected = inverse_word(wv);
         crate::word::lemma_inverse_word_len(wv);
         assert(rv.len() == expected.len());
-        // Both have the same length and same elements
+        //  Both have the same length and same elements
         assert(rv =~= expected) by {
             assert forall|k: int| 0 <= k < rv.len() implies rv[k] == expected[k] by {
-                // rv[k] = inv(wv[wv.len()-1-k])
-                // expected[k] = inverse_word(wv)[k]
-                // Need to show these are equal
-                // inverse_word reverses and inverts
+                //  rv[k] = inv(wv[wv.len()-1-k])
+                //  expected[k] = inverse_word(wv)[k]
+                //  Need to show these are equal
+                //  inverse_word reverses and inverts
                 lemma_inverse_word_element(wv, k);
             }
         }
@@ -268,7 +268,7 @@ pub fn inverse_word_exec(w: &Vec<RuntimeSymbol>) -> (out: Vec<RuntimeSymbol>)
     result
 }
 
-/// Helper: inverse_word element access.
+///  Helper: inverse_word element access.
 pub proof fn lemma_inverse_word_element(w: Word, k: int)
     requires
         0 <= k < w.len(),
@@ -277,20 +277,20 @@ pub proof fn lemma_inverse_word_element(w: Word, k: int)
     decreases w.len(),
 {
     if w.len() == 0 {
-        // impossible
+        //  impossible
     } else {
         let rest = w.drop_first();
         crate::word::lemma_inverse_word_len(rest);
-        // inverse_word(w) = inverse_word(rest) + [inv(w.first())]
-        // inverse_word(w).len() == w.len()
+        //  inverse_word(w) = inverse_word(rest) + [inv(w.first())]
+        //  inverse_word(w).len() == w.len()
         if k < inverse_word(rest).len() {
-            // k < rest.len(), so inverse_word(w)[k] == inverse_word(rest)[k]
+            //  k < rest.len(), so inverse_word(w)[k] == inverse_word(rest)[k]
             lemma_inverse_word_element(rest, k);
-            // inverse_word(rest)[k] == inv(rest[rest.len()-1-k])
-            // rest[rest.len()-1-k] == w[rest.len()-k] == w[w.len()-1-k]
+            //  inverse_word(rest)[k] == inv(rest[rest.len()-1-k])
+            //  rest[rest.len()-1-k] == w[rest.len()-k] == w[w.len()-1-k]
             assert(rest[(rest.len() - 1 - k) as int] == w[(w.len() - 1 - k) as int]);
         } else {
-            // k == rest.len() == w.len()-1
+            //  k == rest.len() == w.len()-1
             assert(k == (w.len() - 1) as int);
             assert(inverse_word(w)[k] == inverse_symbol(w.first()));
             assert(w[(w.len() - 1 - k) as int] == w[0]);
@@ -298,7 +298,7 @@ pub proof fn lemma_inverse_word_element(w: Word, k: int)
     }
 }
 
-/// Apply homomorphism to a single symbol (exec).
+///  Apply homomorphism to a single symbol (exec).
 pub fn apply_hom_symbol_exec(
     h: &RuntimeHomData,
     s: &RuntimeSymbol,
@@ -322,7 +322,7 @@ pub fn apply_hom_symbol_exec(
     }
 }
 
-/// Append all elements from src to dst (exec helper).
+///  Append all elements from src to dst (exec helper).
 fn append_vec(dst: &mut Vec<RuntimeSymbol>, src: &Vec<RuntimeSymbol>)
     ensures
         dst@ =~= old(dst)@ + src@,
@@ -350,7 +350,7 @@ fn append_vec(dst: &mut Vec<RuntimeSymbol>, src: &Vec<RuntimeSymbol>)
     }
 }
 
-/// Helper: runtime_word_view of concatenated Vecs.
+///  Helper: runtime_word_view of concatenated Vecs.
 proof fn lemma_runtime_word_view_append(a: Seq<RuntimeSymbol>, b: Seq<RuntimeSymbol>)
     ensures
         runtime_word_view(a + b) =~= runtime_word_view(a) + runtime_word_view(b),
@@ -368,7 +368,7 @@ proof fn lemma_runtime_word_view_append(a: Seq<RuntimeSymbol>, b: Seq<RuntimeSym
     }
 }
 
-/// Helper: runtime_word_view of a subrange equals subrange of runtime_word_view.
+///  Helper: runtime_word_view of a subrange equals subrange of runtime_word_view.
 pub proof fn lemma_runtime_word_view_subrange(w: Seq<RuntimeSymbol>, lo: int, hi: int)
     requires
         0 <= lo <= hi <= w.len(),
@@ -383,7 +383,7 @@ pub proof fn lemma_runtime_word_view_subrange(w: Seq<RuntimeSymbol>, lo: int, hi
     }
 }
 
-/// Apply homomorphism to a word (exec).
+///  Apply homomorphism to a word (exec).
 pub fn apply_hom_exec(
     h: &RuntimeHomData,
     w: &Vec<RuntimeSymbol>,
@@ -422,16 +422,16 @@ pub fn apply_hom_exec(
             let singleton = Seq::new(1, |_j: int| wv@[i as int]);
             assert(sub_i1 =~= sub_i + singleton);
 
-            // apply_hom(sub_i + singleton) =~= apply_hom(sub_i) + apply_hom(singleton)
+            //  apply_hom(sub_i + singleton) =~= apply_hom(sub_i) + apply_hom(singleton)
             crate::homomorphism::lemma_hom_respects_concat(hv@, sub_i, singleton);
-            // apply_hom(singleton) =~= apply_hom_symbol(wv@[i])
+            //  apply_hom(singleton) =~= apply_hom_symbol(wv@[i])
             crate::homomorphism::lemma_hom_singleton(hv@, wv@[i as int]);
-            // So: apply_hom(sub_i1) =~= apply_hom(sub_i) + apply_hom_symbol(wv@[i])
+            //  So: apply_hom(sub_i1) =~= apply_hom(sub_i) + apply_hom_symbol(wv@[i])
 
-            // wv@[i] == runtime_symbol_view(w@[i])
+            //  wv@[i] == runtime_symbol_view(w@[i])
             assert(wv@[i as int] == runtime_symbol_view(w@[i as int]));
 
-            // result@ =~= old_bytes ++ sym_image@, and runtime_word_view distributes
+            //  result@ =~= old_bytes ++ sym_image@, and runtime_word_view distributes
             let ghost old_bytes = result@.subrange(0, (result@.len() - sym_image@.len()) as int);
             lemma_runtime_word_view_append(old_bytes, sym_image@);
             assert(result@ =~= old_bytes + sym_image@);
@@ -448,4 +448,4 @@ pub fn apply_hom_exec(
     result
 }
 
-} // verus!
+} //  verus!

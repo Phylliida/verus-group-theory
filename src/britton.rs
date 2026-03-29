@@ -7,28 +7,28 @@ use crate::hnn::*;
 
 verus! {
 
-// ============================================================
-// Britton's Lemma (HNN Injectivity)
-// ============================================================
+//  ============================================================
+//  Britton's Lemma (HNN Injectivity)
+//  ============================================================
 //
-// Britton's Lemma is the fundamental injectivity theorem for HNN extensions:
+//  Britton's Lemma is the fundamental injectivity theorem for HNN extensions:
 //
-//   If w is a word using only base generators, and w ≡ ε in the HNN
-//   extension G*, then w ≡ ε in the base group G.
+//    If w is a word using only base generators, and w ≡ ε in the HNN
+//    extension G*, then w ≡ ε in the base group G.
 //
-// Equivalently: the natural inclusion G → G* is injective.
+//  Equivalently: the natural inclusion G → G* is injective.
 //
-// This is the most technically demanding single theorem in combinatorial
-// group theory. The full proof requires analyzing derivation sequences
-// and showing that stable letters can always be eliminated from
-// derivations between base words.
+//  This is the most technically demanding single theorem in combinatorial
+//  group theory. The full proof requires analyzing derivation sequences
+//  and showing that stable letters can always be eliminated from
+//  derivations between base words.
 
-// ============================================================
-// Stable letter analysis
-// ============================================================
+//  ============================================================
+//  Stable letter analysis
+//  ============================================================
 
-/// Count the number of stable letter symbols in a word.
-/// Counts both Gen(n) and Inv(n) where n = data.base.num_generators.
+///  Count the number of stable letter symbols in a word.
+///  Counts both Gen(n) and Inv(n) where n = data.base.num_generators.
 pub open spec fn stable_letter_count(w: Word, n: nat) -> nat
     decreases w.len(),
 {
@@ -44,12 +44,12 @@ pub open spec fn stable_letter_count(w: Word, n: nat) -> nat
     }
 }
 
-/// A word is a "base word" if it contains no stable letters.
+///  A word is a "base word" if it contains no stable letters.
 pub open spec fn is_base_word(w: Word, n: nat) -> bool {
     stable_letter_count(w, n) == 0
 }
 
-/// A word using only base generators (word_valid for base) is a base word.
+///  A word using only base generators (word_valid for base) is a base word.
 pub proof fn lemma_base_word_characterization(w: Word, n: nat)
     requires
         word_valid(w, n),
@@ -72,8 +72,8 @@ pub proof fn lemma_base_word_characterization(w: Word, n: nat)
     }
 }
 
-/// A base word that is word_valid for n+1 generators is word_valid for n generators.
-/// (Combines: no stable letters at index n + all indices < n+1 → all indices < n.)
+///  A base word that is word_valid for n+1 generators is word_valid for n generators.
+///  (Combines: no stable letters at index n + all indices < n+1 → all indices < n.)
 pub proof fn lemma_base_word_valid_downgrade(w: Word, n: nat)
     requires
         is_base_word(w, n),
@@ -85,7 +85,7 @@ pub proof fn lemma_base_word_valid_downgrade(w: Word, n: nat)
     if w.len() > 0 {
         let rest = w.drop_first();
 
-        // First symbol has index < n+1 and index != n, so index < n
+        //  First symbol has index < n+1 and index != n, so index < n
         assert(symbol_valid(w.first(), n + 1));
         assert(generator_index(w.first()) < n + 1);
         if generator_index(w.first()) == n {
@@ -95,7 +95,7 @@ pub proof fn lemma_base_word_valid_downgrade(w: Word, n: nat)
         assert(generator_index(w.first()) < n);
         assert(symbol_valid(w.first(), n));
 
-        // Rest is also base word and valid for n+1
+        //  Rest is also base word and valid for n+1
         assert(stable_letter_count(w, n) == stable_letter_count(rest, n));
         assert(is_base_word(rest, n));
         assert(word_valid(rest, n + 1)) by {
@@ -107,7 +107,7 @@ pub proof fn lemma_base_word_valid_downgrade(w: Word, n: nat)
         }
         lemma_base_word_valid_downgrade(rest, n);
 
-        // Combine: first symbol valid + rest valid → whole word valid
+        //  Combine: first symbol valid + rest valid → whole word valid
         assert forall|i: int| 0 <= i < w.len()
             implies symbol_valid(#[trigger] w[i], n)
         by {
@@ -119,18 +119,18 @@ pub proof fn lemma_base_word_valid_downgrade(w: Word, n: nat)
     }
 }
 
-/// The empty word is a base word.
+///  The empty word is a base word.
 pub proof fn lemma_empty_is_base_word(n: nat)
     ensures
         is_base_word(empty_word(), n),
 {
 }
 
-// ============================================================
-// Stable letter count properties
-// ============================================================
+//  ============================================================
+//  Stable letter count properties
+//  ============================================================
 
-/// stable_letter_count is additive over concatenation.
+///  stable_letter_count is additive over concatenation.
 pub proof fn lemma_stable_letter_count_concat(w1: Word, w2: Word, n: nat)
     ensures
         stable_letter_count(concat(w1, w2), n) ==
@@ -146,7 +146,7 @@ pub proof fn lemma_stable_letter_count_concat(w1: Word, w2: Word, n: nat)
     }
 }
 
-/// If w[i] has generator_index == n, then stable_letter_count(w, n) >= 1.
+///  If w[i] has generator_index == n, then stable_letter_count(w, n) >= 1.
 pub proof fn lemma_symbol_contributes_to_count(w: Word, n: nat, i: int)
     requires
         0 <= i < w.len(),
@@ -163,7 +163,7 @@ pub proof fn lemma_symbol_contributes_to_count(w: Word, n: nat, i: int)
     }
 }
 
-/// If stable_letter_count >= 1, there exists a witness position.
+///  If stable_letter_count >= 1, there exists a witness position.
 pub proof fn lemma_count_gives_witness(w: Word, n: nat)
     requires
         stable_letter_count(w, n) >= 1,
@@ -181,7 +181,7 @@ pub proof fn lemma_count_gives_witness(w: Word, n: nat)
     }
 }
 
-/// inverse_word preserves the existence of stable letters.
+///  inverse_word preserves the existence of stable letters.
 pub proof fn lemma_inverse_preserves_stable(w: Word, n: nat)
     requires
         stable_letter_count(w, n) >= 1,
@@ -194,7 +194,7 @@ pub proof fn lemma_inverse_preserves_stable(w: Word, n: nat)
     let tail = Seq::<Symbol>::new(1, |_i: int| inverse_symbol(w.first()));
 
     if generator_index(w.first()) == n {
-        // inverse_symbol preserves generator_index
+        //  inverse_symbol preserves generator_index
         match w.first() {
             Symbol::Gen(_) => {},
             Symbol::Inv(_) => {},
@@ -203,13 +203,13 @@ pub proof fn lemma_inverse_preserves_stable(w: Word, n: nat)
         lemma_symbol_contributes_to_count(tail, n, 0);
         lemma_stable_letter_count_concat(inv_rest, tail, n);
     } else {
-        // w.first() doesn't contribute, so count(rest, n) >= 1
+        //  w.first() doesn't contribute, so count(rest, n) >= 1
         lemma_inverse_preserves_stable(rest, n);
         lemma_stable_letter_count_concat(inv_rest, tail, n);
     }
 }
 
-/// HNN relators contain stable letters.
+///  HNN relators contain stable letters.
 pub proof fn lemma_hnn_relator_has_stable(data: HNNData, i: int)
     requires
         0 <= i < data.associations.len(),
@@ -228,7 +228,7 @@ pub proof fn lemma_hnn_relator_has_stable(data: HNNData, i: int)
     lemma_symbol_contributes_to_count(r, n, 0);
 }
 
-/// get_relator for an HNN relator index has stable letters.
+///  get_relator for an HNN relator index has stable letters.
 pub proof fn lemma_get_relator_hnn_has_stable(data: HNNData, idx: nat, inverted: bool)
     requires
         idx >= data.base.relators.len(),
@@ -253,12 +253,12 @@ pub proof fn lemma_get_relator_hnn_has_stable(data: HNNData, idx: nat, inverted:
     }
 }
 
-// ============================================================
-// T-free step classification
-// ============================================================
+//  ============================================================
+//  T-free step classification
+//  ============================================================
 
-/// A derivation step between t-free words in G* is valid in G,
-/// and produces the same result.
+///  A derivation step between t-free words in G* is valid in G,
+///  and produces the same result.
 pub proof fn lemma_t_free_step_is_base_step(
     data: HNNData,
     w: Word,
@@ -283,11 +283,11 @@ pub proof fn lemma_t_free_step_is_base_step(
 
     match step {
         DerivationStep::FreeReduce { position } => {
-            // No presentation dependency
+            //  No presentation dependency
         },
         DerivationStep::FreeExpand { position, symbol } => {
             if generator_index(symbol) == n {
-                // symbol is stable → result has stable letters → contradiction
+                //  symbol is stable → result has stable letters → contradiction
                 let pair = Seq::<Symbol>::new(1, |_i: int| symbol)
                     + Seq::<Symbol>::new(1, |_i: int| inverse_symbol(symbol));
                 let left = w.subrange(0, position);
@@ -331,11 +331,11 @@ pub proof fn lemma_t_free_step_is_base_step(
     }
 }
 
-// ============================================================
-// T-free derivation
-// ============================================================
+//  ============================================================
+//  T-free derivation
+//  ============================================================
 
-/// All intermediate words in a derivation are base words.
+///  All intermediate words in a derivation are base words.
 pub open spec fn all_intermediates_base(
     data: HNNData,
     steps: Seq<DerivationStep>,
@@ -356,7 +356,7 @@ pub open spec fn all_intermediates_base(
     }
 }
 
-/// A t-free derivation in G* produces the same result in G.
+///  A t-free derivation in G* produces the same result in G.
 pub proof fn lemma_t_free_derivation_is_base(
     data: HNNData,
     steps: Seq<DerivationStep>,
@@ -377,10 +377,10 @@ pub proof fn lemma_t_free_derivation_is_base(
         let step = steps.first();
         let w_next = apply_step(hp, w, step).unwrap();
 
-        // Unfold all_intermediates_base: first level gives is_base_word(w, n)
-        // and all_intermediates_base(data, steps.drop_first(), w_next)
+        //  Unfold all_intermediates_base: first level gives is_base_word(w, n)
+        //  and all_intermediates_base(data, steps.drop_first(), w_next)
         assert(all_intermediates_base(data, steps.drop_first(), w_next));
-        // Second level gives is_base_word(w_next, n)
+        //  Second level gives is_base_word(w_next, n)
         assert(is_base_word(w_next, n));
 
         lemma_t_free_step_is_base_step(data, w, step);
@@ -388,31 +388,31 @@ pub proof fn lemma_t_free_derivation_is_base(
     }
 }
 
-// ============================================================
-// Britton's Lemma — Axiom
-// ============================================================
+//  ============================================================
+//  Britton's Lemma — Axiom
+//  ============================================================
 //
-// The full algebraic proof of Britton's Lemma involves:
-// 1. Defining the "t-length" of intermediate words in a derivation
-// 2. Showing each step changes t-count by at most 2
-// 3. A "peak analysis" argument: if a derivation introduces then
-//    removes stable letters, the segment can be simplified
-// 4. Induction on the total t-exposure of the derivation
+//  The full algebraic proof of Britton's Lemma involves:
+//  1. Defining the "t-length" of intermediate words in a derivation
+//  2. Showing each step changes t-count by at most 2
+//  3. A "peak analysis" argument: if a derivation introduces then
+//     removes stable letters, the segment can be simplified
+//  4. Induction on the total t-exposure of the derivation
 //
-// This proof is deferred. The axiom is strictly weaker than
-// axiom_higman_embedding and is a standard theorem in
-// combinatorial group theory.
+//  This proof is deferred. The axiom is strictly weaker than
+//  axiom_higman_embedding and is a standard theorem in
+//  combinatorial group theory.
 
-/// Britton's Lemma: if a base word is trivial in the HNN extension,
-/// it is trivial in the base group.
+///  Britton's Lemma: if a base word is trivial in the HNN extension,
+///  it is trivial in the base group.
 ///
-/// Equivalently: the natural inclusion G → G* = ⟨G, t | t⁻¹aᵢt = bᵢ⟩
-/// is injective (on the group level).
+///  Equivalently: the natural inclusion G → G* = ⟨G, t | t⁻¹aᵢt = bᵢ⟩
+///  is injective (on the group level).
 ///
-/// Requires `hnn_associations_isomorphic`: the map aᵢ ↦ bᵢ must extend
-/// to an isomorphism of the subgroups they generate. Without this,
-/// the inclusion G → G* may not be injective (see doc on
-/// `hnn_associations_isomorphic` for a counterexample).
+///  Requires `hnn_associations_isomorphic`: the map aᵢ ↦ bᵢ must extend
+///  to an isomorphism of the subgroups they generate. Without this,
+///  the inclusion G → G* may not be injective (see doc on
+///  `hnn_associations_isomorphic` for a counterexample).
 pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
     requires
         hnn_data_valid(data),
@@ -425,12 +425,12 @@ pub proof fn axiom_britton_lemma(data: HNNData, w: Word)
     crate::britton_proof::britton_lemma(data, w);
 }
 
-// ============================================================
-// Derived forms
-// ============================================================
+//  ============================================================
+//  Derived forms
+//  ============================================================
 
-/// Britton's Lemma (equivalence form): if two base words are equivalent
-/// in the HNN extension, they are equivalent in the base group.
+///  Britton's Lemma (equivalence form): if two base words are equivalent
+///  in the HNN extension, they are equivalent in the base group.
 pub proof fn lemma_hnn_injective(data: HNNData, w1: Word, w2: Word)
     requires
         hnn_data_valid(data),
@@ -446,50 +446,50 @@ pub proof fn lemma_hnn_injective(data: HNNData, w1: Word, w2: Word)
     let bp = data.base;
     let n = bp.num_generators;
 
-    // w1 ≡ w2 in G* implies w1 · w2⁻¹ ≡ ε in G*
-    // Proof: w1 ≡ w2 → w1 · w2⁻¹ ≡ w2 · w2⁻¹ ≡ ε
+    //  w1 ≡ w2 in G* implies w1 · w2⁻¹ ≡ ε in G*
+    //  Proof: w1 ≡ w2 → w1 · w2⁻¹ ≡ w2 · w2⁻¹ ≡ ε
     lemma_equiv_concat_left(hp, w1, w2, inverse_word(w2));
     lemma_word_inverse_right(hp, w2);
     lemma_equiv_transitive(hp, concat(w1, inverse_word(w2)), concat(w2, inverse_word(w2)), empty_word());
 
-    // w1 · w2⁻¹ is a base word (word_valid for base)
+    //  w1 · w2⁻¹ is a base word (word_valid for base)
     lemma_inverse_word_valid(w2, n);
     lemma_concat_word_valid(w1, inverse_word(w2), n);
 
-    // Apply Britton's Lemma: w1 · w2⁻¹ ≡ ε in G
+    //  Apply Britton's Lemma: w1 · w2⁻¹ ≡ ε in G
     axiom_britton_lemma(data, concat(w1, inverse_word(w2)));
 
-    // w1 · w2⁻¹ ≡ ε in G → w1 ≡ w2 in G
-    // Proof: w1 · w2⁻¹ ≡ ε → w1 · w2⁻¹ · w2 ≡ w2 → w1 · ε ≡ w2... no, simpler:
-    // w1 · w2⁻¹ ≡ ε
-    // w1 · w2⁻¹ · w2 ≡ ε · w2 = w2
+    //  w1 · w2⁻¹ ≡ ε in G → w1 ≡ w2 in G
+    //  Proof: w1 · w2⁻¹ ≡ ε → w1 · w2⁻¹ · w2 ≡ w2 → w1 · ε ≡ w2... no, simpler:
+    //  w1 · w2⁻¹ ≡ ε
+    //  w1 · w2⁻¹ · w2 ≡ ε · w2 = w2
     lemma_equiv_concat_left(bp, concat(w1, inverse_word(w2)), empty_word(), w2);
     assert(concat(empty_word(), w2) =~= w2);
     lemma_equiv_refl(bp, w2);
     lemma_equiv_transitive(bp, concat(concat(w1, inverse_word(w2)), w2), concat(empty_word(), w2), w2);
 
-    // w1 · (w2⁻¹ · w2) = (w1 · w2⁻¹) · w2 by assoc
+    //  w1 · (w2⁻¹ · w2) = (w1 · w2⁻¹) · w2 by assoc
     assert(concat(concat(w1, inverse_word(w2)), w2) =~= concat(w1, concat(inverse_word(w2), w2)));
 
-    // w2⁻¹ · w2 ≡ ε
+    //  w2⁻¹ · w2 ≡ ε
     lemma_word_inverse_left(bp, w2);
 
-    // w1 · (w2⁻¹ · w2) ≡ w1 · ε = w1
+    //  w1 · (w2⁻¹ · w2) ≡ w1 · ε = w1
     lemma_equiv_concat_right(bp, w1, concat(inverse_word(w2), w2), empty_word());
     assert(concat(w1, empty_word()) =~= w1);
     lemma_equiv_refl(bp, w1);
     lemma_equiv_transitive(bp, concat(w1, concat(inverse_word(w2), w2)), concat(w1, empty_word()), w1);
 
-    // word_valid needed for symmetric
+    //  word_valid needed for symmetric
     lemma_concat_word_valid(w1, concat(inverse_word(w2), w2), n);
 
-    // Chain: w1 ≡ w1 · (w2⁻¹ · w2) = (w1 · w2⁻¹) · w2 ≡ w2
+    //  Chain: w1 ≡ w1 · (w2⁻¹ · w2) = (w1 · w2⁻¹) · w2 ≡ w2
     lemma_equiv_symmetric(bp, concat(w1, concat(inverse_word(w2), w2)), w1);
     lemma_equiv_transitive(bp, w1, concat(w1, concat(inverse_word(w2), w2)), w2);
 }
 
-/// Britton's Lemma (contrapositive form): if two base words are
-/// NOT equivalent in the base group, they are NOT equivalent in the HNN extension.
+///  Britton's Lemma (contrapositive form): if two base words are
+///  NOT equivalent in the base group, they are NOT equivalent in the HNN extension.
 pub proof fn lemma_hnn_separates(data: HNNData, w1: Word, w2: Word)
     requires
         hnn_data_valid(data),
@@ -501,11 +501,11 @@ pub proof fn lemma_hnn_separates(data: HNNData, w1: Word, w2: Word)
     ensures
         !equiv_in_presentation(hnn_presentation(data), w1, w2),
 {
-    // Contrapositive of lemma_hnn_injective
+    //  Contrapositive of lemma_hnn_injective
     if equiv_in_presentation(hnn_presentation(data), w1, w2) {
         lemma_hnn_injective(data, w1, w2);
         assert(false);
     }
 }
 
-} // verus!
+} //  verus!
