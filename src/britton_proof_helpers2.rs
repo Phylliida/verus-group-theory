@@ -9,7 +9,7 @@ use crate::britton_proof::*;
 
 verus! {
 
-/// FreeExpand(base) arm of RI(HNN) commutation.
+///  FreeExpand(base) arm of RI(HNN) commutation.
 pub proof fn lemma_k4_tfree_ri_commute_fe(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, sym1: Symbol,
@@ -66,7 +66,7 @@ pub proof fn lemma_k4_tfree_ri_commute_fe(
     }
 }
 
-/// RelatorInsert(base) arm of RI(HNN) commutation.
+///  RelatorInsert(base) arm of RI(HNN) commutation.
 pub proof fn lemma_k4_tfree_ri_commute_ri(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool,
@@ -119,7 +119,7 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w), r1, n);
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w) + r1, w.subrange(p1_on_w, w.len() as int), n);
         lemma_stable_letter_count_concat(w.subrange(0, p1_on_w), w.subrange(p1_on_w, w.len() as int), n);
-        // Connect count(w) = 0 to count(left) + count(right) = 0
+        //  Connect count(w) = 0 to count(left) + count(right) = 0
         let left = w.subrange(0, p1_on_w);
         let right = w.subrange(p1_on_w, w.len() as int);
         assert(w =~= left + right);
@@ -138,7 +138,7 @@ pub proof fn lemma_k4_tfree_ri_commute_ri(
     }
 }
 
-/// RelatorDelete(base) arm of RI(HNN) commutation.
+///  RelatorDelete(base) arm of RI(HNN) commutation.
 pub proof fn lemma_k4_tfree_ri_commute_rd(
     data: HNNData, w: Word, w1: Word, w2: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool,
@@ -214,8 +214,8 @@ pub proof fn lemma_k4_tfree_ri_commute_rd(
         assert(apply_step(hp, w_prime, step0_adj) == Some(w2));
         (true, w_prime, step1_base, step0_adj)
     } else {
-        (false, arbitrary(), arbitrary(), arbitrary()) // overlap/inside relator
+        (false, arbitrary(), arbitrary(), arbitrary()) //  overlap/inside relator
     }
 }
 
-} // verus!
+} //  verus!

@@ -9,21 +9,21 @@ use crate::schreier_proofs::*;
 
 verus! {
 
-/// All cosets are reachable from coset 0 via some word.
+///  All cosets are reachable from coset 0 via some word.
 pub open spec fn all_cosets_reachable(t: CosetTable) -> bool {
     forall|c: nat| c < t.num_cosets ==> coset_reachable(t, c)
 }
 
-/// Schreier representative for coset c: empty word for coset 0,
-/// chosen representative for others (from coset_rep).
+///  Schreier representative for coset c: empty word for coset 0,
+///  chosen representative for others (from coset_rep).
 pub open spec fn schreier_rep(t: CosetTable, c: nat) -> Word {
     if c == 0 { empty_word() } else { coset_rep(t, c) }
 }
 
-/// Construct a Schreier system for a complete coset table from a spanning
-/// tree witness. The witness provides a BFS tree of the coset graph with
-/// certificates proving each non-tree Schreier generator is trivial via
-/// relator traces.
+///  Construct a Schreier system for a complete coset table from a spanning
+///  tree witness. The witness provides a BFS tree of the coset graph with
+///  certificates proving each non-tree Schreier generator is trivial via
+///  relator traces.
 pub proof fn lemma_construct_schreier_system(
     t: CosetTable, p: Presentation,
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
@@ -46,4 +46,4 @@ pub proof fn lemma_construct_schreier_system(
     lemma_schreier_trivial_from_witness(t, p, parent, depth, non_tree_edges, certificates);
 }
 
-} // verus!
+} //  verus!

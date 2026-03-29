@@ -5,19 +5,19 @@ use crate::rewrite::*;
 
 verus! {
 
-// ============================================================
-// Generalized Newman's Lemma
-// ============================================================
+//  ============================================================
+//  Generalized Newman's Lemma
+//  ============================================================
 //
-// A terminating, locally confluent rewriting system is confluent.
+//  A terminating, locally confluent rewriting system is confluent.
 //
-// Termination: every rule strictly decreases word length (system_length_decreasing).
-// This is stronger than general shortlex but sufficient for most group presentations
-// and simpler to prove (decreases on w.len() directly).
+//  Termination: every rule strictly decreases word length (system_length_decreasing).
+//  This is stronger than general shortlex but sufficient for most group presentations
+//  and simpler to prove (decreases on w.len() directly).
 //
-// Generalizes the free-reduction confluence proof in reduction.rs.
+//  Generalizes the free-reduction confluence proof in reduction.rs.
 
-/// Newman's lemma: length-decreasing + locally confluent → confluent.
+///  Newman's lemma: length-decreasing + locally confluent → confluent.
 pub proof fn lemma_newman(
     sys: RewriteSystem, w: Word, w1: Word, w2: Word,
 )
@@ -60,7 +60,7 @@ proof fn lemma_newman_aux(
             assert(rewrites_to(sys, w2, w1));
         }
     } else {
-        // w →¹ wa →* w1  and  w →¹ wb →* w2
+        //  w →¹ wa →* w1  and  w →¹ wb →* w2
         let wa = choose|wa: Word|
             rewrites_one_step(sys, w, wa)
             && rewrites_in_steps(sys, wa, w1, (n1 - 1) as nat);
@@ -68,44 +68,44 @@ proof fn lemma_newman_aux(
             rewrites_one_step(sys, w, wb)
             && rewrites_in_steps(sys, wb, w2, (n2 - 1) as nat);
 
-        // Strict length decrease: wa.len() < w.len(), wb.len() < w.len()
+        //  Strict length decrease: wa.len() < w.len(), wb.len() < w.len()
         lemma_one_step_strictly_decreases_len(sys, w, wa);
         lemma_one_step_strictly_decreases_len(sys, w, wb);
 
-        // Local confluence: ∃ wc. wa →* wc ∧ wb →* wc
+        //  Local confluence: ∃ wc. wa →* wc ∧ wb →* wc
         assert(joinable(sys, wa, wb));
         let wc = choose|wc: Word| rewrites_to(sys, wa, wc) && rewrites_to(sys, wb, wc);
 
-        // IH on wa: wa →* w1 and wa →* wc are joinable
+        //  IH on wa: wa →* w1 and wa →* wc are joinable
         lemma_newman_aux(sys, wa, w1, wc,
             (n1 - 1) as nat,
             choose|n: nat| rewrites_in_steps(sys, wa, wc, n));
         let d = choose|d: Word| rewrites_to(sys, w1, d) && rewrites_to(sys, wc, d);
 
-        // IH on wb: wb →* w2 and wb →* wc are joinable
+        //  IH on wb: wb →* w2 and wb →* wc are joinable
         lemma_newman_aux(sys, wb, w2, wc,
             (n2 - 1) as nat,
             choose|n: nat| rewrites_in_steps(sys, wb, wc, n));
         let e = choose|e: Word| rewrites_to(sys, w2, e) && rewrites_to(sys, wc, e);
 
-        // wc.len() <= wa.len() < w.len() (rewriting can't increase length)
+        //  wc.len() <= wa.len() < w.len() (rewriting can't increase length)
         lemma_length_decreasing_implies_wf(sys);
         let nc = choose|n: nat| rewrites_in_steps(sys, wa, wc, n);
         lemma_rewrites_to_len(sys, wa, wc, nc);
 
-        // IH on wc: wc →* d and wc →* e are joinable
+        //  IH on wc: wc →* d and wc →* e are joinable
         let nd = choose|n: nat| rewrites_in_steps(sys, wc, d, n);
         let ne = choose|n: nat| rewrites_in_steps(sys, wc, e, n);
         lemma_newman_aux(sys, wc, d, e, nd, ne);
         let f = choose|f: Word| rewrites_to(sys, d, f) && rewrites_to(sys, e, f);
 
-        // Chain: w1 →* d →* f  and  w2 →* e →* f
+        //  Chain: w1 →* d →* f  and  w2 →* e →* f
         lemma_rewrites_to_transitive(sys, w1, d, f);
         lemma_rewrites_to_transitive(sys, w2, e, f);
     }
 }
 
-/// Main theorem: length-decreasing + locally confluent → confluent.
+///  Main theorem: length-decreasing + locally confluent → confluent.
 pub proof fn lemma_length_decreasing_locally_confluent_implies_confluent(
     sys: RewriteSystem,
 )
@@ -123,4 +123,4 @@ pub proof fn lemma_length_decreasing_locally_confluent_implies_confluent(
     }
 }
 
-} // verus!
+} //  verus!

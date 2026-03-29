@@ -48,8 +48,8 @@ type Word = Seq<Symbol>
 
 ```
 struct Presentation {
-    num_generators: nat,        // generators are 0..n-1
-    relators: Seq<Word>,        // words that equal identity
+    num_generators: nat,        //  generators are 0..n-1
+    relators: Seq<Word>,        //  words that equal identity
 }
 ```
 
@@ -76,14 +76,14 @@ struct Presentation {
 Choose one (register machines are simpler to formalize than Turing machines):
 
 ```
-// Register machine: finite program, unbounded nat registers
+//  Register machine: finite program, unbounded nat registers
 struct RegisterMachine {
     instructions: Seq<Instruction>,
 }
 
 enum Instruction {
-    Inc(nat),           // increment register
-    DecJump(nat, nat),  // decrement or jump if zero
+    Inc(nat),           //  increment register
+    DecJump(nat, nat),  //  decrement or jump if zero
     Halt,
 }
 ```
@@ -96,7 +96,7 @@ enum Instruction {
 ### 2b. Computably Enumerable Sets
 
 ```
-// A set S ⊆ ℕ is c.e. if there exists a machine that enumerates it
+//  A set S ⊆ ℕ is c.e. if there exists a machine that enumerates it
 spec fn is_ce(S: Set<nat>) -> bool {
     exists|m: RegisterMachine| forall|n: nat|
         S.contains(n) <==> halts(m, n)
@@ -110,9 +110,9 @@ spec fn is_ce(S: Set<nat>) -> bool {
 ### 2c. CEERs (Computably Enumerable Equivalence Relations)
 
 ```
-// A CEER on ℕ: an equivalence relation whose graph is c.e.
+//  A CEER on ℕ: an equivalence relation whose graph is c.e.
 struct CEER {
-    // The enumerator: at stage s, it may declare pairs equivalent
+    //  The enumerator: at stage s, it may declare pairs equivalent
     enumerator: RegisterMachine,
 }
 ```
@@ -124,7 +124,7 @@ struct CEER {
 ### 2d. Reductions Between CEERs
 
 ```
-// A computable reduction from CEER E to CEER F
+//  A computable reduction from CEER E to CEER F
 spec fn reduces_to(E: CEER, F: CEER) -> bool {
     exists|f: RegisterMachine| forall|a: nat, b: nat|
         E.equiv(a, b) <==> F.equiv(f.compute(a), f.compute(b))
@@ -142,15 +142,15 @@ spec fn reduces_to(E: CEER, F: CEER) -> bool {
 
 ```
 enum Formula {
-    Eq(Term, Term),             // t₁ = t₂
-    In(Term, Term),             // t₁ ∈ t₂
+    Eq(Term, Term),             //  t₁ = t₂
+    In(Term, Term),             //  t₁ ∈ t₂
     Not(Box<Formula>),
     And(Box<Formula>, Box<Formula>),
     Or(Box<Formula>, Box<Formula>),
     Implies(Box<Formula>, Box<Formula>),
     Iff(Box<Formula>, Box<Formula>),
-    Forall(nat, Box<Formula>),  // ∀ x_n. φ
-    Exists(nat, Box<Formula>),  // ∃ x_n. φ
+    Forall(nat, Box<Formula>),  //  ∀ x_n. φ
+    Exists(nat, Box<Formula>),  //  ∃ x_n. φ
 }
 
 enum Term {
@@ -178,9 +178,9 @@ struct Proof {
 
 enum Justification {
     Axiom,
-    ModusPonens(nat, nat),      // indices of φ→ψ and φ
-    Generalization(nat, nat),   // ∀-introduction
-    // ... standard proof rules
+    ModusPonens(nat, nat),      //  indices of φ→ψ and φ
+    Generalization(nat, nat),   //  ∀-introduction
+    //  ... standard proof rules
 }
 ```
 
@@ -227,7 +227,7 @@ The Neis-Sorbi refinement ensures this works with finitely many generators
 proof fn main_theorem()
     ensures
         exists|G: Presentation, f: RegisterMachine|
-            G.num_generators < omega &&  // finitely generated
+            G.num_generators < omega &&  //  finitely generated
             forall|phi: Formula, psi: Formula|
                 phi.is_sentence() && psi.is_sentence() ==>
                 (zfc_equiv(phi, psi) <==>

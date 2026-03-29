@@ -6,32 +6,32 @@ use crate::runtime::*;
 
 verus! {
 
-// ============================================================
-// Knuth-Bendix Completion — Exec Implementation
-// ============================================================
+//  ============================================================
+//  Knuth-Bendix Completion — Exec Implementation
+//  ============================================================
 
-/// A runtime rewrite rule: lhs → rhs.
+///  A runtime rewrite rule: lhs → rhs.
 pub struct RuntimeRule {
     pub lhs: Vec<RuntimeSymbol>,
     pub rhs: Vec<RuntimeSymbol>,
 }
 
-/// A runtime rewrite system.
+///  A runtime rewrite system.
 pub struct RuntimeRewriteSystem {
     pub rules: Vec<RuntimeRule>,
 }
 
-/// Result of Knuth-Bendix completion.
+///  Result of Knuth-Bendix completion.
 pub enum KBResult {
     Complete { system: RuntimeRewriteSystem },
     Incomplete { system: RuntimeRewriteSystem },
 }
 
-// ============================================================
-// Word operations
-// ============================================================
+//  ============================================================
+//  Word operations
+//  ============================================================
 
-/// Check if `pattern` matches at position `pos` in `word`.
+///  Check if `pattern` matches at position `pos` in `word`.
 pub fn matches_at_exec(
     word: &Vec<RuntimeSymbol>,
     pattern: &Vec<RuntimeSymbol>,
@@ -57,7 +57,7 @@ pub fn matches_at_exec(
     true
 }
 
-/// Find the first position where `pattern` matches in `word`, or None.
+///  Find the first position where `pattern` matches in `word`, or None.
 pub fn find_match_exec(
     word: &Vec<RuntimeSymbol>,
     pattern: &Vec<RuntimeSymbol>,
@@ -90,7 +90,7 @@ pub fn find_match_exec(
     None
 }
 
-/// Apply a rule at position `pos`: replace word[pos..pos+|lhs|] with rhs.
+///  Apply a rule at position `pos`: replace word[pos..pos+|lhs|] with rhs.
 pub fn apply_rule_at_exec(
     word: &Vec<RuntimeSymbol>,
     lhs_len: usize,
@@ -100,14 +100,14 @@ pub fn apply_rule_at_exec(
     requires
         pos as int + lhs_len as int <= word@.len(),
         lhs_len > 0,
-        rhs@.len() < lhs_len,  // length-decreasing
+        rhs@.len() < lhs_len,  //  length-decreasing
         word@.len() < usize::MAX,
     ensures
         out@.len() == word@.len() - lhs_len + rhs@.len(),
         out@.len() < word@.len(),
 {
     let mut result: Vec<RuntimeSymbol> = Vec::new();
-    // prefix
+    //  prefix
     let mut i: usize = 0;
     while i < pos
         invariant 0 <= i <= pos, pos <= word.len(), result@.len() == i as int,
@@ -116,7 +116,7 @@ pub fn apply_rule_at_exec(
         result.push(word[i]);
         i = i + 1;
     }
-    // rhs
+    //  rhs
     let mut j: usize = 0;
     while j < rhs.len()
         invariant 0 <= j <= rhs.len(), result@.len() == pos as int + j as int,
@@ -125,7 +125,7 @@ pub fn apply_rule_at_exec(
         result.push(rhs[j]);
         j = j + 1;
     }
-    // suffix
+    //  suffix
     let skip = pos + lhs_len;
     let mut m: usize = skip;
     while m < word.len()
@@ -141,7 +141,7 @@ pub fn apply_rule_at_exec(
     result
 }
 
-/// Reduce a word to normal form under a rewrite system.
+///  Reduce a word to normal form under a rewrite system.
 pub fn reduce_to_normal_form_exec(
     sys: &RuntimeRewriteSystem,
     word: &Vec<RuntimeSymbol>,
@@ -208,11 +208,11 @@ pub fn reduce_to_normal_form_exec(
     current
 }
 
-// ============================================================
-// Critical pair computation
-// ============================================================
+//  ============================================================
+//  Critical pair computation
+//  ============================================================
 
-/// Compute overlap critical pairs between two rules.
+///  Compute overlap critical pairs between two rules.
 pub fn compute_overlap_cps_exec(
     r1: &RuntimeRule,
     r2: &RuntimeRule,
@@ -229,7 +229,7 @@ pub fn compute_overlap_cps_exec(
         invariant 1 <= olen, max_ov <= r1.lhs.len(), max_ov <= r2.lhs.len(),
         decreases max_ov - olen + 1,
     {
-        // Check if last `olen` of r1.lhs == first `olen` of r2.lhs
+        //  Check if last `olen` of r1.lhs == first `olen` of r2.lhs
         let offset = r1.lhs.len() - olen;
         let mut ok = true;
         let mut k: usize = 0;
@@ -250,7 +250,7 @@ pub fn compute_overlap_cps_exec(
         }
 
         if ok {
-            // cp_left: r1.rhs ++ r2.lhs[olen..]
+            //  cp_left: r1.rhs ++ r2.lhs[olen..]
             let mut cp_left: Vec<RuntimeSymbol> = Vec::new();
             let mut i: usize = 0;
             while i < r1.rhs.len()
@@ -263,7 +263,7 @@ pub fn compute_overlap_cps_exec(
                 decreases r2.lhs.len() - j,
             { cp_left.push(r2.lhs[j]); j = j + 1; }
 
-            // cp_right: r1.lhs[0..offset] ++ r2.rhs
+            //  cp_right: r1.lhs[0..offset] ++ r2.rhs
             let mut cp_right: Vec<RuntimeSymbol> = Vec::new();
             let mut i2: usize = 0;
             while i2 < offset
@@ -285,14 +285,14 @@ pub fn compute_overlap_cps_exec(
     pairs
 }
 
-// ============================================================
-// Shortlex comparison and word equality
-// ============================================================
+//  ============================================================
+//  Shortlex comparison and word equality
+//  ============================================================
 
-/// Compare two words: true if w1 > w2 in shortlex.
+///  Compare two words: true if w1 > w2 in shortlex.
 pub fn shortlex_gt_exec(w1: &Vec<RuntimeSymbol>, w2: &Vec<RuntimeSymbol>) -> (out: bool)
     requires
-        // Generator indices small enough to avoid overflow in 2*n+1
+        //  Generator indices small enough to avoid overflow in 2*n+1
         forall|k: int| 0 <= k < w1@.len() ==> match #[trigger] w1@[k] {
             RuntimeSymbol::Gen(n) => n < usize::MAX / 2,
             RuntimeSymbol::Inv(n) => n < usize::MAX / 2,
@@ -332,7 +332,7 @@ pub fn shortlex_gt_exec(w1: &Vec<RuntimeSymbol>, w2: &Vec<RuntimeSymbol>) -> (ou
     false
 }
 
-/// Check two runtime words for equality.
+///  Check two runtime words for equality.
 pub fn words_equal_exec(w1: &Vec<RuntimeSymbol>, w2: &Vec<RuntimeSymbol>) -> (out: bool)
 {
     if w1.len() != w2.len() { return false; }
@@ -347,13 +347,13 @@ pub fn words_equal_exec(w1: &Vec<RuntimeSymbol>, w2: &Vec<RuntimeSymbol>) -> (ou
     true
 }
 
-// ============================================================
-// Main completion loop
-// ============================================================
+//  ============================================================
+//  Main completion loop
+//  ============================================================
 
-/// Try to find one unresolved critical pair and add a new rule.
-/// Returns Some(rule) if a new rule was found, None if all CPs resolve.
-/// Returns Err if a non-length-decreasing rule would be needed.
+///  Try to find one unresolved critical pair and add a new rule.
+///  Returns Some(rule) if a new rule was found, None if all CPs resolve.
+///  Returns Err if a non-length-decreasing rule would be needed.
 fn find_new_rule_exec(
     sys: &RuntimeRewriteSystem,
 ) -> (out: Option<Option<RuntimeRule>>)
@@ -362,9 +362,9 @@ fn find_new_rule_exec(
             (#[trigger] sys.rules@[i]).lhs@.len() > 0
             && sys.rules@[i].rhs@.len() < sys.rules@[i].lhs@.len(),
     ensures
-        // Some(Some(rule)): new rule found, length-decreasing
-        // Some(None): non-length-decreasing pair found (incomplete)
-        // None: all CPs resolve (confluent)
+        //  Some(Some(rule)): new rule found, length-decreasing
+        //  Some(None): non-length-decreasing pair found (incomplete)
+        //  None: all CPs resolve (confluent)
         match out {
             Some(Some(rule)) => rule.lhs@.len() > 0 && rule.rhs@.len() < rule.lhs@.len(),
             _ => true,
@@ -409,13 +409,13 @@ fn find_new_rule_exec(
                     let nf_r = reduce_to_normal_form_exec(sys, cp_r);
 
                     if !words_equal_exec(&nf_l, &nf_r) {
-                        // Orient: larger → smaller
+                        //  Orient: larger → smaller
                         if nf_l.len() > nf_r.len() {
                             return Some(Some(RuntimeRule { lhs: nf_l, rhs: nf_r }));
                         } else if nf_r.len() > nf_l.len() {
                             return Some(Some(RuntimeRule { lhs: nf_r, rhs: nf_l }));
                         } else {
-                            // Same length, can't orient as length-decreasing
+                            //  Same length, can't orient as length-decreasing
                             return Some(None);
                         }
                     }
@@ -426,13 +426,13 @@ fn find_new_rule_exec(
         }
         i = i + 1;
     }
-    None  // all CPs resolve
+    None  //  all CPs resolve
 }
 
-/// Run Knuth-Bendix completion.
+///  Run Knuth-Bendix completion.
 ///
-/// `initial_rules`: starting rules (from oriented relators + free cancellations)
-/// `max_rules`: maximum number of rules before aborting
+///  `initial_rules`: starting rules (from oriented relators + free cancellations)
+///  `max_rules`: maximum number of rules before aborting
 pub fn knuth_bendix_exec(
     initial_rules: Vec<RuntimeRule>,
     max_rules: usize,
@@ -459,11 +459,11 @@ pub fn knuth_bendix_exec(
         fuel = fuel - 1;
         match find_new_rule_exec(&sys) {
             None => {
-                // All CPs resolve — confluent!
+                //  All CPs resolve — confluent!
                 return KBResult::Complete { system: sys };
             }
             Some(None) => {
-                // Can't orient as length-decreasing
+                //  Can't orient as length-decreasing
                 return KBResult::Incomplete { system: sys };
             }
             Some(Some(new_rule)) => {
@@ -478,11 +478,11 @@ pub fn knuth_bendix_exec(
     KBResult::Incomplete { system: sys }
 }
 
-// ============================================================
-// Build initial rules from a presentation
-// ============================================================
+//  ============================================================
+//  Build initial rules from a presentation
+//  ============================================================
 
-/// Build initial rewrite rules from relators + free cancellation rules.
+///  Build initial rewrite rules from relators + free cancellation rules.
 pub fn build_initial_rules_exec(
     num_generators: usize,
     relators: &Vec<Vec<RuntimeSymbol>>,
@@ -498,7 +498,7 @@ pub fn build_initial_rules_exec(
 {
     let mut rules: Vec<RuntimeRule> = Vec::new();
 
-    // Free cancellation rules: Gen(i)·Inv(i) → ε, Inv(i)·Gen(i) → ε
+    //  Free cancellation rules: Gen(i)·Inv(i) → ε, Inv(i)·Gen(i) → ε
     let mut g: usize = 0;
     while g < num_generators
         invariant
@@ -523,7 +523,7 @@ pub fn build_initial_rules_exec(
         g = g + 1;
     }
 
-    // Relator rules: w → ε
+    //  Relator rules: w → ε
     let mut r: usize = 0;
     while r < relators.len()
         invariant
@@ -549,4 +549,4 @@ pub fn build_initial_rules_exec(
     rules
 }
 
-} // verus!
+} //  verus!

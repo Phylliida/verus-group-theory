@@ -8,110 +8,110 @@ use crate::benign::*;
 
 verus! {
 
-// ============================================================
-// Machine Group via HNN Tower (Aanderaa-Cohen Encoding)
-// ============================================================
+//  ============================================================
+//  Machine Group via HNN Tower (Aanderaa-Cohen Encoding)
+//  ============================================================
 //
-// Given a modular machine M with states q_0..q_{s-1} and quadruples,
-// we construct a finitely presented group G_M whose word problem
-// encodes M's computation.
+//  Given a modular machine M with states q_0..q_{s-1} and quadruples,
+//  we construct a finitely presented group G_M whose word problem
+//  encodes M's computation.
 //
-// Base group (free group): generators for states and register letters.
-//   - q_0, ..., q_{s-1}  : state generators (indices 0..s-1)
-//   - a                    : alpha register letter (index s)
-//   - b                    : beta register letter (index s+1)
+//  Base group (free group): generators for states and register letters.
+//    - q_0, ..., q_{s-1}  : state generators (indices 0..s-1)
+//    - a                    : alpha register letter (index s)
+//    - b                    : beta register letter (index s+1)
 //
-// Base generators total: num_states + 2
+//  Base generators total: num_states + 2
 //
-// For each quadruple k:
-//   (state_k, residue_k mod modulus_k) → (next_state_k, alpha_op_k, beta_op_k)
+//  For each quadruple k:
+//    (state_k, residue_k mod modulus_k) → (next_state_k, alpha_op_k, beta_op_k)
 //
-// The HNN stable letter t_k conjugates the "source config word" for
-// state_k with alpha having residue_k into the "target config word"
-// for next_state_k with operations applied.
+//  The HNN stable letter t_k conjugates the "source config word" for
+//  state_k with alpha having residue_k into the "target config word"
+//  for next_state_k with operations applied.
 //
-// Config word for (state q, alpha value n, beta value m):
-//   q · a^n · b^m
-// where a^n means Gen(s) repeated n times.
+//  Config word for (state q, alpha value n, beta value m):
+//    q · a^n · b^m
+//  where a^n means Gen(s) repeated n times.
 //
-// Association for quadruple k with Mul(c) on alpha:
-//   source = q_k · a^{residue_k}
-//   target = q_{next_k} · a^{residue_k * c}
-// (simplified: we encode the residue-check + operation)
+//  Association for quadruple k with Mul(c) on alpha:
+//    source = q_k · a^{residue_k}
+//    target = q_{next_k} · a^{residue_k * c}
+//  (simplified: we encode the residue-check + operation)
 //
-// The full encoding uses a single HNN extension with one stable
-// letter per quadruple, each encoding one transition rule.
+//  The full encoding uses a single HNN extension with one stable
+//  letter per quadruple, each encoding one transition rule.
 
-// ============================================================
-// Generator layout
-// ============================================================
+//  ============================================================
+//  Generator layout
+//  ============================================================
 
-/// Index of the state generator q_i.
+///  Index of the state generator q_i.
 pub open spec fn state_gen_index(i: nat) -> nat {
     i
 }
 
-/// Index of the alpha register letter.
+///  Index of the alpha register letter.
 pub open spec fn alpha_gen_index(num_states: nat) -> nat {
     num_states
 }
 
-/// Index of the beta register letter.
+///  Index of the beta register letter.
 pub open spec fn beta_gen_index(num_states: nat) -> nat {
     num_states + 1
 }
 
-/// Total number of base generators: num_states + 2 (alpha, beta).
+///  Total number of base generators: num_states + 2 (alpha, beta).
 pub open spec fn base_gen_count(num_states: nat) -> nat {
     num_states + 2
 }
 
-// ============================================================
-// Word builders
-// ============================================================
+//  ============================================================
+//  Word builders
+//  ============================================================
 
-/// State symbol: Gen(i) for state i.
+///  State symbol: Gen(i) for state i.
 pub open spec fn state_symbol(i: nat) -> Symbol {
     Symbol::Gen(state_gen_index(i))
 }
 
-/// Alpha letter: Gen(num_states).
+///  Alpha letter: Gen(num_states).
 pub open spec fn alpha_symbol(num_states: nat) -> Symbol {
     Symbol::Gen(alpha_gen_index(num_states))
 }
 
-/// Beta letter: Gen(num_states + 1).
+///  Beta letter: Gen(num_states + 1).
 pub open spec fn beta_symbol(num_states: nat) -> Symbol {
     Symbol::Gen(beta_gen_index(num_states))
 }
 
-/// Alpha inverse letter.
+///  Alpha inverse letter.
 pub open spec fn alpha_inv_symbol(num_states: nat) -> Symbol {
     Symbol::Inv(alpha_gen_index(num_states))
 }
 
-/// Beta inverse letter.
+///  Beta inverse letter.
 pub open spec fn beta_inv_symbol(num_states: nat) -> Symbol {
     Symbol::Inv(beta_gen_index(num_states))
 }
 
-/// Repeat a symbol n times to form a word: s^n.
+///  Repeat a symbol n times to form a word: s^n.
 pub open spec fn symbol_power(s: Symbol, n: nat) -> Word {
     Seq::new(n, |_i: int| s)
 }
 
-/// Configuration word: q_state · a^alpha · b^beta.
+///  Configuration word: q_state · a^alpha · b^beta.
 pub open spec fn config_word(num_states: nat, state: nat, alpha: nat, beta: nat) -> Word {
     Seq::new(1, |_i: int| state_symbol(state))
         + symbol_power(alpha_symbol(num_states), alpha)
         + symbol_power(beta_symbol(num_states), beta)
 }
 
-// ============================================================
-// Machine group construction
-// ============================================================
+//  ============================================================
+//  Machine group construction
+//  ============================================================
 
-/// The base presentation: free group on num_states + 2 generators.
+///  The base presentation: free group on num_states + 2 generators.
 pub open spec fn machine_base_presentation(num_states: nat) -> Presentation {
     Presentation {
         num_generators: base_gen_count(num_states),
@@ -119,14 +119,14 @@ pub open spec fn machine_base_presentation(num_states: nat) -> Presentation {
     }
 }
 
-/// A modular operation type (mirroring the computability-theory enum).
+///  A modular operation type (mirroring the computability-theory enum).
 pub enum MachineModOp {
     Mul { c: nat },
     Div { c: nat },
     Id,
 }
 
-/// Data for a single encoded quadruple.
+///  Data for a single encoded quadruple.
 pub struct EncodedQuadruple {
     pub source_state: nat,
     pub target_state: nat,
@@ -136,14 +136,14 @@ pub struct EncodedQuadruple {
     pub beta_op: MachineModOp,
 }
 
-/// Complete machine group data: states + encoded quadruples.
+///  Complete machine group data: states + encoded quadruples.
 pub struct MachineGroupData {
     pub num_states: nat,
     pub halt_state: nat,
     pub quadruples: Seq<EncodedQuadruple>,
 }
 
-/// Well-formedness of machine group data.
+///  Well-formedness of machine group data.
 pub open spec fn machine_group_data_wf(data: MachineGroupData) -> bool {
     data.halt_state < data.num_states &&
     data.num_states > 0 &&
@@ -156,7 +156,7 @@ pub open spec fn machine_group_data_wf(data: MachineGroupData) -> bool {
         data.quadruples[i].residue < data.quadruples[i].modulus)
 }
 
-/// Apply a MachineModOp to a value (for building association words).
+///  Apply a MachineModOp to a value (for building association words).
 pub open spec fn apply_machine_mod_op(op: MachineModOp, val: nat) -> nat {
     match op {
         MachineModOp::Mul { c } => val * c,
@@ -165,16 +165,16 @@ pub open spec fn apply_machine_mod_op(op: MachineModOp, val: nat) -> nat {
     }
 }
 
-/// Build the HNN association pair for an encoded quadruple.
+///  Build the HNN association pair for an encoded quadruple.
 ///
-/// The i-th quadruple (q_s, residue r mod m, -> q_t, alpha_op, beta_op)
-/// produces the association:
-///   a_i = q_s · alpha^r
-///   b_i = q_t · alpha^{op(r)}
+///  The i-th quadruple (q_s, residue r mod m, -> q_t, alpha_op, beta_op)
+///  produces the association:
+///    a_i = q_s · alpha^r
+///    b_i = q_t · alpha^{op(r)}
 ///
-/// Note: we encode only the residue portion. The full faithfulness
-/// argument shows that Britton's lemma applied to config words
-/// produces the correct simulation.
+///  Note: we encode only the residue portion. The full faithfulness
+///  argument shows that Britton's lemma applied to config words
+///  produces the correct simulation.
 pub open spec fn quadruple_association(
     data: MachineGroupData, i: int,
 ) -> (Word, Word)
@@ -189,14 +189,14 @@ pub open spec fn quadruple_association(
     (source, target)
 }
 
-/// Build all HNN associations from encoded quadruples.
+///  Build all HNN associations from encoded quadruples.
 pub open spec fn machine_associations(
     data: MachineGroupData,
 ) -> Seq<(Word, Word)> {
     Seq::new(data.quadruples.len(), |i: int| quadruple_association(data, i))
 }
 
-/// The HNN extension data for the machine group.
+///  The HNN extension data for the machine group.
 pub open spec fn machine_hnn_data(data: MachineGroupData) -> HNNData {
     HNNData {
         base: machine_base_presentation(data.num_states),
@@ -204,16 +204,16 @@ pub open spec fn machine_hnn_data(data: MachineGroupData) -> HNNData {
     }
 }
 
-/// The machine group presentation: base + HNN stable letters.
+///  The machine group presentation: base + HNN stable letters.
 pub open spec fn machine_group_presentation(data: MachineGroupData) -> Presentation {
     hnn_presentation(machine_hnn_data(data))
 }
 
-// ============================================================
-// Key lemmas
-// ============================================================
+//  ============================================================
+//  Key lemmas
+//  ============================================================
 
-/// The base presentation is valid (free group).
+///  The base presentation is valid (free group).
 pub proof fn lemma_machine_base_valid(num_states: nat)
     ensures
         presentation_valid(machine_base_presentation(num_states)),
@@ -221,7 +221,7 @@ pub proof fn lemma_machine_base_valid(num_states: nat)
     reveal(presentation_valid);
 }
 
-/// Association words are base-valid.
+///  Association words are base-valid.
 pub proof fn lemma_machine_associations_valid(data: MachineGroupData)
     requires
         machine_group_data_wf(data),
@@ -241,7 +241,7 @@ pub proof fn lemma_machine_associations_valid(data: MachineGroupData)
         let (src, tgt) = quadruple_association(data, i);
         assert(assocs[i] == (src, tgt));
 
-        // Source word: q_s · alpha^r — all symbols valid
+        //  Source word: q_s · alpha^r — all symbols valid
         assert forall|k: int| 0 <= k < src.len()
             implies symbol_valid(src[k], n)
         by {
@@ -253,7 +253,7 @@ pub proof fn lemma_machine_associations_valid(data: MachineGroupData)
             }
         }
 
-        // Target word: q_t · alpha^{op(r)}
+        //  Target word: q_t · alpha^{op(r)}
         assert forall|k: int| 0 <= k < tgt.len()
             implies symbol_valid(tgt[k], n)
         by {
@@ -267,7 +267,7 @@ pub proof fn lemma_machine_associations_valid(data: MachineGroupData)
     }
 }
 
-/// The machine HNN data is valid.
+///  The machine HNN data is valid.
 pub proof fn lemma_machine_hnn_data_valid(data: MachineGroupData)
     requires
         machine_group_data_wf(data),
@@ -286,7 +286,7 @@ pub proof fn lemma_machine_hnn_data_valid(data: MachineGroupData)
     }
 }
 
-/// Config words are base-valid.
+///  Config words are base-valid.
 pub proof fn lemma_config_word_valid(
     num_states: nat, state: nat, alpha: nat, beta: nat,
 )
@@ -311,17 +311,17 @@ pub proof fn lemma_config_word_valid(
     }
 }
 
-/// A machine step gives equivalence in G_M via HNN conjugation.
+///  A machine step gives equivalence in G_M via HNN conjugation.
 ///
-/// If quadruple k takes (state, alpha ≡ residue mod modulus) to
-/// (next_state, alpha', beta'), then:
-///   config_word(state, alpha, beta)
-///     ≡ config_word(next_state, alpha', beta')
-/// in the machine group presentation.
+///  If quadruple k takes (state, alpha ≡ residue mod modulus) to
+///  (next_state, alpha', beta'), then:
+///    config_word(state, alpha, beta)
+///      ≡ config_word(next_state, alpha', beta')
+///  in the machine group presentation.
 ///
-/// The proof uses lemma_hnn_conjugation: t_k conjugates source to target,
-/// and we extend to full config words by concat with the remaining
-/// alpha/beta powers.
+///  The proof uses lemma_hnn_conjugation: t_k conjugates source to target,
+///  and we extend to full config words by concat with the remaining
+///  alpha/beta powers.
 pub proof fn lemma_machine_step_gives_equiv(
     data: MachineGroupData,
     quad_idx: nat,
@@ -345,18 +345,18 @@ pub proof fn lemma_machine_step_gives_equiv(
             ),
         ),
 {
-    // This is the key encoding lemma. The proof involves:
-    // 1. Decompose config_word(state, alpha, beta) into:
-    //    q_state · alpha^residue · alpha^(alpha - residue) · beta^beta
-    // 2. Apply HNN conjugation on the q_state · alpha^residue portion
-    // 3. Reassemble with remaining powers
+    //  This is the key encoding lemma. The proof involves:
+    //  1. Decompose config_word(state, alpha, beta) into:
+    //     q_state · alpha^residue · alpha^(alpha - residue) · beta^beta
+    //  2. Apply HNN conjugation on the q_state · alpha^residue portion
+    //  3. Reassemble with remaining powers
     //
-    // The full proof requires detailed word manipulation.
-    // We axiomatize for now and prove in the faithfulness module.
+    //  The full proof requires detailed word manipulation.
+    //  We axiomatize for now and prove in the faithfulness module.
     admit();
 }
 
-/// Multiple machine steps give equivalence (induction on fuel).
+///  Multiple machine steps give equivalence (induction on fuel).
 pub proof fn lemma_machine_run_gives_equiv(
     data: MachineGroupData,
     state: nat, alpha: nat, beta: nat,
@@ -367,9 +367,9 @@ pub proof fn lemma_machine_run_gives_equiv(
         machine_group_data_wf(data),
         state < data.num_states,
         next_state < data.num_states,
-        // The modular machine runs from (state, alpha, beta)
-        // to (next_state, next_alpha, next_beta) in `fuel` steps
-        // (This is a placeholder for the actual simulation relation)
+        //  The modular machine runs from (state, alpha, beta)
+        //  to (next_state, next_alpha, next_beta) in `fuel` steps
+        //  (This is a placeholder for the actual simulation relation)
     ensures
         equiv_in_presentation(
             machine_group_presentation(data),
@@ -377,27 +377,27 @@ pub proof fn lemma_machine_run_gives_equiv(
             config_word(data.num_states, next_state, next_alpha, next_beta),
         ),
 {
-    // Induction on fuel, applying lemma_machine_step_gives_equiv at each step
+    //  Induction on fuel, applying lemma_machine_step_gives_equiv at each step
     admit();
 }
 
-// ============================================================
-// HNN associations are isomorphic
-// ============================================================
+//  ============================================================
+//  HNN associations are isomorphic
+//  ============================================================
 //
-// For Britton's lemma, we need that the map a_i ↦ b_i extends to
-// an isomorphism of generated subgroups. Since our base is a free
-// group (no relators), the a_i words generate a free subgroup and
-// the b_i words generate a free subgroup. The map is isomorphic
-// when distinct a_i words are "independent" — which holds because
-// each starts with a distinct state generator followed by alpha powers.
+//  For Britton's lemma, we need that the map a_i ↦ b_i extends to
+//  an isomorphism of generated subgroups. Since our base is a free
+//  group (no relators), the a_i words generate a free subgroup and
+//  the b_i words generate a free subgroup. The map is isomorphic
+//  when distinct a_i words are "independent" — which holds because
+//  each starts with a distinct state generator followed by alpha powers.
 //
-// We axiomatize this for now; it follows from the independence of
-// the state generators in the free group.
+//  We axiomatize this for now; it follows from the independence of
+//  the state generators in the free group.
 
-/// The machine group HNN associations define an isomorphism.
-/// This holds because the base is a free group and the association
-/// words are independent (distinct state prefixes).
+///  The machine group HNN associations define an isomorphism.
+///  This holds because the base is a free group and the association
+///  words are independent (distinct state prefixes).
 #[verifier::external_body]
 pub proof fn axiom_machine_hnn_isomorphic(data: MachineGroupData)
     requires
@@ -407,4 +407,4 @@ pub proof fn axiom_machine_hnn_isomorphic(data: MachineGroupData)
 {
 }
 
-} // verus!
+} //  verus!

@@ -7,7 +7,7 @@ use crate::quotient::*;
 
 verus! {
 
-/// Generator power: Gen(i)^n as a word.
+///  Generator power: Gen(i)^n as a word.
 pub open spec fn generator_power(i: nat, n: nat) -> Word
     decreases n,
 {
@@ -18,7 +18,7 @@ pub open spec fn generator_power(i: nat, n: nat) -> Word
     }
 }
 
-/// Cyclic group presentation Z_n = <a | a^n>.
+///  Cyclic group presentation Z_n = <a | a^n>.
 pub open spec fn cyclic_presentation(n: nat) -> Presentation
     recommends n > 0,
 {
@@ -28,14 +28,14 @@ pub open spec fn cyclic_presentation(n: nat) -> Presentation
     }
 }
 
-/// Dihedral group D_n = <r, s | r^n, s^2, (rs)^2>.
-/// Generator 0 = r (rotation), Generator 1 = s (reflection).
+///  Dihedral group D_n = <r, s | r^n, s^2, (rs)^2>.
+///  Generator 0 = r (rotation), Generator 1 = s (reflection).
 pub open spec fn dihedral_presentation(n: nat) -> Presentation
     recommends n >= 2,
 {
     let r_n = generator_power(0, n);
     let s_2 = generator_power(1, 2);
-    // (rs)^2 = rsrs
+    //  (rs)^2 = rsrs
     let rs = Seq::new(1, |_i: int| Symbol::Gen(0)) + Seq::new(1, |_i: int| Symbol::Gen(1));
     let rs_2 = rs + rs;
     Presentation {
@@ -44,7 +44,7 @@ pub open spec fn dihedral_presentation(n: nat) -> Presentation
     }
 }
 
-/// Free group presentation F_n = <x_1, ..., x_n | >.
+///  Free group presentation F_n = <x_1, ..., x_n | >.
 pub open spec fn free_presentation(n: nat) -> Presentation {
     Presentation {
         num_generators: n,
@@ -52,9 +52,9 @@ pub open spec fn free_presentation(n: nat) -> Presentation {
     }
 }
 
-// --- Lemmas ---
+//  --- Lemmas ---
 
-/// generator_power has the expected length.
+///  generator_power has the expected length.
 pub proof fn lemma_generator_power_len(i: nat, n: nat)
     ensures
         generator_power(i, n).len() == n,
@@ -65,7 +65,7 @@ pub proof fn lemma_generator_power_len(i: nat, n: nat)
     }
 }
 
-/// All symbols in generator_power are valid for a group with > i generators.
+///  All symbols in generator_power are valid for a group with > i generators.
 pub proof fn lemma_generator_power_valid(i: nat, n: nat, num_gens: nat)
     requires
         i < num_gens,
@@ -89,7 +89,7 @@ pub proof fn lemma_generator_power_valid(i: nat, n: nat, num_gens: nat)
     }
 }
 
-/// Power addition: power(i, a+b) =~= concat(power(i,a), power(i,b)).
+///  Power addition: power(i, a+b) =~= concat(power(i,a), power(i,b)).
 pub proof fn lemma_generator_power_add(i: nat, a: nat, b: nat)
     ensures
         generator_power(i, a + b) =~= concat(generator_power(i, a), generator_power(i, b)),
@@ -100,20 +100,20 @@ pub proof fn lemma_generator_power_add(i: nat, a: nat, b: nat)
         assert(concat(empty_word(), generator_power(i, b)) =~= generator_power(i, b));
     } else {
         let prefix = Seq::new(1, |_j: int| Symbol::Gen(i));
-        // power(i, a+b) = prefix + power(i, a+b-1)
-        // power(i, a) = prefix + power(i, a-1)
-        // concat(power(i, a), power(i, b)) = prefix + power(i, a-1) + power(i, b)
-        // By IH: power(i, (a-1)+b) =~= concat(power(i, a-1), power(i, b))
+        //  power(i, a+b) = prefix + power(i, a+b-1)
+        //  power(i, a) = prefix + power(i, a-1)
+        //  concat(power(i, a), power(i, b)) = prefix + power(i, a-1) + power(i, b)
+        //  By IH: power(i, (a-1)+b) =~= concat(power(i, a-1), power(i, b))
         lemma_generator_power_add(i, (a - 1) as nat, b);
         assert(((a - 1) + b) as nat == (a + b - 1) as nat);
-        // power(i, a+b) = prefix + power(i, a+b-1) =~= prefix + concat(power(i, a-1), power(i, b))
-        // concat(power(i, a), power(i, b)) = concat(prefix + power(i, a-1), power(i, b))
-        //                                  = prefix + power(i, a-1) + power(i, b) (by assoc)
+        //  power(i, a+b) = prefix + power(i, a+b-1) =~= prefix + concat(power(i, a-1), power(i, b))
+        //  concat(power(i, a), power(i, b)) = concat(prefix + power(i, a-1), power(i, b))
+        //                                   = prefix + power(i, a-1) + power(i, b) (by assoc)
         lemma_concat_assoc(prefix, generator_power(i, (a - 1) as nat), generator_power(i, b));
     }
 }
 
-/// Z_n is a valid presentation.
+///  Z_n is a valid presentation.
 pub proof fn lemma_cyclic_valid(n: nat)
     requires
         n > 0,
@@ -127,7 +127,7 @@ pub proof fn lemma_cyclic_valid(n: nat)
     assert(p.relators[0] == generator_power(0, n));
 }
 
-/// D_n is a valid presentation.
+///  D_n is a valid presentation.
 pub proof fn lemma_dihedral_valid(n: nat)
     requires
         n >= 2,
@@ -138,13 +138,13 @@ pub proof fn lemma_dihedral_valid(n: nat)
     let p = dihedral_presentation(n);
     assert(p.relators.len() == 3);
 
-    // relator 0: r^n — all symbols are Gen(0)
+    //  relator 0: r^n — all symbols are Gen(0)
     lemma_generator_power_valid(0, n, 2);
 
-    // relator 1: s^2 — all symbols are Gen(1)
+    //  relator 1: s^2 — all symbols are Gen(1)
     lemma_generator_power_valid(1, 2, 2);
 
-    // relator 2: (rs)^2 = rsrs — Gen(0) and Gen(1), both < 2
+    //  relator 2: (rs)^2 = rsrs — Gen(0) and Gen(1), both < 2
     let rs = Seq::new(1, |_i: int| Symbol::Gen(0)) + Seq::new(1, |_i: int| Symbol::Gen(1));
     let rs_2 = rs + rs;
     assert(p.relators[2] =~= rs_2);
@@ -157,7 +157,7 @@ pub proof fn lemma_dihedral_valid(n: nat)
     }
 }
 
-/// Free group has no relators.
+///  Free group has no relators.
 pub proof fn lemma_free_group_no_relators(n: nat)
     ensures
         free_presentation(n).relators.len() == 0,
@@ -166,7 +166,7 @@ pub proof fn lemma_free_group_no_relators(n: nat)
     reveal(presentation_valid);
 }
 
-/// In Z_n, a^(kn) ≡ ε for any k >= 1.
+///  In Z_n, a^(kn) ≡ ε for any k >= 1.
 pub proof fn lemma_cyclic_generator_order(n: nat, k: nat)
     requires
         n > 0,
@@ -178,23 +178,23 @@ pub proof fn lemma_cyclic_generator_order(n: nat, k: nat)
     let p = cyclic_presentation(n);
     if k == 1 {
         assert(k * n == n) by(nonlinear_arith) requires k == 1nat, n > 0nat, {}
-        // a^n is the relator, so a^n ≡ ε
+        //  a^n is the relator, so a^n ≡ ε
         assert(p.relators[0] == generator_power(0, n));
         lemma_relator_is_identity(p, 0);
     } else {
-        // a^(kn) = a^n · a^((k-1)n)
-        // a^n ≡ ε, and by IH a^((k-1)n) ≡ ε
+        //  a^(kn) = a^n · a^((k-1)n)
+        //  a^n ≡ ε, and by IH a^((k-1)n) ≡ ε
         assert(k * n == n + (k - 1) * n) by(nonlinear_arith)
             requires k >= 2, n > 0,
         {}
         assert((k * n) as nat == (n + (k - 1) * n) as nat);
         lemma_generator_power_add(0, n, ((k - 1) * n) as nat);
 
-        // a^n ≡ ε
+        //  a^n ≡ ε
         lemma_relator_is_identity(p, 0);
-        // a^((k-1)n) ≡ ε
+        //  a^((k-1)n) ≡ ε
         lemma_cyclic_generator_order(n, (k - 1) as nat);
-        // concat(a^n, a^((k-1)n)) ≡ concat(ε, ε) = ε
+        //  concat(a^n, a^((k-1)n)) ≡ concat(ε, ε) = ε
         lemma_equiv_concat(p,
             generator_power(0, n), empty_word(),
             generator_power(0, ((k - 1) * n) as nat), empty_word(),
@@ -209,7 +209,7 @@ pub proof fn lemma_cyclic_generator_order(n: nat, k: nat)
     }
 }
 
-/// In D_n, s^2 ≡ ε (reflection has order 2).
+///  In D_n, s^2 ≡ ε (reflection has order 2).
 pub proof fn lemma_dihedral_reflection_order(n: nat)
     requires
         n >= 2,
@@ -217,9 +217,9 @@ pub proof fn lemma_dihedral_reflection_order(n: nat)
         equiv_in_presentation(dihedral_presentation(n), generator_power(1, 2), empty_word()),
 {
     let p = dihedral_presentation(n);
-    // s^2 is relator at index 1
+    //  s^2 is relator at index 1
     assert(p.relators[1] == generator_power(1, 2));
     lemma_relator_is_identity(p, 1);
 }
 
-} // verus!
+} //  verus!

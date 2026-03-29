@@ -9,10 +9,10 @@ use crate::schreier_proofs::*;
 
 verus! {
 
-/// All non-tree edges up to `bound` are trivial (strong induction).
-/// Isolated in its own module so Z3 doesn't see bodies of the ~18 other
-/// proof functions in schreier_proofs.rs, and certificate_wf is opaque
-/// so Z3 never unfolds its 3 nested quantifiers during recursion.
+///  All non-tree edges up to `bound` are trivial (strong induction).
+///  Isolated in its own module so Z3 doesn't see bodies of the ~18 other
+///  proof functions in schreier_proofs.rs, and certificate_wf is opaque
+///  so Z3 never unfolds its 3 nested quantifiers during recursion.
 pub proof fn lemma_all_non_tree_trivial(
     parent: spec_fn(nat) -> Option<(nat, Symbol)>,
     depth: spec_fn(nat) -> nat,
@@ -31,7 +31,7 @@ pub proof fn lemma_all_non_tree_trivial(
         t.num_cosets > 0,
         certificate_wf(t, p, parent, non_tree_edges, certificates),
         0 <= bound <= non_tree_edges.len(),
-        // All tree edges trivial
+        //  All tree edges trivial
         forall|c: nat, s: Symbol|
             c < t.num_cosets && symbol_valid(s, t.num_gens) &&
             symbol_to_column(s) < 2 * t.num_gens &&
@@ -50,4 +50,4 @@ pub proof fn lemma_all_non_tree_trivial(
     }
 }
 
-} // verus!
+} //  verus!

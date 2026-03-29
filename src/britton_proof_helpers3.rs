@@ -12,14 +12,14 @@ use crate::benign::*;
 
 verus! {
 
-/// k=4 peak non-cancel: FreeExpand(stable) + FreeReduce commutation.
-/// step1 = FreeExpand(stable, p1, sym1) on w1 → w2
-/// step2 = FreeReduce(p2) on w2 → w3
-/// w3 ≠ w1 (non-cancel)
+///  k=4 peak non-cancel: FreeExpand(stable) + FreeReduce commutation.
+///  step1 = FreeExpand(stable, p1, sym1) on w1 → w2
+///  step2 = FreeReduce(p2) on w2 → w3
+///  w3 ≠ w1 (non-cancel)
 ///
-/// Returns (w1', step2_adj, step1_adj) where:
-///   apply_step(hp, w1, step2_adj) == Some(w1')  (w1' is base)
-///   apply_step(hp, w1', step1_adj) == Some(w3)
+///  Returns (w1', step2_adj, step1_adj) where:
+///    apply_step(hp, w1, step2_adj) == Some(w1')  (w1' is base)
+///    apply_step(hp, w1', step1_adj) == Some(w3)
 pub proof fn lemma_k4_peak_fe_fr(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, sym1: Symbol, p2: int,
@@ -57,18 +57,18 @@ pub proof fn lemma_k4_peak_fe_fr(
     let pair = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
     assert(pair =~= seq![sym1, inverse_symbol(sym1)]);
 
-    // Expand w2 structure
+    //  Expand w2 structure
     assert(w2 =~= w1.subrange(0, p1) + pair + w1.subrange(p1, w1.len() as int));
 
-    // step2 = FreeReduce at p2: removes w2[p2], w2[p2+1] which are inverses
+    //  step2 = FreeReduce at p2: removes w2[p2], w2[p2+1] which are inverses
     assert(has_cancellation_at(w2, p2));
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + 2, w2.len() as int));
 
-    // The stable count decreased by 2 (from 4 to 2), so the reduced pair is stable
+    //  The stable count decreased by 2 (from 4 to 2), so the reduced pair is stable
     lemma_stable_count_reduce(w2, p2, n);
     assert(generator_index(w2[p2]) == n);
 
-    // Case p2 == p1: removes [sym1, inv(sym1)] exactly → w3 = w1 (cancel)
+    //  Case p2 == p1: removes [sym1, inv(sym1)] exactly → w3 = w1 (cancel)
     if p2 == p1 {
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
             if k < p1 {
@@ -80,27 +80,27 @@ pub proof fn lemma_k4_peak_fe_fr(
             }
         };
         assert(w3 =~= w1);
-        assert(false); // contradicts !(w3 =~= w1)
+        assert(false); //  contradicts !(w3 =~= w1)
     }
 
-    // Case p2 == p1 - 1: pair is [w1[p1-1], sym1]. Since gen_idx(w2[p2]) == n
-    // and w2[p1-1] = w1[p1-1], we need gen_idx(w1[p1-1]) == n.
-    // The pair is [w1[p1-1], sym1] and they're inverses, so w1[p1-1] = inv(sym1).
-    // Then w3 = w1[0..p1-1] ++ [inv(sym1)] ++ w1[p1..] = w1. Cancel!
+    //  Case p2 == p1 - 1: pair is [w1[p1-1], sym1]. Since gen_idx(w2[p2]) == n
+    //  and w2[p1-1] = w1[p1-1], we need gen_idx(w1[p1-1]) == n.
+    //  The pair is [w1[p1-1], sym1] and they're inverses, so w1[p1-1] = inv(sym1).
+    //  Then w3 = w1[0..p1-1] ++ [inv(sym1)] ++ w1[p1..] = w1. Cancel!
     if p2 == p1 - 1 {
         assert(w2[p2] == w1[(p1 - 1) as int]);
         assert(w2[p2 + 1] == sym1);
-        // w3 = w2[0..p1-1] ++ w2[p1+1..]
-        //     = w1[0..p1-1] ++ [inv(sym1)] ++ w1[p1..]
-        // Since w1[p1-1] = inv(sym1) (they cancel with sym1):
+        //  w3 = w2[0..p1-1] ++ w2[p1+1..]
+        //      = w1[0..p1-1] ++ [inv(sym1)] ++ w1[p1..]
+        //  Since w1[p1-1] = inv(sym1) (they cancel with sym1):
         assert(is_inverse_pair(w1[(p1 - 1) as int], sym1));
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
             if k < p1 - 1 {
                 assert(w3[k] == w2[k]);
                 assert(w2[k] == w1[k]);
             } else if k == p1 - 1 {
-                // w3[p1-1] = w2[p1+1] = inv(sym1)
-                // w1[p1-1] = inv(sym1) (from the cancellation pair)
+                //  w3[p1-1] = w2[p1+1] = inv(sym1)
+                //  w1[p1-1] = inv(sym1) (from the cancellation pair)
                 assert(w3[k] == w2[(p1 + 1) as int]);
                 assert(w2[(p1 + 1) as int] == inverse_symbol(sym1));
                 assert(w1[k] == inverse_symbol(sym1)) by {
@@ -117,31 +117,31 @@ pub proof fn lemma_k4_peak_fe_fr(
                     }
                 };
             } else {
-                // k >= p1
+                //  k >= p1
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[k + 2] == w1[k]);
             }
         };
         assert(w3 =~= w1);
-        assert(false); // contradicts !(w3 =~= w1)
+        assert(false); //  contradicts !(w3 =~= w1)
     }
 
-    // Case p2 == p1 + 1: pair is [inv(sym1), w1[p1]]. Since gen_idx(w2[p2]) == n
-    // and w2[p1+1] = inv(sym1), gen_idx(inv(sym1)) == n. ✓
-    // They cancel: inv(sym1) and w1[p1] are inverses → w1[p1] = sym1.
-    // w3 = w1[0..p1] ++ [sym1] ++ w1[p1+1..] = w1. Cancel!
+    //  Case p2 == p1 + 1: pair is [inv(sym1), w1[p1]]. Since gen_idx(w2[p2]) == n
+    //  and w2[p1+1] = inv(sym1), gen_idx(inv(sym1)) == n. ✓
+    //  They cancel: inv(sym1) and w1[p1] are inverses → w1[p1] = sym1.
+    //  w3 = w1[0..p1] ++ [sym1] ++ w1[p1+1..] = w1. Cancel!
     if p2 == p1 + 1 {
         assert(w2[p2] == inverse_symbol(sym1));
         assert(w2[p2 + 1] == w1[p1]);
         assert(is_inverse_pair(inverse_symbol(sym1), w1[p1]));
-        // w1[p1] = sym1
+        //  w1[p1] = sym1
         assert(w1[p1] == sym1) by {
             let isym = inverse_symbol(sym1);
             assert(is_inverse_pair(isym, w1[p1]));
             match isym {
                 Symbol::Gen(idx) => {
                     assert(w1[p1] == Symbol::Inv(idx));
-                    // sym1 must be Inv(idx) since inverse_symbol(sym1) = Gen(idx)
+                    //  sym1 must be Inv(idx) since inverse_symbol(sym1) = Gen(idx)
                     match sym1 {
                         Symbol::Gen(j) => { assert(isym == Symbol::Inv(j)); assert(false); },
                         Symbol::Inv(j) => {
@@ -166,9 +166,9 @@ pub proof fn lemma_k4_peak_fe_fr(
                 },
             }
         };
-        // Now w3 = w2[0..p1+1] ++ w2[p1+3..]
-        //        = w1[0..p1] ++ [sym1] ++ w1[p1+1..]
-        //        = w1 (since w1[p1] = sym1)
+        //  Now w3 = w2[0..p1+1] ++ w2[p1+3..]
+        //         = w1[0..p1] ++ [sym1] ++ w1[p1+1..]
+        //         = w1 (since w1[p1] = sym1)
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
             if k < p1 {
                 assert(w3[k] == w2[k]);
@@ -183,28 +183,28 @@ pub proof fn lemma_k4_peak_fe_fr(
             }
         };
         assert(w3 =~= w1);
-        assert(false); // contradicts !(w3 =~= w1)
+        assert(false); //  contradicts !(w3 =~= w1)
     }
 
-    // Non-boundary cases: the FreeReduce acts entirely within w1's region
+    //  Non-boundary cases: the FreeReduce acts entirely within w1's region
     if p2 < p1 - 1 {
-        // pair at p2, p2+1 is entirely from w1[0..p1]
+        //  pair at p2, p2+1 is entirely from w1[0..p1]
         assert(w2[p2] == w1[p2]);
         assert(w2[p2 + 1] == w1[p2 + 1]);
         assert(has_cancellation_at(w1, p2));
 
-        // Apply FreeReduce at p2 on w1 → w1'
+        //  Apply FreeReduce at p2 on w1 → w1'
         let w1_prime = reduce_at(w1, p2);
         let step2_adj = DerivationStep::FreeReduce { position: p2 };
         assert(apply_step(hp, w1, step2_adj) == Some(w1_prime));
 
-        // w1' has stable count 2 - 2 = 0 (the pair is stable)
+        //  w1' has stable count 2 - 2 = 0 (the pair is stable)
         lemma_stable_count_reduce(w1, p2, n);
         assert(stable_letter_count(w1_prime, n) == 0nat);
         lemma_zero_count_implies_base(w1_prime, n);
         lemma_step_preserves_word_valid(data, w1, step2_adj);
 
-        // Apply FreeExpand at p1-2 on w1' → w3
+        //  Apply FreeExpand at p1-2 on w1' → w3
         let p1_adj = (p1 - 2) as int;
         let step1_adj = DerivationStep::FreeExpand { position: p1_adj, symbol: sym1 };
         let expand_result = w1_prime.subrange(0, p1_adj) + pair
@@ -216,29 +216,29 @@ pub proof fn lemma_k4_peak_fe_fr(
                 assert(expand_result[k] == w1_prime[k]);
                 assert(w1_prime[k] == w1[k]);
             } else if k < p1_adj {
-                // p2 <= k < p1-2
-                // w3 = w2[0..p2] ++ w2[p2+2..], so for k >= p2: w3[k] = w2[k+2]
-                // w2[k+2] = w1[k+2] (since k+2 < p1, within w1 prefix)
-                // w1_prime = w1[0..p2] ++ w1[p2+2..], so w1_prime[k] = w1[k+2]
+                //  p2 <= k < p1-2
+                //  w3 = w2[0..p2] ++ w2[p2+2..], so for k >= p2: w3[k] = w2[k+2]
+                //  w2[k+2] = w1[k+2] (since k+2 < p1, within w1 prefix)
+                //  w1_prime = w1[0..p2] ++ w1[p2+2..], so w1_prime[k] = w1[k+2]
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[k + 2] == w1[k + 2]);
             } else if k == p1_adj {
-                // expand_result[p1-2] = sym1
-                // w3[p1-2] = w2[p1] = sym1
+                //  expand_result[p1-2] = sym1
+                //  w3[p1-2] = w2[p1] = sym1
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[(p1_adj + 2) as int] == w2[p1]);
                 assert(w2[p1] == sym1);
                 assert(expand_result[k] == sym1);
             } else if k == p1_adj + 1 {
-                // expand_result[p1-1] = inv(sym1)
-                // w3[p1-1] = w2[p1+1] = inv(sym1)
+                //  expand_result[p1-1] = inv(sym1)
+                //  w3[p1-1] = w2[p1+1] = inv(sym1)
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[(k + 2) as int] == inverse_symbol(sym1));
                 assert(expand_result[k] == inverse_symbol(sym1));
             } else {
-                // k >= p1
-                // expand_result[k] = w1_prime[k-2] = w1[k] (since k-2 >= p2, w1_prime[k-2] = w1[k])
-                // w3[k] = w2[k+2] = w1[k] (since k+2 >= p1+2, w2[k+2] = w1[k])
+                //  k >= p1
+                //  expand_result[k] = w1_prime[k-2] = w1[k] (since k-2 >= p2, w1_prime[k-2] = w1[k])
+                //  w3[k] = w2[k+2] = w1[k] (since k+2 >= p1+2, w2[k+2] = w1[k])
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[k + 2] == w1[k]);
                 assert(expand_result[k] == w1_prime[(k - 2) as int]);
@@ -250,15 +250,15 @@ pub proof fn lemma_k4_peak_fe_fr(
 
         (w1_prime, step2_adj, step1_adj)
     } else {
-        // p2 >= p1 + 2
+        //  p2 >= p1 + 2
         assert(p2 >= p1 + 2);
-        // pair at p2, p2+1 in w2 corresponds to w1[p2-2], w1[p2-1]
+        //  pair at p2, p2+1 in w2 corresponds to w1[p2-2], w1[p2-1]
         assert(w2[p2] == w1[(p2 - 2) as int]);
         assert(w2[p2 + 1] == w1[(p2 - 1) as int]);
         let p2_adj = (p2 - 2) as int;
         assert(has_cancellation_at(w1, p2_adj));
 
-        // Apply FreeReduce at p2-2 on w1 → w1'
+        //  Apply FreeReduce at p2-2 on w1 → w1'
         let w1_prime = reduce_at(w1, p2_adj);
         let step2_adj = DerivationStep::FreeReduce { position: p2_adj };
         assert(apply_step(hp, w1, step2_adj) == Some(w1_prime));
@@ -268,16 +268,16 @@ pub proof fn lemma_k4_peak_fe_fr(
         lemma_zero_count_implies_base(w1_prime, n);
         lemma_step_preserves_word_valid(data, w1, step2_adj);
 
-        // Apply FreeExpand at p1 on w1' → w3
+        //  Apply FreeExpand at p1 on w1' → w3
         let step1_adj = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
         let expand_result = w1_prime.subrange(0, p1) + pair
             + w1_prime.subrange(p1, w1_prime.len() as int);
         assert forall|k: int| 0 <= k < w3.len() implies w3[k] == expand_result[k] by {
             if k < p1 {
-                // w3[k] = w2[k] (since k < p2, because p2 >= p1+2 > k)
-                // Actually w3 = w2[0..p2] ++ w2[p2+2..], so for k < p2: w3[k] = w2[k]
-                // w2[k] = w1[k] (since k < p1)
-                // expand_result[k] = w1_prime[k] = w1[k] (since k < p1 <= p2-2 = p2_adj)
+                //  w3[k] = w2[k] (since k < p2, because p2 >= p1+2 > k)
+                //  Actually w3 = w2[0..p2] ++ w2[p2+2..], so for k < p2: w3[k] = w2[k]
+                //  w2[k] = w1[k] (since k < p1)
+                //  expand_result[k] = w1_prime[k] = w1[k] (since k < p1 <= p2-2 = p2_adj)
                 assert(w3[k] == w2[k]);
                 assert(w2[k] == w1[k]);
                 assert(expand_result[k] == w1_prime[k]);
@@ -291,21 +291,21 @@ pub proof fn lemma_k4_peak_fe_fr(
                 assert(w2[(p1 + 1) as int] == inverse_symbol(sym1));
                 assert(expand_result[k] == inverse_symbol(sym1));
             } else if k < p2 {
-                // p1+2 <= k < p2
-                // w3[k] = w2[k] (since k < p2)
-                // w2[k] = w1[k-2] (since k >= p1+2)
-                // expand_result[k] = w1_prime[k-2]
-                // w1_prime[k-2] = w1[k-2] (since k-2 < p2-2 = p2_adj)
+                //  p1+2 <= k < p2
+                //  w3[k] = w2[k] (since k < p2)
+                //  w2[k] = w1[k-2] (since k >= p1+2)
+                //  expand_result[k] = w1_prime[k-2]
+                //  w1_prime[k-2] = w1[k-2] (since k-2 < p2-2 = p2_adj)
                 assert(w3[k] == w2[k]);
                 assert(w2[k] == w1[(k - 2) as int]);
                 assert(expand_result[k] == w1_prime[(k - 2) as int]);
                 assert(w1_prime[(k - 2) as int] == w1[(k - 2) as int]);
             } else {
-                // k >= p2
-                // w3[k] = w2[k+2] (since k >= p2 in w3 = w2[0..p2]++w2[p2+2..])
-                // w2[k+2] = w1[k] (since k+2 >= p1+2)
-                // expand_result[k] = w1_prime[k-2]
-                // w1_prime[k-2] = w1[k] (since k-2 >= p2_adj, w1_prime[k-2] = w1[k])
+                //  k >= p2
+                //  w3[k] = w2[k+2] (since k >= p2 in w3 = w2[0..p2]++w2[p2+2..])
+                //  w2[k+2] = w1[k] (since k+2 >= p1+2)
+                //  expand_result[k] = w1_prime[k-2]
+                //  w1_prime[k-2] = w1[k] (since k-2 >= p2_adj, w1_prime[k-2] = w1[k])
                 assert(w3[k] == w2[k + 2]);
                 assert(w2[k + 2] == w1[k]);
                 assert(expand_result[k] == w1_prime[(k - 2) as int]);
@@ -319,8 +319,8 @@ pub proof fn lemma_k4_peak_fe_fr(
     }
 }
 
-/// k=4 peak non-cancel: FreeExpand(stable) + RelatorDelete(HNN) commutation.
-/// Non-overlapping case only.
+///  k=4 peak non-cancel: FreeExpand(stable) + RelatorDelete(HNN) commutation.
+///  Non-overlapping case only.
 pub proof fn lemma_k4_peak_fe_rd(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, sym1: Symbol, p2: int, ri2: nat, inv2: bool,
@@ -367,7 +367,7 @@ pub proof fn lemma_k4_peak_fe_rd(
     lemma_relator_stable_count(data, ri2, inv2);
 
     if p2 + r2_len <= p1 {
-        // Relator is entirely before insertion. Translate to w1 directly.
+        //  Relator is entirely before insertion. Translate to w1 directly.
         assert forall|k: int| p2 <= k < p2 + r2_len implies w2[k] == w1[k] by {};
         assert(w1.subrange(p2, p2 + r2_len) =~= r2);
 
@@ -375,7 +375,7 @@ pub proof fn lemma_k4_peak_fe_rd(
         let step2_adj = DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 };
         assert(apply_step(hp, w1, step2_adj) == Some(w1_prime));
 
-        // Count: removes 2 stable letters from w1 (HNN relator has 2)
+        //  Count: removes 2 stable letters from w1 (HNN relator has 2)
         lemma_stable_count_subrange(w1, p2, p2 + r2_len, n);
         lemma_stable_letter_count_concat(w1.subrange(0, p2), w1.subrange(p2 + r2_len, w1.len() as int), n);
         lemma_stable_letter_count_concat(w1.subrange(0, p2), w1.subrange(p2, w1.len() as int), n);
@@ -393,7 +393,7 @@ pub proof fn lemma_k4_peak_fe_rd(
 
         (true, w1_prime, step2_adj, step1_adj)
     } else if p2 >= p1 + 2 {
-        // Relator is entirely after insertion. Translate position back by 2.
+        //  Relator is entirely after insertion. Translate position back by 2.
         let p2_adj = (p2 - 2) as int;
         assert forall|k: int| p2 <= k < p2 + r2_len implies w2[k] == w1[(k - 2) as int] by {};
         assert(w1.subrange(p2_adj, p2_adj + r2_len) =~= r2);
@@ -418,90 +418,90 @@ pub proof fn lemma_k4_peak_fe_rd(
 
         (true, w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap: relator region [p2, p2+r2_len) overlaps insertion [p1, p1+2).
-        // The relator contains the FE stable pair. Since w1 has count 2, FE adds 2,
-        // w2 has count 4, r2 removes 2 → w3 has count 2. The removed 2 must be
-        // the FE pair (otherwise w3 = w1, cancel case contradiction).
+        //  Overlap: relator region [p2, p2+r2_len) overlaps insertion [p1, p1+2).
+        //  The relator contains the FE stable pair. Since w1 has count 2, FE adds 2,
+        //  w2 has count 4, r2 removes 2 → w3 has count 2. The removed 2 must be
+        //  the FE pair (otherwise w3 = w1, cancel case contradiction).
         //
-        // This forces: the relator's 2 stable letters are at the FE positions.
-        // For non-inverted: stable at 0, |a_j|+1. Adjacent → a_j = [].
-        // For inverted: stable at |b_j|, |b_j|+|a_j|+1. Adjacent → a_j = [].
+        //  This forces: the relator's 2 stable letters are at the FE positions.
+        //  For non-inverted: stable at 0, |a_j|+1. Adjacent → a_j = [].
+        //  For inverted: stable at |b_j|, |b_j|+|a_j|+1. Adjacent → a_j = [].
         //
-        // After RelatorDelete: w3 = w1 minus the base content of the relator
-        // (the a_j and inv(b_j) parts, minus the stable pair which was from FE).
-        // Since a_j = []: the base content is just inv(b_j) (non-inv) or b_j (inv).
-        // w3 = w1 minus this base content at the appropriate position.
+        //  After RelatorDelete: w3 = w1 minus the base content of the relator
+        //  (the a_j and inv(b_j) parts, minus the stable pair which was from FE).
+        //  Since a_j = []: the base content is just inv(b_j) (non-inv) or b_j (inv).
+        //  w3 = w1 minus this base content at the appropriate position.
         //
-        // From isomorphism (a_j = ε): b_j ≡ ε in data.base.
+        //  From isomorphism (a_j = ε): b_j ≡ ε in data.base.
         //
-        // Strategy: find w1_prime (base) by removing w1's original 2 stable letters.
-        // The original stable letters are from step0 (the step before the peak).
-        // We need the step2_adj to remove them from w1 → w1_prime (base).
-        // Then step1_adj inserts them back into w1_prime at adjusted position → w3.
+        //  Strategy: find w1_prime (base) by removing w1's original 2 stable letters.
+        //  The original stable letters are from step0 (the step before the peak).
+        //  We need the step2_adj to remove them from w1 → w1_prime (base).
+        //  Then step1_adj inserts them back into w1_prime at adjusted position → w3.
         //
-        // The key: w3 has the SAME 2 stable letters as w1 (the ones from step0,
-        // NOT the ones from the FE). They're at the same positions (the relator
-        // deletion removed only the FE stable letters and some base content).
+        //  The key: w3 has the SAME 2 stable letters as w1 (the ones from step0,
+        //  NOT the ones from the FE). They're at the same positions (the relator
+        //  deletion removed only the FE stable letters and some base content).
         //
-        // So I need step2_adj = -2 step that removes w1's original stable letters.
-        // And step1_adj = +2 step that puts them back into w1_prime → w3.
+        //  So I need step2_adj = -2 step that removes w1's original stable letters.
+        //  And step1_adj = +2 step that puts them back into w1_prime → w3.
         //
-        // But which -2 step removes w1's original stable letters? That depends on
-        // how step0 created them. If step0 = FreeExpand(stable, p0, sym0): the
-        // stable letters are at p0, p0+1 in w1. step2_adj = FreeReduce(p0) removes them.
-        // w1_prime = w1[0..p0] ++ w1[p0+2..] = w (base!).
-        // step1_adj = FreeExpand(sym0, p0_adj) on w → w3 at adjusted position.
+        //  But which -2 step removes w1's original stable letters? That depends on
+        //  how step0 created them. If step0 = FreeExpand(stable, p0, sym0): the
+        //  stable letters are at p0, p0+1 in w1. step2_adj = FreeReduce(p0) removes them.
+        //  w1_prime = w1[0..p0] ++ w1[p0+2..] = w (base!).
+        //  step1_adj = FreeExpand(sym0, p0_adj) on w → w3 at adjusted position.
         //
-        // But wait — this is just the NON-OVERLAP commutation with step2_adj removing
-        // the OTHER pair of stable letters! The non-overlap code handles this.
-        // The issue was: the commutation code checks positions of step2 (RelatorDelete)
-        // relative to step1 (FreeExpand), and finds they overlap. But the ADJUSTED
-        // step2_adj should remove the OTHER stable letters (from step0), which are
-        // at a NON-overlapping position.
+        //  But wait — this is just the NON-OVERLAP commutation with step2_adj removing
+        //  the OTHER pair of stable letters! The non-overlap code handles this.
+        //  The issue was: the commutation code checks positions of step2 (RelatorDelete)
+        //  relative to step1 (FreeExpand), and finds they overlap. But the ADJUSTED
+        //  step2_adj should remove the OTHER stable letters (from step0), which are
+        //  at a NON-overlapping position.
         //
-        // So: step2_adj removes w1's original stable letters (from step0, at positions
-        // unrelated to the FE positions p1). This gives w1_prime = w (base).
-        // step1_adj = FreeExpand(sym1, p1_adj) inserts the FE pair into w at adjusted
-        // position, BUT the relator also removed base content (inv(b_j) or b_j).
-        // So step1_adj needs to produce w3, which is w1 minus base content.
+        //  So: step2_adj removes w1's original stable letters (from step0, at positions
+        //  unrelated to the FE positions p1). This gives w1_prime = w (base).
+        //  step1_adj = FreeExpand(sym1, p1_adj) inserts the FE pair into w at adjusted
+        //  position, BUT the relator also removed base content (inv(b_j) or b_j).
+        //  So step1_adj needs to produce w3, which is w1 minus base content.
         //
-        // w3 = w1 minus base_content at some position.
-        // w = w1 minus the 2 original stable letters.
-        // So w3 = w minus base_content at adjusted position + 2 original stable letters adjusted.
+        //  w3 = w1 minus base_content at some position.
+        //  w = w1 minus the 2 original stable letters.
+        //  So w3 = w minus base_content at adjusted position + 2 original stable letters adjusted.
         //
-        // This is getting complex. Let me use a simpler approach:
-        // The non-cancel condition says w3 ≠ w1. The overlap means the relator
-        // contains the FE pair. After deleting the relator, the FE pair is gone
-        // and some base content is also gone. w3 has w1's original stable letters.
+        //  This is getting complex. Let me use a simpler approach:
+        //  The non-cancel condition says w3 ≠ w1. The overlap means the relator
+        //  contains the FE pair. After deleting the relator, the FE pair is gone
+        //  and some base content is also gone. w3 has w1's original stable letters.
         //
-        // For the non-cancel case: w3 ≠ w1 means the relator removed base content
-        // beyond just the FE pair. This base content is inv(b_j) (or b_j for inverted),
-        // and it was originally in w1 (from the word w via step0).
+        //  For the non-cancel case: w3 ≠ w1 means the relator removed base content
+        //  beyond just the FE pair. This base content is inv(b_j) (or b_j for inverted),
+        //  and it was originally in w1 (from the word w via step0).
         //
-        // I can construct w1_prime by removing w1's original 2 stable letters
-        // (FreeReduce if from FreeExpand, RelatorDelete if from RelatorInsert).
-        // This gives w1_prime = w (base). Then I need step1_adj on w → w3.
-        // w3 = w minus base_content. If base_content was a subword of w at some
-        // position, step1_adj = RelatorDelete(base) or FreeReduce at that position.
-        // But base_content (inv(b_j)) might not be a base relator.
+        //  I can construct w1_prime by removing w1's original 2 stable letters
+        //  (FreeReduce if from FreeExpand, RelatorDelete if from RelatorInsert).
+        //  This gives w1_prime = w (base). Then I need step1_adj on w → w3.
+        //  w3 = w minus base_content. If base_content was a subword of w at some
+        //  position, step1_adj = RelatorDelete(base) or FreeReduce at that position.
+        //  But base_content (inv(b_j)) might not be a base relator.
         //
-        // Alternative: w1_prime = w3 minus the 2 original stable letters.
-        // step2_adj removes them from w1 → w1_prime. step1_adj adds them back to w1_prime → w3.
-        // But w1 and w3 have the original stable letters at the SAME positions
-        // (the relator deletion only removed the FE pair, not the originals).
-        // So removing the originals from w1 gives one base word, and removing
-        // them from w3 gives another base word that differs by the base_content.
+        //  Alternative: w1_prime = w3 minus the 2 original stable letters.
+        //  step2_adj removes them from w1 → w1_prime. step1_adj adds them back to w1_prime → w3.
+        //  But w1 and w3 have the original stable letters at the SAME positions
+        //  (the relator deletion only removed the FE pair, not the originals).
+        //  So removing the originals from w1 gives one base word, and removing
+        //  them from w3 gives another base word that differs by the base_content.
         //
-        // Hmm, the originals might NOT be at the same positions in w1 and w3
-        // if the relator deletion shifted positions.
+        //  Hmm, the originals might NOT be at the same positions in w1 and w3
+        //  if the relator deletion shifted positions.
         //
-        // Overlap: FE pair inside relator region. Can't commute at count 2.
+        //  Overlap: FE pair inside relator region. Can't commute at count 2.
         (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
 
-/// k=4 peak non-cancel: RelatorInsert(HNN) + FreeReduce commutation.
-/// Non-overlapping case only.
+///  k=4 peak non-cancel: RelatorInsert(HNN) + FreeReduce commutation.
+///  Non-overlapping case only.
 pub proof fn lemma_k4_peak_ri_fr(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int,
@@ -550,7 +550,7 @@ pub proof fn lemma_k4_peak_ri_fr(
     lemma_relator_stable_count(data, ri1, inv1);
 
     if p2 + 2 <= p1 {
-        // FreeReduce pair is entirely before relator insertion
+        //  FreeReduce pair is entirely before relator insertion
         assert(w2[p2] == w1[p2]);
         assert(w2[p2 + 1] == w1[p2 + 1]);
         assert(has_cancellation_at(w1, p2));
@@ -573,7 +573,7 @@ pub proof fn lemma_k4_peak_ri_fr(
 
         (true, w1_prime, step2_adj, step1_adj)
     } else if p2 >= p1 + r1_len {
-        // FreeReduce pair is entirely after relator insertion
+        //  FreeReduce pair is entirely after relator insertion
         let p2_adj = (p2 - r1_len) as int;
         assert(w2[p2] == w1[p2_adj]);
         assert(w2[p2 + 1] == w1[(p2_adj + 1) as int]);
@@ -596,25 +596,25 @@ pub proof fn lemma_k4_peak_ri_fr(
 
         (true, w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap: FR(stable) pair overlaps the relator region [p1, p1+r1_len).
-        // The FR has gen_idx(w2[p2]) == n (stable). is_inverse_pair gives gen_idx match.
-        // So both w2[p2] and w2[p2+1] have gen_idx == n (stable).
+        //  Overlap: FR(stable) pair overlaps the relator region [p1, p1+r1_len).
+        //  The FR has gen_idx(w2[p2]) == n (stable). is_inverse_pair gives gen_idx match.
+        //  So both w2[p2] and w2[p2+1] have gen_idx == n (stable).
         //
-        // Case (a): p2 == p1 - 1 — left boundary straddle
-        //   w2[p2] = w1[p2] (from w1, stable), w2[p2+1] = r1[0] (from relator)
-        //   Both gen_idx == n. For non-inverted: r1[0] = Inv(n), gen_idx = n. ✓
-        //   w1[p2] has gen_idx = n, so w1 has a stable letter at position p1-1.
-        //   The commutation in this case requires adjusting for the boundary.
+        //  Case (a): p2 == p1 - 1 — left boundary straddle
+        //    w2[p2] = w1[p2] (from w1, stable), w2[p2+1] = r1[0] (from relator)
+        //    Both gen_idx == n. For non-inverted: r1[0] = Inv(n), gen_idx = n. ✓
+        //    w1[p2] has gen_idx = n, so w1 has a stable letter at position p1-1.
+        //    The commutation in this case requires adjusting for the boundary.
         //
-        // Case (b): p1 <= p2 AND p2+2 <= p1+r1_len — both elements inside relator
-        //   Both r1[p2-p1] and r1[p2-p1+1] have gen_idx == n.
-        //   Relator has stable letters at exactly 2 positions. For adjacent: a_j = [].
+        //  Case (b): p1 <= p2 AND p2+2 <= p1+r1_len — both elements inside relator
+        //    Both r1[p2-p1] and r1[p2-p1+1] have gen_idx == n.
+        //    Relator has stable letters at exactly 2 positions. For adjacent: a_j = [].
         //
-        // Case (c): p2 == p1+r1_len-1 — right boundary straddle
-        //   w2[p2] = r1[r1_len-1], w2[p2+1] = w1[p2-r1_len+1] (adjusted)
-        //   Similar to case (a) at the right end.
+        //  Case (c): p2 == p1+r1_len-1 — right boundary straddle
+        //    w2[p2] = r1[r1_len-1], w2[p2+1] = w1[p2-r1_len+1] (adjusted)
+        //    Similar to case (a) at the right end.
         //
-        // Overlap sub-case analysis. Both w2[p2] and w2[p2+1] have gen_idx == n.
+        //  Overlap sub-case analysis. Both w2[p2] and w2[p2+1] have gen_idx == n.
         assert(is_inverse_pair(w2[p2], w2[p2 + 1]));
         assert(generator_index(w2[p2 + 1]) == n) by {
             match w2[p2] { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
@@ -624,44 +624,44 @@ pub proof fn lemma_k4_peak_ri_fr(
         let (a_j1, b_j1) = data.associations[j1];
 
         if p2 == p1 - 1 {
-            // Left boundary: w2[p1] = r1[0] must have gen_idx == n.
+            //  Left boundary: w2[p1] = r1[0] must have gen_idx == n.
             assert(w2[p1] == r1[0int]);
             if inv1 {
                 lemma_hnn_relator_inverted_stable_positions(data, j1);
                 if b_j1.len() > 0 {
-                    // Inverted, b_j non-empty: r1[0] = b_j[0], gen_idx < n. CONTRADICTION.
+                    //  Inverted, b_j non-empty: r1[0] = b_j[0], gen_idx < n. CONTRADICTION.
                     assert(generator_index(b_j1[0int]) < n) by {
                         reveal(hnn_data_valid);
                         assert(word_valid(b_j1, n));
                     };
                     assert(false); arbitrary()
                 } else {
-                    // Inverted, b_j empty: left boundary straddle.
-                    // inv(a_j) inserted before Gen(n). Since b_j=[], a_j ≡ ε → inv(a_j) ≡ ε.
+                    //  Inverted, b_j empty: left boundary straddle.
+                    //  inv(a_j) inserted before Gen(n). Since b_j=[], a_j ≡ ε → inv(a_j) ≡ ε.
                     lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
                         data, w1, w2, w3, p1, ri1, inv1, p2, j1);
                     (false, arbitrary(), arbitrary(), arbitrary())
                 }
             } else {
                 lemma_hnn_relator_stable_positions(data, j1);
-                // Non-inverted: r1[0] = Inv(n), gen_idx = n. Valid but can't commute.
-                (false, arbitrary(), arbitrary(), arbitrary()) // genuine boundary case
+                //  Non-inverted: r1[0] = Inv(n), gen_idx = n. Valid but can't commute.
+                (false, arbitrary(), arbitrary(), arbitrary()) //  genuine boundary case
             }
         } else if p2 >= p1 && p2 + 2 <= p1 + r1_len {
-            // Both inside relator. Need adjacent stable letters → a_j = [].
+            //  Both inside relator. Need adjacent stable letters → a_j = [].
             if !inv1 {
                 lemma_hnn_relator_stable_positions(data, j1);
-                // Non-inverted: stable at 0 and a_j.len()+1.
+                //  Non-inverted: stable at 0 and a_j.len()+1.
                 if a_j1.len() > 0 {
-                    // No adjacent stable pair. The element at p2-p1 in r1 can't be stable
-                    // unless it's at position 0 or a_j.len()+1.
-                    // If p2-p1 == 0: r1[1] = a_j[0], gen_idx < n. Contradiction.
-                    // If p2-p1 == a_j.len()+1: r1[a_j.len()+2] is base. Contradiction.
-                    // Otherwise: r1[p2-p1] is in a_j or inv(b_j), gen_idx < n. Contradiction.
+                    //  No adjacent stable pair. The element at p2-p1 in r1 can't be stable
+                    //  unless it's at position 0 or a_j.len()+1.
+                    //  If p2-p1 == 0: r1[1] = a_j[0], gen_idx < n. Contradiction.
+                    //  If p2-p1 == a_j.len()+1: r1[a_j.len()+2] is base. Contradiction.
+                    //  Otherwise: r1[p2-p1] is in a_j or inv(b_j), gen_idx < n. Contradiction.
                     let offset = (p2 - p1) as int;
                     if offset == 0 {
                         lemma_hnn_relator_structure(data, j1);
-                        // r1[1] is a_j[0], base
+                        //  r1[1] is a_j[0], base
                         assert(generator_index(r1[1int]) < n) by {
                             reveal(hnn_data_valid);
                             assert(word_valid(a_j1, n));
@@ -669,39 +669,39 @@ pub proof fn lemma_k4_peak_ri_fr(
                         assert(generator_index(w2[(p2 + 1) as int]) < n);
                         assert(false); arbitrary()
                     } else {
-                        // offset > 0: r1[offset] is either in a_j region or after Gen(n)
-                        // In either case, if it's stable (gen_idx=n), it must be at a_j.len()+1.
-                        // But then r1[offset+1] is base. Contradiction with both being stable.
+                        //  offset > 0: r1[offset] is either in a_j region or after Gen(n)
+                        //  In either case, if it's stable (gen_idx=n), it must be at a_j.len()+1.
+                        //  But then r1[offset+1] is base. Contradiction with both being stable.
                         if offset == (a_j1.len() + 1) as int {
-                            // r1[offset] = Gen(n). r1[offset+1] is in inv(b_j) or past end.
+                            //  r1[offset] = Gen(n). r1[offset+1] is in inv(b_j) or past end.
                             if b_j1.len() > 0 {
                                 lemma_hnn_relator_structure(data, j1);
                                 lemma_inverse_word_valid(b_j1, n);
                                 assert(generator_index(inverse_word(b_j1)[0int]) < n);
                                 assert(false); arbitrary()
                             } else {
-                                // b_j empty: r1_len = a_j.len()+2. offset+1 = a_j.len()+2 = r1_len.
-                                // p2+2 = p1+offset+2 = p1+a_j.len()+3 > p1+a_j.len()+2 = p1+r1_len.
-                                // Contradicts p2+2 <= p1+r1_len.
+                                //  b_j empty: r1_len = a_j.len()+2. offset+1 = a_j.len()+2 = r1_len.
+                                //  p2+2 = p1+offset+2 = p1+a_j.len()+3 > p1+a_j.len()+2 = p1+r1_len.
+                                //  Contradicts p2+2 <= p1+r1_len.
                                 assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
                                 assert(false); arbitrary()
                             }
                         } else {
-                            // r1[offset] is in a_j (if 1 <= offset <= a_j.len()) or
-                            // inv(b_j) (if a_j.len()+2 <= offset < r1_len). Either way, base.
+                            //  r1[offset] is in a_j (if 1 <= offset <= a_j.len()) or
+                            //  inv(b_j) (if a_j.len()+2 <= offset < r1_len). Either way, base.
                             lemma_hnn_relator_structure(data, j1);
                             let t_inv = stable_letter_inv(data);
                             let t = stable_letter(data);
                             assert(r1 =~= seq![t_inv] + a_j1 + seq![t] + inverse_word(b_j1));
                             if offset >= 1 && offset <= a_j1.len() as int {
-                                // In a_j region: r1[offset] = a_j[offset-1]
+                                //  In a_j region: r1[offset] = a_j[offset-1]
                                 assert(r1[offset] == a_j1[(offset - 1) as int]);
                                 assert(generator_index(a_j1[(offset - 1) as int]) < n) by {
                                     reveal(hnn_data_valid);
                                     assert(word_valid(a_j1, n));
                                 };
                             } else {
-                                // In inv(b_j) region: offset >= a_j.len()+2
+                                //  In inv(b_j) region: offset >= a_j.len()+2
                                 let inv_off = (offset - a_j1.len() as int - 2) as int;
                                 lemma_inverse_word_valid(b_j1, n);
                                 assert(r1[offset] == inverse_word(b_j1)[inv_off]);
@@ -713,19 +713,19 @@ pub proof fn lemma_k4_peak_ri_fr(
                         }
                     }
                 } else {
-                    // a_j = []: stable at 0 and 1.
-                    // We've proven above that offset != 0 when a_j.len() > 0 (contradiction).
-                    // With a_j = []: r1 = [Inv(n), Gen(n)] + inv(b_j). r1_len = 2+b_j.len().
-                    // p2 >= p1, p2+2 <= p1+r1_len = p1+2+b_j.len().
-                    // Both w2[p2] and w2[p2+1] have gen_idx == n.
-                    // w2[p2] = r1[p2-p1]. For gen_idx == n: p2-p1 must be 0 or 1.
-                    // w2[p2+1] = r1[p2-p1+1]. For gen_idx == n: p2-p1+1 must be 0 or 1.
-                    // Combined: p2-p1 == 0 and p2-p1+1 == 1. So p2 == p1.
+                    //  a_j = []: stable at 0 and 1.
+                    //  We've proven above that offset != 0 when a_j.len() > 0 (contradiction).
+                    //  With a_j = []: r1 = [Inv(n), Gen(n)] + inv(b_j). r1_len = 2+b_j.len().
+                    //  p2 >= p1, p2+2 <= p1+r1_len = p1+2+b_j.len().
+                    //  Both w2[p2] and w2[p2+1] have gen_idx == n.
+                    //  w2[p2] = r1[p2-p1]. For gen_idx == n: p2-p1 must be 0 or 1.
+                    //  w2[p2+1] = r1[p2-p1+1]. For gen_idx == n: p2-p1+1 must be 0 or 1.
+                    //  Combined: p2-p1 == 0 and p2-p1+1 == 1. So p2 == p1.
                     let off = (p2 - p1) as int;
                     if off != 0 {
-                        // off >= 1. r1[off] = Gen(n) if off==1, else base.
-                        // r1[off+1]: if off==1, r1[2] = inv(b_j)[0] if b_j.len()>0 (base), or out of bounds.
-                        // Either way contradicts gen_idx(w2[p2+1]) == n.
+                        //  off >= 1. r1[off] = Gen(n) if off==1, else base.
+                        //  r1[off+1]: if off==1, r1[2] = inv(b_j)[0] if b_j.len()>0 (base), or out of bounds.
+                        //  Either way contradicts gen_idx(w2[p2+1]) == n.
                         if off == 1 {
                             if b_j1.len() > 0 {
                                 lemma_hnn_relator_structure(data, j1);
@@ -733,12 +733,12 @@ pub proof fn lemma_k4_peak_ri_fr(
                                 assert(generator_index(inverse_word(b_j1)[0int]) < n);
                                 assert(false);
                             } else {
-                                // r1_len == 2, off == 1, p2+2 = p1+3 > p1+2 = p1+r1_len. Contradiction.
+                                //  r1_len == 2, off == 1, p2+2 = p1+3 > p1+2 = p1+r1_len. Contradiction.
                                 assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
                                 assert(false);
                             }
                         } else {
-                            // off >= 2: r1[off] is in inv(b_j) region, base. Contradiction.
+                            //  off >= 2: r1[off] is in inv(b_j) region, base. Contradiction.
                             lemma_hnn_relator_structure(data, j1);
                             lemma_inverse_word_valid(b_j1, n);
                             let inv_off = (off - 2) as int;
@@ -748,54 +748,54 @@ pub proof fn lemma_k4_peak_ri_fr(
                     }
                     assert(p2 == p1);
                     if b_j1.len() == 0 {
-                        // Cancel case: r1 = [Inv(n), Gen(n)]. After RI+FR: w3 = w1.
+                        //  Cancel case: r1 = [Inv(n), Gen(n)]. After RI+FR: w3 = w1.
                         assert(r1_len == 2);
                         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
                             if k < p1 { assert(w3[k] == w2[k]); assert(w2[k] == w1[k]); }
                             else { assert(w3[k] == w2[(k + 2) as int]); assert(w2[(k + 2) as int] == w1[k]); }
                         };
                         assert(w3 =~= w1);
-                        assert(false); arbitrary() // contradicts !(w3 =~= w1)
+                        assert(false); arbitrary() //  contradicts !(w3 =~= w1)
                     } else {
-                        // Genuine case: a_j=[], b_j≠[]. Can't commute.
-                        // Prove equiv(w1, w3) via isomorphism: inv(b_j) ≡ ε in base.
+                        //  Genuine case: a_j=[], b_j≠[]. Can't commute.
+                        //  Prove equiv(w1, w3) via isomorphism: inv(b_j) ≡ ε in base.
                         lemma_overlap_ri_fr_w1_equiv_w3(data, w1, w2, w3, p1, ri1, inv1, p2, j1);
                         (false, arbitrary(), arbitrary(), arbitrary())
                     }
                 }
             } else {
                 lemma_hnn_relator_inverted_stable_positions(data, j1);
-                // Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
+                //  Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
                 if a_j1.len() > 0 {
-                    // Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
-                    // Gap between them = a_j.len() > 0. No adjacent stable pair.
-                    // Same logic as non-inverted: r1[p2-p1] at non-stable position → base → contradiction.
+                    //  Inverted: stable at b_j.len() and b_j.len()+a_j.len()+1.
+                    //  Gap between them = a_j.len() > 0. No adjacent stable pair.
+                    //  Same logic as non-inverted: r1[p2-p1] at non-stable position → base → contradiction.
                     let offset = (p2 - p1) as int;
                     let sb = b_j1.len() as int;
-                    // Stable positions: sb and sb+a_j1.len()+1.
-                    // If offset == sb: r1[offset+1] = inv(a_j)[0] if a_j non-empty (base). Contradiction.
-                    // If offset == sb+a_j1.len()+1: r1[offset+1] past end or Gen(n)+1. Same analysis.
-                    // Otherwise: r1[offset] is base. Contradiction.
-                    // For now: r1[offset] has gen_idx < n unless at stable position.
-                    // At stable position: the next element is base (gap > 0). Contradiction.
+                    //  Stable positions: sb and sb+a_j1.len()+1.
+                    //  If offset == sb: r1[offset+1] = inv(a_j)[0] if a_j non-empty (base). Contradiction.
+                    //  If offset == sb+a_j1.len()+1: r1[offset+1] past end or Gen(n)+1. Same analysis.
+                    //  Otherwise: r1[offset] is base. Contradiction.
+                    //  For now: r1[offset] has gen_idx < n unless at stable position.
+                    //  At stable position: the next element is base (gap > 0). Contradiction.
                     if offset == sb {
-                        // r1[sb+1] = inv(a_j)[0], base
+                        //  r1[sb+1] = inv(a_j)[0], base
                         assert(generator_index(r1[(sb + 1) as int]) < n) by {
                             reveal(hnn_data_valid);
                             lemma_inverse_word_valid(a_j1, n);
                         };
                         assert(false);
                     } else if offset == (sb + a_j1.len() as int + 1) {
-                        // r1[offset+1] = Gen(n)+1... past stable, into next region or past end
+                        //  r1[offset+1] = Gen(n)+1... past stable, into next region or past end
                         assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
                         if offset + 2 <= r1_len {
-                            // Past Gen(n): nothing left (offset+1 = sb+a_j+2 = r1_len). Out of bounds.
+                            //  Past Gen(n): nothing left (offset+1 = sb+a_j+2 = r1_len). Out of bounds.
                             assert(false);
                         } else {
-                            assert(false); // p2+2 > p1+r1_len, contradicts precondition
+                            assert(false); //  p2+2 > p1+r1_len, contradicts precondition
                         }
                     } else {
-                        // Not at a stable position. r1[offset] is base.
+                        //  Not at a stable position. r1[offset] is base.
                         if offset < sb {
                             assert(generator_index(b_j1[offset]) < n) by {
                                 reveal(hnn_data_valid);
@@ -817,12 +817,12 @@ pub proof fn lemma_k4_peak_ri_fr(
                             else { assert(w3[k] == w2[(k + 2) as int]); assert(w2[(k + 2) as int] == w1[k]); }
                         };
                         assert(w3 =~= w1);
-                        assert(false); arbitrary() // cancel contradiction
+                        assert(false); arbitrary() //  cancel contradiction
                     } else {
-                        // Genuine inverted case: a_j=[], b_j≠[].
-                        // Prove p2 == p1 + b_j.len(): with a_j=[], r1 = b_j+[Inv(n),Gen(n)],
-                        // r1_len = b_j.len()+2. FR pair at offset in [0, r1_len-2].
-                        // Only stable pair is at (b_j.len(), b_j.len()+1).
+                        //  Genuine inverted case: a_j=[], b_j≠[].
+                        //  Prove p2 == p1 + b_j.len(): with a_j=[], r1 = b_j+[Inv(n),Gen(n)],
+                        //  r1_len = b_j.len()+2. FR pair at offset in [0, r1_len-2].
+                        //  Only stable pair is at (b_j.len(), b_j.len()+1).
                         let sb_inv = b_j1.len() as int;
                         let off_inv = (p2 - p1) as int;
                         assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
@@ -840,43 +840,43 @@ pub proof fn lemma_k4_peak_ri_fr(
                             assert(false);
                         }
                         assert(p2 == p1 + b_j1.len());
-                        // Prove equiv(w1, w3) via isomorphism: b_j ≡ ε in base.
+                        //  Prove equiv(w1, w3) via isomorphism: b_j ≡ ε in base.
                         lemma_overlap_ri_fr_w1_equiv_w3_inverted(data, w1, w2, w3, p1, ri1, inv1, p2, j1);
                         (false, arbitrary(), arbitrary(), arbitrary())
                     }
                 }
             }
         } else {
-            // Right boundary: p2 == p1+r1_len-1
+            //  Right boundary: p2 == p1+r1_len-1
             assert(w2[p2] == r1[(r1_len - 1) as int]);
             if !inv1 {
                 lemma_hnn_relator_stable_positions(data, j1);
                 if b_j1.len() > 0 {
-                    // Non-inverted, b_j non-empty: r1 ends with inv(b_j). Last is base.
+                    //  Non-inverted, b_j non-empty: r1 ends with inv(b_j). Last is base.
                     lemma_hnn_relator_structure(data, j1);
                     lemma_inverse_word_valid(b_j1, n);
                     let inv_bj = inverse_word(b_j1);
                     assert(r1_len == 2 + a_j1.len() as int + b_j1.len() as int);
                     assert(generator_index(inv_bj[(b_j1.len() - 1) as int]) < n);
-                    assert(false); arbitrary() // gen_idx < n contradiction
+                    assert(false); arbitrary() //  gen_idx < n contradiction
                 } else {
-                    // Right boundary non-inverted, b_j=[].
-                    // a_j inserted after Inv(n). Since b_j=[], a_j ≡ ε.
+                    //  Right boundary non-inverted, b_j=[].
+                    //  a_j inserted after Inv(n). Since b_j=[], a_j ≡ ε.
                     lemma_overlap_ri_fr_w1_equiv_w3_boundary_right_noninv(
                         data, w1, w2, w3, p1, ri1, inv1, p2, j1);
                     (false, arbitrary(), arbitrary(), arbitrary())
                 }
             } else {
                 lemma_hnn_relator_inverted_stable_positions(data, j1);
-                // Inverted: r1 ends with Gen(n). Genuine boundary case.
+                //  Inverted: r1 ends with Gen(n). Genuine boundary case.
                 (false, arbitrary(), arbitrary(), arbitrary())
             }
         }
     }
 }
 
-/// k=4 peak non-cancel: RelatorInsert(HNN) + RelatorDelete(HNN) commutation.
-/// Non-overlapping case only.
+///  k=4 peak non-cancel: RelatorInsert(HNN) + RelatorDelete(HNN) commutation.
+///  Non-overlapping case only.
 pub proof fn lemma_k4_peak_ri_rd(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int, ri2: nat, inv2: bool,
@@ -925,7 +925,7 @@ pub proof fn lemma_k4_peak_ri_rd(
     lemma_relator_stable_count(data, ri1, inv1);
     lemma_relator_stable_count(data, ri2, inv2);
 
-    // Cancel case: same relator, same position
+    //  Cancel case: same relator, same position
     if ri1 == ri2 && inv1 == inv2 && p2 == p1 {
         assert(r1 =~= r2);
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
@@ -938,7 +938,7 @@ pub proof fn lemma_k4_peak_ri_rd(
             }
         };
         assert(w3 =~= w1);
-        assert(false); // contradicts !(w3 =~= w1)
+        assert(false); //  contradicts !(w3 =~= w1)
     }
 
     if p2 + r2_len <= p1 {
@@ -948,7 +948,7 @@ pub proof fn lemma_k4_peak_ri_rd(
         let r = lemma_k4_peak_ri_rd_right(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2);
         (true, r.0, r.1, r.2)
     } else {
-        // Overlap: relator regions overlap. Can't commute at count 2.
+        //  Overlap: relator regions overlap. Can't commute at count 2.
         (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
@@ -1075,15 +1075,15 @@ proof fn lemma_k4_peak_ri_rd_right(
     (w1_prime, step2_adj, step1_adj)
 }
 
-/// Main dispatcher for k=4 peak non-cancel commutation.
-/// Classifies step1 (count +2) and step2 (count -2) types,
-/// then delegates to per-combination helpers.
+///  Main dispatcher for k=4 peak non-cancel commutation.
+///  Classifies step1 (count +2) and step2 (count -2) types,
+///  then delegates to per-combination helpers.
 ///
-/// Returns (w1', step2_adj, step1_adj) where w1' is base and:
-///   apply_step(hp, w1, step2_adj) == Some(w1')
-///   apply_step(hp, w1', step1_adj) == Some(w3)
-/// Generic bypass: takes already-commuted step results and builds left/right derivations.
-/// w2p = result of applying step3_adj to w2, s3a/s2a are the commuted steps.
+///  Returns (w1', step2_adj, step1_adj) where w1' is base and:
+///    apply_step(hp, w1, step2_adj) == Some(w1')
+///    apply_step(hp, w1', step1_adj) == Some(w3)
+///  Generic bypass: takes already-commuted step results and builds left/right derivations.
+///  w2p = result of applying step3_adj to w2, s3a/s2a are the commuted steps.
 proof fn lemma_peak_bypass_commuted(
     data: HNNData, w: Word, w1: Word, w2: Word, w2p: Word, w4: Word, w_end: Word,
     step0: DerivationStep, step1: DerivationStep,
@@ -1141,15 +1141,15 @@ proof fn lemma_peak_bypass_commuted(
     assert(!is_base_word(w2, n)) by {
         if is_base_word(w2, n) { lemma_base_implies_count_zero(w2, n); }
     };
-    // Prove the commuted peak (step1, s3a) doesn't overlap.
-    // Then ok_ is guaranteed true by lemma_k4_peak_noncancel_commute postcondition.
-    // s3a has a known position from the commutation helper's postcondition.
-    // We need: peak_steps_non_overlapping(hp, step1, s3a, w1).
-    // This requires matching on step1 and s3a to check position bounds.
-    // Since s3a acts at step3's adjusted position (outside step1's region in w2),
-    // and the commutation only adjusts by step2's size, it stays outside.
+    //  Prove the commuted peak (step1, s3a) doesn't overlap.
+    //  Then ok_ is guaranteed true by lemma_k4_peak_noncancel_commute postcondition.
+    //  s3a has a known position from the commutation helper's postcondition.
+    //  We need: peak_steps_non_overlapping(hp, step1, s3a, w1).
+    //  This requires matching on step1 and s3a to check position bounds.
+    //  Since s3a acts at step3's adjusted position (outside step1's region in w2),
+    //  and the commutation only adjusts by step2's size, it stays outside.
     //
-    // For now, we call lemma_k4_peak_noncancel_commute and check ok_ at runtime.
+    //  For now, we call lemma_k4_peak_noncancel_commute and check ok_ at runtime.
     let (ok_, w_base, s3a2, s1a) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2p, step1, s3a);
     if !ok_ {
@@ -1167,9 +1167,9 @@ proof fn lemma_peak_bypass_commuted(
     (true, w_base, left, right)
 }
 
-/// Inner: FR×FR bypass for overlapping count-2 peak.
-/// Try to commute two -2 steps. Returns None if positions overlap.
-/// When Some, also guarantees s3a doesn't overlap with step1.
+///  Inner: FR×FR bypass for overlapping count-2 peak.
+///  Try to commute two -2 steps. Returns None if positions overlap.
+///  When Some, also guarantees s3a doesn't overlap with step1.
 proof fn try_commute_minus2_steps(
     data: HNNData, hp: Presentation, w1: Word, w2: Word, w3: Word, w4: Word,
     step1: DerivationStep, step2: DerivationStep, step3: DerivationStep,
@@ -1188,7 +1188,7 @@ proof fn try_commute_minus2_steps(
         apply_step(hp, w1, step1) == Some(w2),
         apply_step(hp, w2, step2) == Some(w3),
         apply_step(hp, w3, step3) == Some(w4),
-        // step2 overlaps with step1
+        //  step2 overlaps with step1
         !peak_steps_non_overlapping(hp, step1, step2, w1),
     ensures
         match result {
@@ -1202,22 +1202,22 @@ proof fn try_commute_minus2_steps(
             None => true,
         },
 {
-    // For the postcondition: we need to prove peak_steps_non_overlapping(hp, step1, s3a, w1).
-    // step2 overlaps with step1 (precondition: !peak_steps_non_overlapping(hp, step1, step2, w1)).
-    // For step1 = RI(p1, ri1, inv1): step2's FR/RD is inside [p1, p1+r1_len).
-    // step3 is OUTSIDE this region (it acts on step0's letters).
-    // After commuting, s3a acts at step3's adjusted position, still outside.
+    //  For the postcondition: we need to prove peak_steps_non_overlapping(hp, step1, s3a, w1).
+    //  step2 overlaps with step1 (precondition: !peak_steps_non_overlapping(hp, step1, step2, w1)).
+    //  For step1 = RI(p1, ri1, inv1): step2's FR/RD is inside [p1, p1+r1_len).
+    //  step3 is OUTSIDE this region (it acts on step0's letters).
+    //  After commuting, s3a acts at step3's adjusted position, still outside.
     //
-    // We prove non-overlap by matching on step1 and the commuted s3a.
+    //  We prove non-overlap by matching on step1 and the commuted s3a.
 
     match (step2, step3) {
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::FreeReduce { position: p3 }) =>
             if (p3 < p2 ==> p3 + 2 <= p2) {
                 let r = lemma_commute_fr_fr(data, w2, w3, w4, p2, p3);
-                // r.1 = s3a = FreeReduce at p3 (if p3<p2) or p3+2 (if p3>=p2).
-                // step2 is FR(p2) inside step1's region. step3 is FR(p3) outside.
-                // s3a is FR at same or shifted position, still outside step1's region.
+                //  r.1 = s3a = FreeReduce at p3 (if p3<p2) or p3+2 (if p3>=p2).
+                //  step2 is FR(p2) inside step1's region. step3 is FR(p3) outside.
+                //  s3a is FR at same or shifted position, still outside step1's region.
                 Some(r)
             } else { None },
         (DerivationStep::FreeReduce { position: p2 },
@@ -1293,14 +1293,14 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         &&& (ok ==> derivation_produces(hp, right_steps, w_base) == Some(w_end))
         &&& (ok ==> left_steps.len() < total)
         &&& (ok ==> right_steps.len() < total)
-        // Non-overlapping always succeeds
+        //  Non-overlapping always succeeds
         &&& (peak_steps_non_overlapping(hp, step1, step2, w1) ==> ok)
     }),
 {
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Try overlap bypass: commute step2 with suffix[0]
+    //  Try overlap bypass: commute step2 with suffix[0]
     if !peak_steps_non_overlapping(hp, step1, step2, w1) && suffix.len() >= 1 {
         let step3 = suffix.first();
         assert(apply_step(hp, w3, step3).is_some());
@@ -1319,10 +1319,10 @@ pub proof fn lemma_eliminate_peak_with_bypass(
                     lemma_step_preserves_word_valid(data, w2, s3a);
                     lemma_step_preserves_word_valid(data, w2p, s2a);
 
-                    // s3a doesn't overlap with step1 (from try_commute_minus2_steps postcondition)
+                    //  s3a doesn't overlap with step1 (from try_commute_minus2_steps postcondition)
 
                     if w2p =~= w1 {
-                        // Cancel
+                        //  Cancel
                         assert(apply_step(hp, w1, s2a) == Some(w4)) by { assert(w2p =~= w1); };
                         lemma_derivation_produces_2(hp, step0, s2a, w, w1, w4);
                         lemma_zero_count_implies_base(w4, n);
@@ -1338,12 +1338,12 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         }
     }
 
-    // Non-overlap or bypass failed: standard commutation
+    //  Non-overlap or bypass failed: standard commutation
     if peak_steps_non_overlapping(hp, step1, step2, w1) {
-        // Non-overlap: commutation guaranteed to succeed
+        //  Non-overlap: commutation guaranteed to succeed
         let (ok_, w_base, step2_adj, step1_adj) =
             lemma_k4_peak_noncancel_commute(data, w1, w2, w3, step1, step2);
-        assert(ok_); // guaranteed by postcondition: non_overlapping ==> ok
+        assert(ok_); //  guaranteed by postcondition: non_overlapping ==> ok
         lemma_derivation_produces_2(hp, step0, step2_adj, w, w1, w_base);
         let left: Seq<DerivationStep> = seq![step0, step2_adj];
 
@@ -1359,7 +1359,7 @@ pub proof fn lemma_eliminate_peak_with_bypass(
         let right = one + suffix;
         (true, w_base, left, right)
     } else {
-        // Overlap AND bypass failed. Return failure — caller handles via isomorphism.
+        //  Overlap AND bypass failed. Return failure — caller handles via isomorphism.
         (false, arbitrary(), Seq::empty(), Seq::empty())
     }
 }
@@ -1400,24 +1400,24 @@ pub proof fn lemma_k4_peak_noncancel_commute(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Classify step1: must be +2 (FreeExpand(stable) or RelatorInsert(HNN))
+    //  Classify step1: must be +2 (FreeExpand(stable) or RelatorInsert(HNN))
     lemma_stable_count_reduce_step(data, w1, step1, n);
 
-    // Classify step2: must be -2 (FreeReduce(stable) or RelatorDelete(HNN))
+    //  Classify step2: must be -2 (FreeReduce(stable) or RelatorDelete(HNN))
     lemma_stable_count_reduce_step(data, w2, step2, n);
 
-    // Helper: prove step2 (count -2) must be FreeReduce or RelatorDelete(HNN)
-    // by showing FreeExpand/RelatorInsert can only increase or maintain count.
-    // This is a nested function to share the step2 ruling-out logic.
+    //  Helper: prove step2 (count -2) must be FreeReduce or RelatorDelete(HNN)
+    //  by showing FreeExpand/RelatorInsert can only increase or maintain count.
+    //  This is a nested function to share the step2 ruling-out logic.
 
     match step1 {
         DerivationStep::FreeReduce { position: p1r } => {
-            // FreeReduce: count(w2) = count(w1) - {0,2} ≤ 2. But c2 = 4.
+            //  FreeReduce: count(w2) = count(w1) - {0,2} ≤ 2. But c2 = 4.
             lemma_stable_count_reduce(w1, p1r, n);
             assert(false); arbitrary()
         },
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } => {
-            // Prove sym1 is stable using count argument
+            //  Prove sym1 is stable using count argument
             let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
             assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
             let left1 = w1.subrange(0, p1);
@@ -1434,13 +1434,13 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                 stable_letter_count(left1, n) + pc1 + stable_letter_count(right1, n));
             assert(stable_letter_count(w1, n) ==
                 stable_letter_count(left1, n) + stable_letter_count(right1, n));
-            // c2 = c1 + pc1. Since c2 = 4 and c1 = 2, pc1 = 2, so gen_idx(sym1) == n.
+            //  c2 = c1 + pc1. Since c2 = 4 and c1 = 2, pc1 = 2, so gen_idx(sym1) == n.
             assert(pc1 == 2nat);
             assert(generator_index(sym1) == n);
-            // Now classify step2
+            //  Now classify step2
             match step2 {
                 DerivationStep::FreeExpand { position: p2e, symbol: sym2e } => {
-                    // FreeExpand: count(w3) >= count(w2) = 4. But count(w3) = 2.
+                    //  FreeExpand: count(w3) >= count(w2) = 4. But count(w3) = 2.
                     let pair2 = Seq::new(1, |_i: int| sym2e) + Seq::new(1, |_i: int| inverse_symbol(sym2e));
                     assert(pair2 =~= seq![sym2e, inverse_symbol(sym2e)]);
                     let left2 = w2.subrange(0, p2e);
@@ -1457,11 +1457,11 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         stable_letter_count(left2, n) + pc2 + stable_letter_count(right2, n));
                     assert(stable_letter_count(w2, n) ==
                         stable_letter_count(left2, n) + stable_letter_count(right2, n));
-                    // c3 = c2 + pc2 >= c2 = 4, but c3 = 2. Contradiction.
+                    //  c3 = c2 + pc2 >= c2 = 4, but c3 = 2. Contradiction.
                     assert(false); arbitrary()
                 },
                 DerivationStep::RelatorInsert { position: p2r, relator_index: ri2, inverted: inv2 } => {
-                    // RelatorInsert: count(w3) >= count(w2) = 4. But count(w3) = 2.
+                    //  RelatorInsert: count(w3) >= count(w2) = 4. But count(w3) = 2.
                     let r2 = get_relator(hp, ri2, inv2);
                     lemma_relator_stable_count(data, ri2, inv2);
                     let left2 = w2.subrange(0, p2r);
@@ -1475,7 +1475,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                         stable_letter_count(left2, n) + stable_letter_count(r2, n) + stable_letter_count(right2, n));
                     assert(stable_letter_count(w2, n) ==
                         stable_letter_count(left2, n) + stable_letter_count(right2, n));
-                    // c3 = c2 + count(r2) >= c2 = 4, but c3 = 2. Contradiction.
+                    //  c3 = c2 + count(r2) >= c2 = 4, but c3 = 2. Contradiction.
                     assert(false); arbitrary()
                 },
                 DerivationStep::FreeReduce { position: p2 } => {
@@ -1485,7 +1485,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
                     lemma_relator_stable_count(data, ri2, inv2);
                     if (ri2 as int) < data.base.relators.len() {
-                        // Base relator: count(r2) = 0, so count(w3) = count(w2) = 4 ≠ 2
+                        //  Base relator: count(r2) = 0, so count(w3) = count(w2) = 4 ≠ 2
                         let r2 = get_relator(hp, ri2, inv2);
                         lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
                         lemma_stable_letter_count_concat(w2.subrange(0, p2), w2.subrange(p2 + r2.len() as int, w2.len() as int), n);
@@ -1497,7 +1497,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
             }
         },
         DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 } => {
-            // Prove ri1 is HNN: if base, count doesn't change → c2 = 2 ≠ 4
+            //  Prove ri1 is HNN: if base, count doesn't change → c2 = 2 ≠ 4
             let r1 = get_relator(hp, ri1, inv1);
             lemma_relator_stable_count(data, ri1, inv1);
             let left1 = w1.subrange(0, p1);
@@ -1512,11 +1512,11 @@ pub proof fn lemma_k4_peak_noncancel_commute(
             assert(stable_letter_count(w1, n) ==
                 stable_letter_count(left1, n) + stable_letter_count(right1, n));
             if (ri1 as int) < data.base.relators.len() {
-                // count(r1) = 0 → c2 = c1 = 2 ≠ 4
+                //  count(r1) = 0 → c2 = c1 = 2 ≠ 4
                 assert(stable_letter_count(r1, n) == 0nat);
                 assert(false); arbitrary()
             }
-            // Now classify step2
+            //  Now classify step2
             match step2 {
                 DerivationStep::FreeExpand { position: p2e, symbol: sym2e } => {
                     let pair2 = Seq::new(1, |_i: int| sym2e) + Seq::new(1, |_i: int| inverse_symbol(sym2e));
@@ -1554,7 +1554,7 @@ pub proof fn lemma_k4_peak_noncancel_commute(
                     assert(false); arbitrary()
                 },
                 DerivationStep::FreeReduce { position: p2 } => {
-                    // RI+FR: propagates (bool, ...) directly
+                    //  RI+FR: propagates (bool, ...) directly
                     lemma_k4_peak_ri_fr(data, w1, w2, w3, p1, ri1, inv1, p2)
                 },
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
@@ -1571,10 +1571,10 @@ pub proof fn lemma_k4_peak_noncancel_commute(
             }
         },
         DerivationStep::RelatorDelete { position: p1d, relator_index: ri1, inverted: inv1 } => {
-            // RelatorDelete: count(w2) = count(w1) - count(r1) ≤ count(w1) = 2. But c2 = 4.
+            //  RelatorDelete: count(w2) = count(w1) - count(r1) ≤ count(w1) = 2. But c2 = 4.
             let r1 = get_relator(hp, ri1, inv1);
             lemma_relator_stable_count(data, ri1, inv1);
-            // w2 = w1[0..p1d] ++ w1[p1d+|r1|..], removing r1 from w1
+            //  w2 = w1[0..p1d] ++ w1[p1d+|r1|..], removing r1 from w1
             lemma_stable_count_subrange(w1, p1d, p1d + r1.len() as int, n);
             lemma_stable_letter_count_concat(
                 w1.subrange(0, p1d),
@@ -1582,14 +1582,14 @@ pub proof fn lemma_k4_peak_noncancel_commute(
             lemma_stable_letter_count_concat(
                 w1.subrange(0, p1d),
                 w1.subrange(p1d, w1.len() as int), n);
-            // count(w2) = count(w1) - count(r1) ≤ 2. But c2 = 4.
+            //  count(w2) = count(w1) - count(r1) ≤ 2. But c2 = 4.
             assert(false); arbitrary()
         },
     }
 }
 
-/// k=2 FreeExpand(stable) + RelatorDelete(HNN), non-inverted branch.
-/// Extracted from lemma_k2_expand_reldelete to reduce rlimit.
+///  k=2 FreeExpand(stable) + RelatorDelete(HNN), non-inverted branch.
+///  Extracted from lemma_k2_expand_reldelete to reduce rlimit.
 pub proof fn lemma_k2_expand_reldelete_noninv(
     data: HNNData, w: Word, w1: Word, w_end: Word,
     pos0: int, sym: Symbol, pos1: int, r_idx: nat,
@@ -1613,7 +1613,7 @@ pub proof fn lemma_k2_expand_reldelete_noninv(
         r_idx as int >= data.base.relators.len(),
         j == (r_idx as int - data.base.relators.len()) as int,
         0 <= j < data.associations.len(),
-        // Common setup results:
+        //  Common setup results:
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         ({
             let hp = hnn_presentation(data);
@@ -1637,17 +1637,17 @@ pub proof fn lemma_k2_expand_reldelete_noninv(
     let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
     assert(w1 =~= left_w + pair + right_w);
 
-    // r = hnn_relator(data, j) = [Inv(n)] ++ a_j ++ [Gen(n)] ++ inv(b_j)
+    //  r = hnn_relator(data, j) = [Inv(n)] ++ a_j ++ [Gen(n)] ++ inv(b_j)
     lemma_hnn_relator_stable_positions(data, j);
     let t_inv = stable_letter_inv(data);
     assert(r[0int] == t_inv);
     assert(generator_index(r[0int]) == n);
 
-    // r[0] = w1[pos1], and gen_idx(w1[pos1]) = n → pos1 ∈ {pos0, pos0+1}
+    //  r[0] = w1[pos1], and gen_idx(w1[pos1]) = n → pos1 ∈ {pos0, pos0+1}
     assert(w1[pos1] == r[0int]);
     assert(generator_index(w1[pos1]) == n);
 
-    // Show pos1 = pos0 (pos1 = pos0+1 leads to contradiction)
+    //  Show pos1 = pos0 (pos1 = pos0+1 leads to contradiction)
     if pos1 != pos0 as int {
         assert(pos1 == pos0 + 1);
         let second_pos = pos1 + a_j.len() as int + 1;
@@ -1661,7 +1661,7 @@ pub proof fn lemma_k2_expand_reldelete_noninv(
     }
     assert(pos1 == pos0 as int);
 
-    // |a_j| = 0
+    //  |a_j| = 0
     if a_j.len() > 0 {
         let second_pos = pos1 + a_j.len() as int + 1;
         assert(second_pos == pos0 + a_j.len() as int + 1);
@@ -1724,8 +1724,8 @@ pub proof fn lemma_k2_expand_reldelete_noninv(
     lemma_remove_trivial_equiv(data.base, w_left, w_right, inv_bj);
 }
 
-/// k=2 FreeExpand(stable) + RelatorDelete(HNN), inverted branch.
-/// Extracted from lemma_k2_expand_reldelete to reduce rlimit.
+///  k=2 FreeExpand(stable) + RelatorDelete(HNN), inverted branch.
+///  Extracted from lemma_k2_expand_reldelete to reduce rlimit.
 pub proof fn lemma_k2_expand_reldelete_inv(
     data: HNNData, w: Word, w1: Word, w_end: Word,
     pos0: int, sym: Symbol, pos1: int, r_idx: nat,
@@ -1772,7 +1772,7 @@ pub proof fn lemma_k2_expand_reldelete_inv(
     let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
     assert(w1 =~= left_w + pair + right_w);
 
-    // Inverted case: r = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
+    //  Inverted case: r = b_j ++ [Inv(n)] ++ inv(a_j) ++ [Gen(n)]
     lemma_hnn_relator_inverted_stable_positions(data, j);
     let t_inv = stable_letter_inv(data);
     assert(r[b_j.len() as int] == t_inv);
@@ -1853,8 +1853,8 @@ pub proof fn lemma_k2_expand_reldelete_inv(
     lemma_remove_trivial_equiv(data.base, w_left, w_right, b_j);
 }
 
-/// k=3 RI(HNN) + RI(base) commutation, p1 <= p0 branch.
-/// Extracted from lemma_k3_ri_hnn_relinsert_base to reduce rlimit.
+///  k=3 RI(HNN) + RI(base) commutation, p1 <= p0 branch.
+///  Extracted from lemma_k3_ri_hnn_relinsert_base to reduce rlimit.
 pub proof fn lemma_k3_ri_hnn_relinsert_base_left(
     data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
@@ -1949,8 +1949,8 @@ pub proof fn lemma_k3_ri_hnn_relinsert_base_left(
     lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
 }
 
-/// k=3 RI(HNN) + RI(base) commutation, p1 >= p0 + r0_len branch.
-/// Extracted from lemma_k3_ri_hnn_relinsert_base to reduce rlimit.
+///  k=3 RI(HNN) + RI(base) commutation, p1 >= p0 + r0_len branch.
+///  Extracted from lemma_k3_ri_hnn_relinsert_base to reduce rlimit.
 pub proof fn lemma_k3_ri_hnn_relinsert_base_right(
     data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
     p0: int, ri0: nat, inv0: bool, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
@@ -2045,11 +2045,11 @@ pub proof fn lemma_k3_ri_hnn_relinsert_base_right(
     lemma_k3_commutation_tail(data, w, w_prime, w2, w_end, step1_base, step0_adj, step2);
 }
 
-/// k≥5 peak non-cancel: commute step2 past step1, return derivation data.
-/// Returns (w1_prime, left_steps, right_steps) where:
-///   - w1_prime is base, word_valid
-///   - derivation_produces(hp, left_steps, w) == Some(w1_prime), len 2
-///   - derivation_produces(hp, right_steps, w1_prime) == Some(w_end), len k-2
+///  k≥5 peak non-cancel: commute step2 past step1, return derivation data.
+///  Returns (w1_prime, left_steps, right_steps) where:
+///    - w1_prime is base, word_valid
+///    - derivation_produces(hp, left_steps, w) == Some(w1_prime), len 2
+///    - derivation_produces(hp, right_steps, w1_prime) == Some(w_end), len k-2
 pub proof fn lemma_swap_fr_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int,
@@ -2085,7 +2085,7 @@ pub proof fn lemma_swap_fr_past_expand(
     lemma_stable_count_reduce(w2, p1, n);
     assert(generator_index(w2[p1]) < n);
 
-    // Boundary cases: all contradictions (stable vs base gen_idx)
+    //  Boundary cases: all contradictions (stable vs base gen_idx)
     if p1 == p0 {
         assert(w2[p0] == sym0);
         assert(generator_index(sym0) == n);
@@ -2149,7 +2149,7 @@ pub proof fn lemma_swap_fr_past_expand(
     }
 }
 
-/// Generalized swap: FreeExpand(base) past FreeExpand(stable).
+///  Generalized swap: FreeExpand(base) past FreeExpand(stable).
 pub proof fn lemma_swap_fe_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int, sym1: Symbol,
@@ -2182,19 +2182,19 @@ pub proof fn lemma_swap_fe_past_expand(
     let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
     assert(w2 =~= w1.subrange(0, p0) + pair + w1.subrange(p0, w1.len() as int));
 
-    // Count proof helper: pair1 has count 0 since sym1 is base
+    //  Count proof helper: pair1 has count 0 since sym1 is base
     assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
     lemma_stable_count_pair(sym1, inverse_symbol(sym1), n);
     assert(stable_letter_count(pair1, n) == 0nat);
 
     if p1 == p0 + 1 {
-        // Edge case: insert between stable letters — not handled yet
+        //  Edge case: insert between stable letters — not handled yet
         (false, arbitrary(), arbitrary(), arbitrary())
     } else if p1 <= p0 {
         let w1_prime = w1.subrange(0, p1) + pair1 + w1.subrange(p1, w1.len() as int);
         let step_tfree_adj = DerivationStep::FreeExpand { position: p1, symbol: sym1 };
         assert(apply_step(hp, w1, step_tfree_adj) == Some(w1_prime));
-        // Count: w1_prime has same count as w1
+        //  Count: w1_prime has same count as w1
         let left = w1.subrange(0, p1);
         let right = w1.subrange(p1, w1.len() as int);
         assert(w1 =~= left + right);
@@ -2232,8 +2232,8 @@ pub proof fn lemma_swap_fe_past_expand(
     }
 }
 
-/// Generalized swap: RelatorInsert/Delete(base) past FreeExpand(stable).
-/// Dispatches to per-type helpers.
+///  Generalized swap: RelatorInsert/Delete(base) past FreeExpand(stable).
+///  Dispatches to per-type helpers.
 pub proof fn lemma_swap_ri_rd_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, step_tfree: DerivationStep,
@@ -2277,7 +2277,7 @@ pub proof fn lemma_swap_ri_rd_past_expand(
     }
 }
 
-/// Generalized swap: RelatorInsert past FreeExpand(stable).
+///  Generalized swap: RelatorInsert past FreeExpand(stable).
 proof fn lemma_swap_ri_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int, ri1: nat, inv1: bool,
@@ -2312,7 +2312,7 @@ proof fn lemma_swap_ri_past_expand(
     let r1_len = r1.len() as int;
     assert(w2 =~= w1.subrange(0, p0) + pair + w1.subrange(p0, w1.len() as int));
     lemma_relator_stable_count(data, ri1, inv1);
-    // Prove count(r1) == 0 from T-free condition
+    //  Prove count(r1) == 0 from T-free condition
     let left2 = w2.subrange(0, p1);
     let right2 = w2.subrange(p1, w2.len() as int);
     assert(w2 =~= left2 + right2);
@@ -2363,7 +2363,7 @@ proof fn lemma_swap_ri_past_expand(
     }
 }
 
-/// Generalized swap: RelatorDelete past FreeExpand(stable).
+///  Generalized swap: RelatorDelete past FreeExpand(stable).
 proof fn lemma_swap_rd_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, p1: int, ri1: nat, inv1: bool,
@@ -2398,7 +2398,7 @@ proof fn lemma_swap_rd_past_expand(
     let r1_len = r1.len() as int;
     assert(w2 =~= w1.subrange(0, p0) + pair + w1.subrange(p0, w1.len() as int));
     lemma_relator_stable_count(data, ri1, inv1);
-    // Prove count(r1) == 0 from T-free condition
+    //  Prove count(r1) == 0 from T-free condition
     lemma_stable_count_subrange(w2, p1, p1 + r1_len, n);
     lemma_stable_letter_count_concat(w2.subrange(0, p1), w2.subrange(p1 + r1_len, w2.len() as int), n);
     lemma_stable_letter_count_concat(w2.subrange(0, p1), w2.subrange(p1, w2.len() as int), n);
@@ -2439,27 +2439,27 @@ proof fn lemma_swap_rd_past_expand(
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
         (w1_prime, step_tfree_adj, step0_adj)
     } else {
-        // Overlap: relator region [p1, p1+r1_len) overlaps [p0, p0+2)
-        // The relator has count 0 (all base, gen_idx < n).
-        // But w2[p0] = sym0 with gen_idx = n. If the relator contains position p0,
-        // then r1[p0-p1] = w2[p0] = sym0, gen_idx = n. But r1 has count 0. Contradiction!
-        // Similarly for p0+1.
+        //  Overlap: relator region [p1, p1+r1_len) overlaps [p0, p0+2)
+        //  The relator has count 0 (all base, gen_idx < n).
+        //  But w2[p0] = sym0 with gen_idx = n. If the relator contains position p0,
+        //  then r1[p0-p1] = w2[p0] = sym0, gen_idx = n. But r1 has count 0. Contradiction!
+        //  Similarly for p0+1.
         assert(w2.subrange(p1, p1 + r1_len) =~= r1);
         if p1 <= p0 && p0 < p1 + r1_len {
-            // r1[p0-p1] = w2[p0] = sym0
+            //  r1[p0-p1] = w2[p0] = sym0
             assert(r1[(p0 - p1) as int] == w2[p0]);
             assert(w2[p0] == sym0);
             assert(generator_index(sym0) == n);
-            // But r1 has count 0, so all elements have gen_idx < n
-            // Specifically: r1[p0-p1] has gen_idx < n (from count 0)
-            // This is a contradiction since gen_idx(r1[p0-p1]) = n
+            //  But r1 has count 0, so all elements have gen_idx < n
+            //  Specifically: r1[p0-p1] has gen_idx < n (from count 0)
+            //  This is a contradiction since gen_idx(r1[p0-p1]) = n
             lemma_stable_count_subrange(r1, (p0 - p1) as int, (p0 - p1 + 1) as int, n);
             assert(false);
         }
         assert(p1 == p0 + 1);
-        // r1_len = 0: RelatorDelete is a no-op. Treat as non-overlapping.
+        //  r1_len = 0: RelatorDelete is a no-op. Treat as non-overlapping.
         if r1_len == 0 {
-            // Empty relator: no-op. w3 = w2. Use position 0 on w1.
+            //  Empty relator: no-op. w3 = w2. Use position 0 on w1.
             assert(w3 =~= w2);
             let step_tfree_adj = DerivationStep::RelatorDelete { position: 0int, relator_index: ri1, inverted: inv1 };
             assert(w1.subrange(0, 0 + r1_len) =~= r1);
@@ -2475,8 +2475,8 @@ proof fn lemma_swap_rd_past_expand(
             assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
             (w1_prime, step_tfree_adj, step0_adj)
         } else {
-            // r1_len >= 1. r1[0] = w2[p1] = w2[p0+1] = inv(sym0), gen_idx = n.
-            // But count(r1) = 0 → contradiction.
+            //  r1_len >= 1. r1[0] = w2[p1] = w2[p0+1] = inv(sym0), gen_idx = n.
+            //  But count(r1) = 0 → contradiction.
             assert(w2[(p0 + 1) as int] == inverse_symbol(sym0));
             assert(generator_index(inverse_symbol(sym0)) == n) by {
                 match sym0 { Symbol::Gen(k) => {}, Symbol::Inv(k) => {} }
@@ -2493,7 +2493,7 @@ proof fn lemma_swap_rd_past_expand(
     }
 }
 
-/// Dispatcher: swap any T-free step past FreeExpand(stable) at any word.
+///  Dispatcher: swap any T-free step past FreeExpand(stable) at any word.
 pub proof fn lemma_swap_tfree_past_expand(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, sym0: Symbol, step_tfree: DerivationStep,
@@ -2531,7 +2531,7 @@ pub proof fn lemma_swap_tfree_past_expand(
             (true, w1_prime, step_tfree_adj, step0_adj)
         },
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } => {
-            // Must be base symbol (T-free means gen_idx < n)
+            //  Must be base symbol (T-free means gen_idx < n)
             lemma_stable_count_reduce_step(data, w2, step_tfree, n);
             let pair1 = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
             assert(pair1 =~= seq![sym1, inverse_symbol(sym1)]);
@@ -2555,12 +2555,12 @@ pub proof fn lemma_swap_tfree_past_expand(
     }
 }
 
-/// k≥5 c_3=4 case: two-round commutation for step0=FE(stable), step1=FE(stable).
-/// Swaps step2 (T-free) past step1, then past step0, creating base intermediate.
-/// Returns (w_base, base_step, derivation_steps) where:
-///   apply_step(data.base, w, base_step) == Some(w_base)
-///   derivation_produces(hp, derivation_steps, w_base) == Some(w_end)
-///   derivation_steps.len() < steps.len()
+///  k≥5 c_3=4 case: two-round commutation for step0=FE(stable), step1=FE(stable).
+///  Swaps step2 (T-free) past step1, then past step0, creating base intermediate.
+///  Returns (w_base, base_step, derivation_steps) where:
+///    apply_step(data.base, w, base_step) == Some(w_base)
+///    derivation_produces(hp, derivation_steps, w_base) == Some(w_end)
+///    derivation_steps.len() < steps.len()
 pub proof fn lemma_swap_tfree_past_ri(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, ri0: nat, inv0: bool, step_tfree: DerivationStep,
@@ -2599,7 +2599,7 @@ pub proof fn lemma_swap_tfree_past_ri(
     }
 }
 
-/// Sub-helper: FreeReduce or FreeExpand past RI(HNN) — dispatcher.
+///  Sub-helper: FreeReduce or FreeExpand past RI(HNN) — dispatcher.
 proof fn lemma_swap_fr_fe_past_ri(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, ri0: nat, inv0: bool, step_tfree: DerivationStep,
@@ -2710,7 +2710,7 @@ proof fn lemma_swap_fr_past_ri_inner(
         assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
         (true, w1_prime, step_tfree_adj, step0_adj)
     } else {
-        // FreeReduce inside/boundary of relator
+        //  FreeReduce inside/boundary of relator
         (false, arbitrary(), arbitrary(), arbitrary())
     }
 }
@@ -2798,12 +2798,12 @@ proof fn lemma_swap_fe_past_ri_inner(
                 assert(apply_step(hp, w1_prime, step0_adj) == Some(w3));
                 (true, w1_prime, step_tfree_adj, step0_adj)
             } else {
-                // Inside relator region
+                //  Inside relator region
                 (false, arbitrary(), arbitrary(), arbitrary())
             }
 }
 
-/// Sub-helper: RelatorInsert or RelatorDelete past RI(HNN) — dispatcher.
+///  Sub-helper: RelatorInsert or RelatorDelete past RI(HNN) — dispatcher.
 proof fn lemma_swap_rird_past_ri(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p0: int, ri0: nat, inv0: bool, step_tfree: DerivationStep,
@@ -3104,8 +3104,8 @@ proof fn lemma_swap_rd_past_ri_right(
     (w1_prime, step_tfree_adj, step0_adj)
 }
 
-/// Classify a step that increases stable count by 2.
-/// If count goes up by 2, the step must be FreeExpand(stable) or RelatorInsert(HNN).
+///  Classify a step that increases stable count by 2.
+///  If count goes up by 2, the step must be FreeExpand(stable) or RelatorInsert(HNN).
 pub proof fn lemma_plus2_step_type(
     data: HNNData, w: Word, w_next: Word, step: DerivationStep, n: nat,
 )
@@ -3129,7 +3129,7 @@ pub proof fn lemma_plus2_step_type(
     match step {
         DerivationStep::FreeReduce { position: p } => {
             lemma_stable_count_reduce(w, p, n);
-            // count decreases or stays same, can't increase by 2
+            //  count decreases or stays same, can't increase by 2
             assert(false);
         },
         DerivationStep::FreeExpand { position: p, symbol: sym } => {
@@ -3143,8 +3143,8 @@ pub proof fn lemma_plus2_step_type(
             lemma_stable_letter_count_concat(left, right, n);
             lemma_stable_letter_count_concat(left, pair, n);
             lemma_stable_letter_count_concat(left + pair, right, n);
-            // count(w_next) = count(w) + count(pair). Since count(w_next) = count(w) + 2,
-            // count(pair) = 2, so gen_idx(sym) == n.
+            //  count(w_next) = count(w) + count(pair). Since count(w_next) = count(w) + 2,
+            //  count(pair) = 2, so gen_idx(sym) == n.
         },
         DerivationStep::RelatorInsert { position: p, relator_index: ri, inverted: inv } => {
             let r = get_relator(hp, ri, inv);
@@ -3156,7 +3156,7 @@ pub proof fn lemma_plus2_step_type(
             lemma_stable_letter_count_concat(left, right, n);
             lemma_stable_letter_count_concat(left, r, n);
             lemma_stable_letter_count_concat(left + r, right, n);
-            // count(w_next) = count(w) + count(r). Since +2, count(r) = 2 → HNN relator.
+            //  count(w_next) = count(w) + count(r). Since +2, count(r) = 2 → HNN relator.
         },
         DerivationStep::RelatorDelete { position: p, relator_index: ri, inverted: inv } => {
             let r = get_relator(hp, ri, inv);
@@ -3164,15 +3164,15 @@ pub proof fn lemma_plus2_step_type(
             lemma_stable_count_subrange(w, p, p + r.len() as int, n);
             lemma_stable_letter_count_concat(w.subrange(0, p), w.subrange(p + r.len() as int, w.len() as int), n);
             lemma_stable_letter_count_concat(w.subrange(0, p), w.subrange(p, w.len() as int), n);
-            // count decreases or stays same, can't increase by 2
+            //  count decreases or stays same, can't increase by 2
             assert(false);
         },
     }
 }
 
-/// Generic k≥5 c_3=4 two-round commutation for any step0×step1 combination.
-/// Round 1: swap step2 (T-free) past step1 (+2) using generalized swap.
-/// Round 2: swap result past step0 (+2) using existing base-level swap.
+///  Generic k≥5 c_3=4 two-round commutation for any step0×step1 combination.
+///  Round 1: swap step2 (T-free) past step1 (+2) using generalized swap.
+///  Round 2: swap result past step0 (+2) using existing base-level swap.
 pub proof fn lemma_k5_c3_eq4_two_round(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w3: Word,
@@ -3208,7 +3208,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 4nat,
         stable_letter_count(w3, data.base.num_generators) == 4nat,
-        // step0 is +2: FreeExpand(stable) or RelatorInsert(HNN)
+        //  step0 is +2: FreeExpand(stable) or RelatorInsert(HNN)
         match step0 {
             DerivationStep::FreeExpand { symbol, .. } =>
                 generator_index(symbol) == data.base.num_generators,
@@ -3216,7 +3216,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
-        // step1 is +2: FreeExpand(stable) or RelatorInsert(HNN)
+        //  step1 is +2: FreeExpand(stable) or RelatorInsert(HNN)
         match step1 {
             DerivationStep::FreeExpand { symbol, .. } =>
                 generator_index(symbol) == data.base.num_generators,
@@ -3238,7 +3238,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Round 1: swap step2 (T-free) past step1 (+2)
+    //  Round 1: swap step2 (T-free) past step1 (+2)
     let (ok1, w1_prime, step2_adj, step1_adj) = match step1 {
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } =>
             lemma_swap_tfree_past_expand(data, w1, w2, w3, p1, sym1, step2),
@@ -3251,10 +3251,10 @@ pub proof fn lemma_k5_c3_eq4_two_round(
         return (false, arbitrary(), arbitrary(), arbitrary());
     }
 
-    // step2_adj on w1 → w1' (T-free, count 2)
-    // step1_adj on w1' → w3 (+2)
+    //  step2_adj on w1 → w1' (T-free, count 2)
+    //  step1_adj on w1' → w3 (+2)
 
-    // Round 2: swap step2_adj (T-free) past step0 (+2) at w (BASE)
+    //  Round 2: swap step2_adj (T-free) past step0 (+2) at w (BASE)
     let (ok, w_base_try, step2_base_try, step0_adj_try) = match step0 {
         DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
             match step2_adj {
@@ -3276,7 +3276,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
         let step2_base = step2_base_try;
         let step0_adj = step0_adj_try;
 
-        // Build derivation: [step0_adj, step1_adj] ++ tail_steps from w_base to w_end
+        //  Build derivation: [step0_adj, step1_adj] ++ tail_steps from w_base to w_end
         lemma_step_preserves_word_valid(data, w_base, step0_adj);
         lemma_derivation_produces_2(hp, step0_adj, step1_adj, w_base, w1_prime, w3);
         let prefix: Seq<DerivationStep> = seq![step0_adj, step1_adj];
@@ -3285,7 +3285,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
 
         (true, w_base, step2_base, deriv_steps)
     } else {
-        // Overlap fallback: use general T-free swap
+        //  Overlap fallback: use general T-free swap
         let (ok2, w_base2, step2_adj2, step0_adj2) = match step0 {
             DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
                 lemma_swap_tfree_past_expand(data, w, w1, w1_prime, p0, sym0, step2_adj)
@@ -3303,7 +3303,7 @@ pub proof fn lemma_k5_c3_eq4_two_round(
         lemma_zero_count_implies_base(w_base2, n);
         lemma_t_free_step_is_base_step(data, w, step2_adj2);
 
-        // Build derivation: [step0_adj2, step1_adj] ++ tail_steps from w_base2 to w_end
+        //  Build derivation: [step0_adj2, step1_adj] ++ tail_steps from w_base2 to w_end
         lemma_step_preserves_word_valid(data, w_base2, step0_adj2);
         lemma_derivation_produces_2(hp, step0_adj2, step1_adj, w_base2, w1_prime, w3);
         let prefix: Seq<DerivationStep> = seq![step0_adj2, step1_adj];
@@ -3314,8 +3314,8 @@ pub proof fn lemma_k5_c3_eq4_two_round(
     }
 }
 
-/// Generalized peak commutation: FreeExpand(stable) + FreeReduce at arbitrary count.
-/// Same position arithmetic as lemma_k4_peak_fe_fr, but for any count c ≥ 2.
+///  Generalized peak commutation: FreeExpand(stable) + FreeReduce at arbitrary count.
+///  Same position arithmetic as lemma_k4_peak_fe_fr, but for any count c ≥ 2.
 pub proof fn lemma_peak_fe_fr_general(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, sym1: Symbol, p2: int,
@@ -3348,8 +3348,8 @@ pub proof fn lemma_peak_fe_fr_general(
         &&& apply_step(hp, w1_prime, step1_adj) == Some(w3)
     }),
 {
-    // Identical position arithmetic to lemma_k4_peak_fe_fr.
-    // The only difference: w1' has count c-2 instead of 0.
+    //  Identical position arithmetic to lemma_k4_peak_fe_fr.
+    //  The only difference: w1' has count c-2 instead of 0.
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
     let pair = Seq::new(1, |_i: int| sym1) + Seq::new(1, |_i: int| inverse_symbol(sym1));
@@ -3359,12 +3359,12 @@ pub proof fn lemma_peak_fe_fr_general(
     assert(has_cancellation_at(w2, p2));
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + 2, w2.len() as int));
 
-    // The stable count decreased by 2 (from c+2 to c), so the reduced pair is stable
+    //  The stable count decreased by 2 (from c+2 to c), so the reduced pair is stable
     lemma_stable_count_reduce(w2, p2, n);
     assert(generator_index(w2[p2]) == n);
 
-    // Boundary cases: all lead to w3 = w1 (cancel), contradicting non-cancel.
-    // Same proof as lemma_k4_peak_fe_fr lines for p2 == p1, p1-1, p1+1.
+    //  Boundary cases: all lead to w3 = w1 (cancel), contradicting non-cancel.
+    //  Same proof as lemma_k4_peak_fe_fr lines for p2 == p1, p1-1, p1+1.
     if p2 == p1 {
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
             if k < p1 { assert(w3[k] == w2[k]); assert(w2[k] == w1[k]); }
@@ -3423,7 +3423,7 @@ pub proof fn lemma_peak_fe_fr_general(
         assert(w3 =~= w1); assert(false);
     }
 
-    // Non-boundary: same position adjustment as count-2 case
+    //  Non-boundary: same position adjustment as count-2 case
     if p2 < p1 - 1 {
         assert(w2[p2] == w1[p2]);
         assert(w2[p2 + 1] == w1[p2 + 1]);
@@ -3485,11 +3485,11 @@ pub proof fn lemma_peak_fe_fr_general(
                 assert(w3[k] == w2[k]); assert(w2[(p1 + 1) as int] == inverse_symbol(sym1));
                 assert(expand_result[k] == inverse_symbol(sym1));
             } else if k < p2 {
-                // p1+2 <= k < p2: w3[k] = w2[k] = w1[k-2], expand_result[k] = w1_prime[k-2] = w1[k-2]
+                //  p1+2 <= k < p2: w3[k] = w2[k] = w1[k-2], expand_result[k] = w1_prime[k-2] = w1[k-2]
                 assert(w3[k] == w2[k]); assert(w2[k] == w1[(k - 2) as int]);
                 assert(expand_result[k] == w1_prime[(k - 2) as int]); assert(w1_prime[(k - 2) as int] == w1[(k - 2) as int]);
             } else {
-                // k >= p2: w3[k] = w2[k+2] = w1[k], expand_result[k] = w1_prime[k-2] = w1[k]
+                //  k >= p2: w3[k] = w2[k+2] = w1[k], expand_result[k] = w1_prime[k-2] = w1[k]
                 assert(w3[k] == w2[k + 2]); assert(w2[k + 2] == w1[k]);
                 assert(expand_result[k] == w1_prime[(k - 2) as int]); assert(w1_prime[(k - 2) as int] == w1[k]);
             }
@@ -3500,7 +3500,7 @@ pub proof fn lemma_peak_fe_fr_general(
     }
 }
 
-/// Generalized peak: FreeExpand(stable) + RelatorDelete(HNN) at arbitrary count.
+///  Generalized peak: FreeExpand(stable) + RelatorDelete(HNN) at arbitrary count.
 pub proof fn lemma_peak_fe_rd_general(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, sym1: Symbol, p2: int, ri2: nat, inv2: bool,
@@ -3547,7 +3547,7 @@ pub proof fn lemma_peak_fe_rd_general(
     lemma_relator_stable_count(data, ri2, inv2);
 
     if p2 + r2_len <= p1 {
-        // Relator entirely before insertion
+        //  Relator entirely before insertion
         assert forall|k: int| p2 <= k < p2 + r2_len implies w2[k] == w1[k] by {};
         assert(w1.subrange(p2, p2 + r2_len) =~= r2);
         let w1_prime = w1.subrange(0, p2) + w1.subrange(p2 + r2_len, w1.len() as int);
@@ -3567,7 +3567,7 @@ pub proof fn lemma_peak_fe_rd_general(
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
         (w1_prime, step2_adj, step1_adj)
     } else if p2 >= p1 + 2 {
-        // Relator entirely after insertion
+        //  Relator entirely after insertion
         let p2_adj = (p2 - 2) as int;
         assert forall|k: int| p2 <= k < p2 + r2_len implies w2[k] == w1[(k - 2) as int] by {};
         assert(w1.subrange(p2_adj, p2_adj + r2_len) =~= r2);
@@ -3587,12 +3587,12 @@ pub proof fn lemma_peak_fe_rd_general(
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
         (w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap
+        //  Overlap
         assume(false); arbitrary()
     }
 }
 
-/// Generalized peak: RelatorInsert(HNN) + FreeReduce at arbitrary count.
+///  Generalized peak: RelatorInsert(HNN) + FreeReduce at arbitrary count.
 pub proof fn lemma_peak_ri_fr_general(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int,
@@ -3671,13 +3671,13 @@ pub proof fn lemma_peak_ri_fr_general(
         assert(apply_step(hp, w1_prime, step1_adj) == Some(w3));
         (w1_prime, step2_adj, step1_adj)
     } else {
-        // Overlap
+        //  Overlap
         assume(false); arbitrary()
     }
 }
 
-/// Generalized peak: RelatorInsert(HNN) + RelatorDelete(HNN) at arbitrary count.
-/// Split into left/right sub-helpers to manage rlimit.
+///  Generalized peak: RelatorInsert(HNN) + RelatorDelete(HNN) at arbitrary count.
+///  Split into left/right sub-helpers to manage rlimit.
 pub proof fn lemma_peak_ri_rd_general(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     p1: int, ri1: nat, inv1: bool, p2: int, ri2: nat, inv2: bool,
@@ -3725,7 +3725,7 @@ pub proof fn lemma_peak_ri_rd_general(
     lemma_relator_stable_count(data, ri1, inv1);
     lemma_relator_stable_count(data, ri2, inv2);
 
-    // Cancel: same relator, same position
+    //  Cancel: same relator, same position
     if ri1 == ri2 && inv1 == inv2 && p2 == p1 {
         assert(r1 =~= r2);
         assert forall|k: int| 0 <= k < w1.len() implies w3[k] == w1[k] by {
@@ -3736,18 +3736,18 @@ pub proof fn lemma_peak_ri_rd_general(
     }
 
     if p2 + r2_len <= p1 {
-        // Reuse existing left helper (same position arithmetic)
+        //  Reuse existing left helper (same position arithmetic)
         lemma_k4_peak_ri_rd_left(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
     } else if p2 >= p1 + r1_len {
         lemma_k4_peak_ri_rd_right(data, w1, w2, w3, p1, ri1, inv1, p2, ri2, inv2)
     } else {
-        // Overlap
+        //  Overlap
         assume(false); arbitrary()
     }
 }
 
-/// Generalized peak dispatcher at arbitrary count c ≥ 2.
-/// Classifies step1 (+2) and step2 (-2) types, delegates to per-combination helpers.
+///  Generalized peak dispatcher at arbitrary count c ≥ 2.
+///  Classifies step1 (+2) and step2 (-2) types, delegates to per-combination helpers.
 pub proof fn lemma_peak_commute_general(
     data: HNNData, w1: Word, w2: Word, w3: Word,
     step1: DerivationStep, step2: DerivationStep,
@@ -3783,10 +3783,10 @@ pub proof fn lemma_peak_commute_general(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Classify step1 as +2
+    //  Classify step1 as +2
     lemma_plus2_step_type(data, w1, w2, step1, n);
 
-    // Classify step2 as -2: same logic as in lemma_k4_peak_noncancel_commute
+    //  Classify step2 as -2: same logic as in lemma_k4_peak_noncancel_commute
     lemma_stable_count_reduce_step(data, w2, step2, n);
 
     match step1 {
@@ -3797,7 +3797,7 @@ pub proof fn lemma_peak_commute_general(
                 },
                 DerivationStep::RelatorDelete { position: p2, relator_index: ri2, inverted: inv2 } => {
                     lemma_relator_stable_count(data, ri2, inv2);
-                    // Must be HNN (count -2)
+                    //  Must be HNN (count -2)
                     if (ri2 as int) < data.base.relators.len() {
                         let r2 = get_relator(hp, ri2, inv2);
                         lemma_stable_count_subrange(w2, p2, p2 + r2.len() as int, n);
@@ -3808,7 +3808,7 @@ pub proof fn lemma_peak_commute_general(
                     lemma_peak_fe_rd_general(data, w1, w2, w3, p1, sym1, p2, ri2, inv2)
                 },
                 _ => {
-                    // FreeExpand/RelatorInsert can't decrease count
+                    //  FreeExpand/RelatorInsert can't decrease count
                     lemma_stable_count_reduce_step(data, w2, step2, n);
                     match step2 {
                         DerivationStep::FreeExpand { position: p2e, symbol: sym2e } => {
@@ -3836,7 +3836,7 @@ pub proof fn lemma_peak_commute_general(
                             lemma_stable_letter_count_concat(l2 + r2, r2r, n);
                             assert(false); arbitrary()
                         },
-                        _ => { arbitrary() }, // already handled above
+                        _ => { arbitrary() }, //  already handled above
                     }
                 },
             }
@@ -3890,13 +3890,13 @@ pub proof fn lemma_peak_commute_general(
             }
         },
         _ => {
-            // step1 must be FE or RI (from plus2_step_type)
+            //  step1 must be FE or RI (from plus2_step_type)
             assert(false); arbitrary()
         },
     }
 }
 
-/// word_valid is preserved through a derivation in the HNN presentation.
+///  word_valid is preserved through a derivation in the HNN presentation.
 pub proof fn lemma_derivation_preserves_word_valid(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
 )
@@ -3918,8 +3918,8 @@ pub proof fn lemma_derivation_preserves_word_valid(
     }
 }
 
-/// If all steps are +2 (FE stable or RI HNN) starting from count c,
-/// then after k steps the stable count is c + 2*k.
+///  If all steps are +2 (FE stable or RI HNN) starting from count c,
+///  then after k steps the stable count is c + 2*k.
 pub proof fn lemma_plus2_prefix_gives_count(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word, c: nat,
 )
@@ -3949,10 +3949,10 @@ pub proof fn lemma_plus2_prefix_gives_count(
         let w1 = apply_step(hp, w, step0).unwrap();
         lemma_step_preserves_word_valid(data, w, step0);
 
-        // step0 is +2: count increases by exactly 2
+        //  step0 is +2: count increases by exactly 2
         lemma_stable_count_reduce_step(data, w, step0, n);
-        // From plus2_step_type and the count arithmetic:
-        // count(w1) ∈ {c, c+2, c-2}. Since step0 is +2: count(w1) = c + 2.
+        //  From plus2_step_type and the count arithmetic:
+        //  count(w1) ∈ {c, c+2, c-2}. Since step0 is +2: count(w1) = c + 2.
         match step0 {
             DerivationStep::FreeExpand { position: p, symbol: sym } => {
                 let pair = Seq::new(1, |_i: int| sym) + Seq::new(1, |_i: int| inverse_symbol(sym));
@@ -3982,7 +3982,7 @@ pub proof fn lemma_plus2_prefix_gives_count(
             _ => { assert(false); },
         }
 
-        // Recurse on tail
+        //  Recurse on tail
         let tail = steps.drop_first();
         assert forall|j: int| 0 <= j < tail.len() implies
             match #[trigger] tail[j] {
@@ -3999,14 +3999,14 @@ pub proof fn lemma_plus2_prefix_gives_count(
     }
 }
 
-/// Bubble a peak leftward to position (1,2), then create a base intermediate.
+///  Bubble a peak leftward to position (1,2), then create a base intermediate.
 ///
-/// Takes the derivation decomposed into: prefix ++ [step_up, step_down] ++ suffix.
-/// prefix has length ≥ 1 (all +2 steps). step_up is +2, step_down is -2.
-/// Recursively commutes the peak left until it reaches position (1,2).
+///  Takes the derivation decomposed into: prefix ++ [step_up, step_down] ++ suffix.
+///  prefix has length ≥ 1 (all +2 steps). step_up is +2, step_down is -2.
+///  Recursively commutes the peak left until it reaches position (1,2).
 ///
-/// Returns (w_base, left, right) where w_base is base and left, right are
-/// shorter derivations from w to w_base and w_base to w_end.
+///  Returns (w_base, left, right) where w_base is base and left, right are
+///  shorter derivations from w to w_base and w_base to w_end.
 pub proof fn lemma_bubble_peak_to_front(
     data: HNNData,
     prefix: Seq<DerivationStep>,
@@ -4044,7 +4044,7 @@ pub proof fn lemma_bubble_peak_to_front(
             &&& stable_letter_count(w_after_peak, n) == 2 * prefix.len()
         }),
         !(w_after_peak =~= w_before_peak),
-        // step_up is +2
+        //  step_up is +2
         match step_up {
             DerivationStep::FreeExpand { symbol, .. } =>
                 generator_index(symbol) == data.base.num_generators,
@@ -4052,7 +4052,7 @@ pub proof fn lemma_bubble_peak_to_front(
                 relator_index as int >= data.base.relators.len(),
             _ => false,
         },
-        // All prefix steps are +2
+        //  All prefix steps are +2
         forall|j: int| 0 <= j < prefix.len() ==>
             match #[trigger] prefix[j] {
                 DerivationStep::FreeExpand { symbol, .. } =>
@@ -4079,7 +4079,7 @@ pub proof fn lemma_bubble_peak_to_front(
     let n = data.base.num_generators;
 
     if prefix.len() == 1 {
-        // Peak at (1,2): counts (2, 4, 2). Use peak elimination with bypass.
+        //  Peak at (1,2): counts (2, 4, 2). Use peak elimination with bypass.
         lemma_derivation_unfold_1(hp, prefix, w, w_before_peak);
         let step0 = prefix.first();
         assert(apply_step(hp, w, step0) == Some(w_before_peak));
@@ -4091,17 +4091,17 @@ pub proof fn lemma_bubble_peak_to_front(
         if ok_ {
             (wb, ls, rs)
         } else {
-            // Bypass failed. Use general peak commutation as fallback.
-            // lemma_peak_commute_general always succeeds. With c=2, w_prime has count 0 (base).
+            //  Bypass failed. Use general peak commutation as fallback.
+            //  lemma_peak_commute_general always succeeds. With c=2, w_prime has count 0 (base).
             let (w_prime, step_down_adj, step_up_adj) = lemma_peak_commute_general(
                 data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
             lemma_zero_count_implies_base(w_prime, n);
 
-            // Left: [step0, step_down_adj] from w to w_prime
+            //  Left: [step0, step_down_adj] from w to w_prime
             lemma_derivation_produces_2(hp, step0, step_down_adj, w, w_before_peak, w_prime);
             let left_s: Seq<DerivationStep> = seq![step0, step_down_adj];
 
-            // Right: [step_up_adj] + suffix from w_prime to w_end
+            //  Right: [step_up_adj] + suffix from w_prime to w_end
             lemma_step_preserves_word_valid(data, w_prime, step_up_adj);
             let one_s: Seq<DerivationStep> = seq![step_up_adj];
             assert(one_s.first() == step_up_adj);
@@ -4116,22 +4116,22 @@ pub proof fn lemma_bubble_peak_to_front(
             (w_prime, left_s, right_s)
         }
     } else {
-        // prefix.len() > 1: commute peak, then recurse with shorter prefix.
-        // For overlap: bypass via suffix[0] commutation, building adjusted suffix.
+        //  prefix.len() > 1: commute peak, then recurse with shorter prefix.
+        //  For overlap: bypass via suffix[0] commutation, building adjusted suffix.
         //
-        // Overlap bypass at count > 2:
-        // 1. Commute step_down with suffix[0] → (w2p, s3a, s2a)
-        // 2. Peak-commute (step_up, s3a) → (w_prime, s3a_adj, step_up_adj)
-        //    step_up_adj: w_prime → w2p (NOT w_after_peak)
-        // 3. New suffix = [step_up_adj, s2a] ++ suffix_rest (different from [step_up_adj] ++ suffix)
+        //  Overlap bypass at count > 2:
+        //  1. Commute step_down with suffix[0] → (w2p, s3a, s2a)
+        //  2. Peak-commute (step_up, s3a) → (w_prime, s3a_adj, step_up_adj)
+        //     step_up_adj: w_prime → w2p (NOT w_after_peak)
+        //  3. New suffix = [step_up_adj, s2a] ++ suffix_rest (different from [step_up_adj] ++ suffix)
         //
-        // For non-overlap: standard peak commutation.
+        //  For non-overlap: standard peak commutation.
 
         let bypass_check =
             !peak_steps_non_overlapping(hp, step_up, step_down, w_before_peak)
             && suffix.len() >= 1;
 
-        // Compute the commuted values and new suffix
+        //  Compute the commuted values and new suffix
         let (w_prime, step_down_adj, new_suffix) = if bypass_check {
             let step3 = suffix.first();
             assert(apply_step(hp, w_after_peak, step3).is_some());
@@ -4146,7 +4146,7 @@ pub proof fn lemma_bubble_peak_to_front(
             let c_w4 = stable_letter_count(w4, n);
             let c_ap = stable_letter_count(w_after_peak, n);
             if c_w4 != (c_ap - 2) as nat {
-                // step3 doesn't reduce count by 2 — can't use FR×FR commutation
+                //  step3 doesn't reduce count by 2 — can't use FR×FR commutation
                 let (wp, sd, su) = lemma_peak_commute_general(
                     data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
                 let one: Seq<DerivationStep> = seq![su];
@@ -4167,7 +4167,7 @@ pub proof fn lemma_bubble_peak_to_front(
                     Some((w2p, s3a, s2a)) => {
                         lemma_step_preserves_word_valid(data, w_at_peak, s3a);
                         if w2p =~= w_before_peak {
-                            // Cancel — fall back to standard
+                            //  Cancel — fall back to standard
                             let (wp, sd, su) = lemma_peak_commute_general(
                                 data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
                             let one: Seq<DerivationStep> = seq![su];
@@ -4180,7 +4180,7 @@ pub proof fn lemma_bubble_peak_to_front(
                             lemma_derivation_concat(hp, one, suffix, wp, w_after_peak, w_end);
                             (wp, sd, one + suffix)
                         } else {
-                            // Bypass: commute non-overlapping peak (step_up, s3a)
+                            //  Bypass: commute non-overlapping peak (step_up, s3a)
                             let (wp, s3a_adj, step_up_adj) = lemma_peak_commute_general(
                                 data, w_before_peak, w_at_peak, w2p, step_up, s3a);
                             lemma_step_preserves_word_valid(data, wp, step_up_adj);
@@ -4192,7 +4192,7 @@ pub proof fn lemma_bubble_peak_to_front(
                         }
                     },
                     None => {
-                        // Can't commute — use standard peak commutation
+                        //  Can't commute — use standard peak commutation
                         let (wp, sd, su) = lemma_peak_commute_general(
                             data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
                         let one: Seq<DerivationStep> = seq![su];
@@ -4208,7 +4208,7 @@ pub proof fn lemma_bubble_peak_to_front(
                 }
             }
         } else {
-            // Non-overlap: standard commutation
+            //  Non-overlap: standard commutation
             let (wp, sd, su) = lemma_peak_commute_general(
                 data, w_before_peak, w_at_peak, w_after_peak, step_up, step_down);
             let one: Seq<DerivationStep> = seq![su];
@@ -4222,10 +4222,10 @@ pub proof fn lemma_bubble_peak_to_front(
             (wp, sd, one + suffix)
         };
 
-        // Now: step_down_adj on w_before_peak → w_prime (count c-2)
-        // new_suffix takes w_prime → w_end
+        //  Now: step_down_adj on w_before_peak → w_prime (count c-2)
+        //  new_suffix takes w_prime → w_end
 
-        // Get w_prev (word before the last prefix step)
+        //  Get w_prev (word before the last prefix step)
         let new_prefix = prefix.subrange(0, prefix.len() as int - 1);
         let last_prefix_step = prefix[prefix.len() as int - 1];
 
@@ -4240,16 +4240,16 @@ pub proof fn lemma_bubble_peak_to_front(
         assert(apply_step(hp, w_prev, last_prefix_step) == Some(w_before_peak));
 
         lemma_step_preserves_word_valid(data, w_before_peak, step_down_adj);
-        // new_suffix already built above (either bypass or standard path)
+        //  new_suffix already built above (either bypass or standard path)
         assert(derivation_produces(hp, new_suffix, w_prime) == Some(w_end));
 
-        // Counts for recursion:
-        // w_prev: count 2*(prefix.len()-1) = 2*new_prefix.len()
-        // w_before_peak: count 2*prefix.len() = 2*new_prefix.len() + 2
-        // w_prime: count 2*(prefix.len()-1) = 2*new_prefix.len()
-        // last_prefix_step is +2 (all prefix steps are +2)
+        //  Counts for recursion:
+        //  w_prev: count 2*(prefix.len()-1) = 2*new_prefix.len()
+        //  w_before_peak: count 2*prefix.len() = 2*new_prefix.len() + 2
+        //  w_prime: count 2*(prefix.len()-1) = 2*new_prefix.len()
+        //  last_prefix_step is +2 (all prefix steps are +2)
 
-        // Establish last_prefix_step is +2 (from forall on prefix)
+        //  Establish last_prefix_step is +2 (from forall on prefix)
         assert(match last_prefix_step {
             DerivationStep::FreeExpand { symbol, .. } =>
                 generator_index(symbol) == n,
@@ -4258,10 +4258,10 @@ pub proof fn lemma_bubble_peak_to_front(
             _ => false,
         });
 
-        // word_valid for w_prev from derivation
+        //  word_valid for w_prev from derivation
         lemma_derivation_preserves_word_valid(data, new_prefix, w, w_prev);
 
-        // Count of w_prev = 2 * new_prefix.len() from all-+2 prefix
+        //  Count of w_prev = 2 * new_prefix.len() from all-+2 prefix
         assert forall|j: int| 0 <= j < new_prefix.len() implies
             match #[trigger] new_prefix[j] {
                 DerivationStep::FreeExpand { symbol, .. } =>
@@ -4276,22 +4276,22 @@ pub proof fn lemma_bubble_peak_to_front(
         lemma_base_implies_count_zero(w, n);
         lemma_plus2_prefix_gives_count(data, new_prefix, w, w_prev, 0nat);
 
-        // Check cancel at new peak
+        //  Check cancel at new peak
         if w_prime =~= w_prev {
-            // Cancel: new_prefix goes w → w_prev, new_suffix goes w_prime=w_prev → w_end
+            //  Cancel: new_prefix goes w → w_prev, new_suffix goes w_prime=w_prev → w_end
             lemma_derivation_concat(hp, new_prefix, new_suffix, w, w_prev, w_end);
             let short = new_prefix + new_suffix;
-            // short has (prefix.len()-1) + (1 + suffix.len()) = prefix.len() + suffix.len() = total - 2
+            //  short has (prefix.len()-1) + (1 + suffix.len()) = prefix.len() + suffix.len() = total - 2
             assert(short.len() == prefix.len() - 1 + 1 + suffix.len());
-            // Prove empty derivation from w to w
+            //  Prove empty derivation from w to w
             assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
                 assert(Seq::<DerivationStep>::empty().len() == 0);
             };
             (w, Seq::<DerivationStep>::empty(), short)
         } else {
-            // Non-cancel: recurse with peak_pos - 1
-            // new_prefix is shorter: new_prefix.len() = prefix.len() - 1
-            // All new_prefix steps are +2 (they're a sub-sequence of the original prefix)
+            //  Non-cancel: recurse with peak_pos - 1
+            //  new_prefix is shorter: new_prefix.len() = prefix.len() - 1
+            //  All new_prefix steps are +2 (they're a sub-sequence of the original prefix)
             assert forall|j: int| 0 <= j < new_prefix.len() implies
                 match #[trigger] new_prefix[j] {
                     DerivationStep::FreeExpand { symbol, .. } =>
@@ -4307,8 +4307,8 @@ pub proof fn lemma_bubble_peak_to_front(
             lemma_bubble_peak_to_front(
                 data,
                 new_prefix,
-                last_prefix_step,  // new step_up (+2)
-                step_down_adj,     // new step_down (-2)
+                last_prefix_step,  //  new step_up (+2)
+                step_down_adj,     //  new step_down (-2)
                 new_suffix,
                 w,
                 w_prev,
@@ -4320,8 +4320,8 @@ pub proof fn lemma_bubble_peak_to_front(
     }
 }
 
-/// 3-round swap for c_3=6, c_4=6 (step3 T-free).
-/// Swaps step3 past step2, step1, step0 to create base intermediate.
+///  3-round swap for c_3=6, c_4=6 (step3 T-free).
+///  Swaps step3 past step2, step1, step0 to create base intermediate.
 proof fn lemma_k5_c3_6_c4_6_three_round(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w3: Word, w4: Word,
@@ -4355,7 +4355,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
             &&& stable_letter_count(w1, n) == 2nat
             &&& stable_letter_count(w2, n) == 4nat
             &&& stable_letter_count(w3, n) == 6nat
-            &&& stable_letter_count(w4, n) == 6nat  // step3 is T-free
+            &&& stable_letter_count(w4, n) == 6nat  //  step3 is T-free
         }),
         match step0 {
             DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == data.base.num_generators,
@@ -4372,7 +4372,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
             DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
             _ => false,
         },
-        // suffix length relates to steps length
+        //  suffix length relates to steps length
         suffix.len() + 4 <= steps.len(),
     ensures ({
         let (ok, w_base, left_steps, right_steps) = result;
@@ -4389,7 +4389,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Round 1: swap step3 (T-free) past step2 (+2)
+    //  Round 1: swap step3 (T-free) past step2 (+2)
     let (ok1, w_prime, step3_adj, step2_adj) = match step2 {
         DerivationStep::FreeExpand { position: p2, symbol: sym2 } =>
             lemma_swap_tfree_past_expand(data, w2, w3, w4, p2, sym2, step3),
@@ -4400,7 +4400,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     if !ok1 { return (false, arbitrary(), arbitrary(), arbitrary()); }
     lemma_step_preserves_word_valid(data, w2, step3_adj);
 
-    // Round 2: swap step3_adj (T-free) past step1 (+2)
+    //  Round 2: swap step3_adj (T-free) past step1 (+2)
     let (ok2, w1_prime, step3_adj2, step1_adj) = match step1 {
         DerivationStep::FreeExpand { position: p1, symbol: sym1 } =>
             lemma_swap_tfree_past_expand(data, w1, w2, w_prime, p1, sym1, step3_adj),
@@ -4414,7 +4414,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     lemma_step_preserves_word_valid(data, w1, step3_adj2);
     lemma_base_word_valid_down(w, n);
 
-    // Round 3: swap step3_adj2 (T-free) past step0 (+2) at w (BASE)
+    //  Round 3: swap step3_adj2 (T-free) past step0 (+2) at w (BASE)
     let (ok, w_base_try, step3_base_try, step0_adj_try) = match step0 {
         DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
             match step3_adj2 {
@@ -4434,7 +4434,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     let (w_base, step3_base, step0_adj) = if ok {
         (w_base_try, step3_base_try, step0_adj_try)
     } else {
-        // Overlap fallback: use general T-free swap
+        //  Overlap fallback: use general T-free swap
         let (ok_fb, wb, s3a, s0a) = match step0 {
             DerivationStep::FreeExpand { position: p0, symbol: sym0 } => {
                 lemma_swap_tfree_past_expand(data, w, w1, w1_prime, p0, sym0, step3_adj2)
@@ -4450,7 +4450,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
         (wb, s3a, s0a)
     };
 
-    // Build derivation: [step0_adj, step1_adj, step2_adj] ++ suffix from w_base to w_end
+    //  Build derivation: [step0_adj, step1_adj, step2_adj] ++ suffix from w_base to w_end
     lemma_step_preserves_word_valid(data, w_base, step0_adj);
     lemma_derivation_produces_2(hp, step0_adj, step1_adj, w_base, w1_prime, w_prime);
     let prefix2: Seq<DerivationStep> = seq![step0_adj, step1_adj];
@@ -4466,7 +4466,7 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     lemma_derivation_concat(hp, prefix2, suffix_full, w_base, w_prime, w_end);
     let deriv_steps = prefix2 + suffix_full;
 
-    // left = [step3_base] (base step on w → w_base), 1 step
+    //  left = [step3_base] (base step on w → w_base), 1 step
     let left_steps: Seq<DerivationStep> = seq![step3_base];
     assert(left_steps.first() == step3_base);
     assert(left_steps.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4475,23 +4475,23 @@ proof fn lemma_k5_c3_6_c4_6_three_round(
     };
     assert(derivation_produces(hp, left_steps, w) == Some(w_base));
 
-    // Length: left=1, right = 2 + 1 + suffix.len() = 3 + suffix.len()
-    // steps.len() >= 5 and right = steps.len() - 1 (since suffix.len() = steps.len() - 4)
+    //  Length: left=1, right = 2 + 1 + suffix.len() = 3 + suffix.len()
+    //  steps.len() >= 5 and right = steps.len() - 1 (since suffix.len() = steps.len() - 4)
     assert(left_steps.len() == 1);
     assert(deriv_steps.len() == 3 + suffix.len());
 
     (true, w_base, left_steps, deriv_steps)
 }
 
-/// Bubble a T-free step leftward through a prefix of +2 steps to position 0.
-/// At position 0, the T-free step acts on w (base) as a base step.
-/// Returns (w_base, base_step, remaining) where w_base is base and
-/// remaining is a shorter derivation from w_base to w_end.
+///  Bubble a T-free step leftward through a prefix of +2 steps to position 0.
+///  At position 0, the T-free step acts on w (base) as a base step.
+///  Returns (w_base, base_step, remaining) where w_base is base and
+///  remaining is a shorter derivation from w_base to w_end.
 proof fn lemma_bubble_tfree_to_front(
     data: HNNData,
-    prefix: Seq<DerivationStep>,  // +2 steps before the T-free step
-    step_tfree: DerivationStep,   // the T-free step
-    suffix: Seq<DerivationStep>,  // steps after
+    prefix: Seq<DerivationStep>,  //  +2 steps before the T-free step
+    step_tfree: DerivationStep,   //  the T-free step
+    suffix: Seq<DerivationStep>,  //  steps after
     w: Word, w_before_tfree: Word, w_after_tfree: Word, w_end: Word,
     total_len: nat,
 ) -> (result: (bool, Word, DerivationStep, Seq<DerivationStep>))
@@ -4539,24 +4539,24 @@ proof fn lemma_bubble_tfree_to_front(
     let n = data.base.num_generators;
 
     if prefix.len() == 0 {
-        // T-free step acts on w (base). It's a base step!
-        // w_before_tfree = w (base), count 0.
-        // step_tfree on w → w_after_tfree (base, count 0).
+        //  T-free step acts on w (base). It's a base step!
+        //  w_before_tfree = w (base), count 0.
+        //  step_tfree on w → w_after_tfree (base, count 0).
         assert(w_before_tfree == w);
         lemma_base_implies_count_zero(w, n);
         assert(stable_letter_count(w_after_tfree, n) == 0nat);
         lemma_zero_count_implies_base(w_after_tfree, n);
-        // Prove apply_step(data.base, w, step_tfree) == Some(w_after_tfree)
-        // For each T-free step type, the step is valid in data.base:
+        //  Prove apply_step(data.base, w, step_tfree) == Some(w_after_tfree)
+        //  For each T-free step type, the step is valid in data.base:
         match step_tfree {
             DerivationStep::FreeReduce { position } => {
-                // FreeReduce doesn't depend on presentation
+                //  FreeReduce doesn't depend on presentation
                 assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
             },
             DerivationStep::FreeExpand { position, symbol } => {
-                // FreeExpand: needs symbol_valid(symbol, data.base.num_generators)
-                // T-free means gen_idx(symbol) < n. symbol_valid requires gen_idx < num_generators = n.
-                // From count unchanged: pair count = 0, so gen_idx < n.
+                //  FreeExpand: needs symbol_valid(symbol, data.base.num_generators)
+                //  T-free means gen_idx(symbol) < n. symbol_valid requires gen_idx < num_generators = n.
+                //  From count unchanged: pair count = 0, so gen_idx < n.
                 lemma_stable_count_reduce_step(data, w, step_tfree, n);
                 let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
                 assert(pair =~= seq![symbol, inverse_symbol(symbol)]);
@@ -4568,14 +4568,14 @@ proof fn lemma_bubble_tfree_to_front(
                 lemma_stable_letter_count_concat(left, right, n);
                 lemma_stable_letter_count_concat(left, pair, n);
                 lemma_stable_letter_count_concat(left + pair, right, n);
-                // count unchanged → pair count = 0 → gen_idx(symbol) < n
+                //  count unchanged → pair count = 0 → gen_idx(symbol) < n
                 assert(generator_index(symbol) < n);
-                // symbol_valid in base presentation
+                //  symbol_valid in base presentation
                 assert(symbol_valid(symbol, data.base.num_generators));
                 assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
             },
             DerivationStep::RelatorInsert { position, relator_index: ri, inverted: inv } => {
-                // T-free → relator has count 0 → base relator (ri < base.relators.len())
+                //  T-free → relator has count 0 → base relator (ri < base.relators.len())
                 lemma_relator_stable_count(data, ri, inv);
                 let r = get_relator(hp, ri, inv);
                 let left = w.subrange(0, position);
@@ -4587,7 +4587,7 @@ proof fn lemma_bubble_tfree_to_front(
                 lemma_stable_letter_count_concat(left + r, right, n);
                 assert(stable_letter_count(r, n) == 0nat);
                 assert((ri as int) < data.base.relators.len());
-                // Base relator: same in both presentations
+                //  Base relator: same in both presentations
                 reveal(presentation_valid);
                 assert(data.base.relators[ri as int] == hp.relators[ri as int]);
                 assert(get_relator(data.base, ri, inv) =~= r) by {
@@ -4596,7 +4596,7 @@ proof fn lemma_bubble_tfree_to_front(
                 assert(apply_step(data.base, w, step_tfree) == Some(w_after_tfree));
             },
             DerivationStep::RelatorDelete { position, relator_index: ri, inverted: inv } => {
-                // Same logic as RelatorInsert
+                //  Same logic as RelatorInsert
                 lemma_relator_stable_count(data, ri, inv);
                 let r = get_relator(hp, ri, inv);
                 lemma_stable_count_subrange(w, position, position + r.len() as int, n);
@@ -4614,7 +4614,7 @@ proof fn lemma_bubble_tfree_to_front(
         }
         (true, w_after_tfree, step_tfree, suffix)
     } else {
-        // Swap T-free past last prefix step
+        //  Swap T-free past last prefix step
         let last_step = prefix[prefix.len() as int - 1];
         assert(match last_step {
             DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
@@ -4631,7 +4631,7 @@ proof fn lemma_bubble_tfree_to_front(
         lemma_derivation_unfold_1(hp, last_seq, w_prev, w_before_tfree);
         lemma_derivation_preserves_word_valid(data, shorter_prefix, w, w_prev);
 
-        // Establish count of w_prev
+        //  Establish count of w_prev
         lemma_base_implies_count_zero(w, n);
         assert forall|j: int| 0 <= j < shorter_prefix.len() implies
             match #[trigger] shorter_prefix[j] {
@@ -4643,10 +4643,10 @@ proof fn lemma_bubble_tfree_to_front(
         lemma_plus2_prefix_gives_count(data, shorter_prefix, w, w_prev, 0nat);
         assert(stable_letter_count(w_prev, n) == 2 * shorter_prefix.len());
 
-        // count of w_prev_adj after swap: same as w_prev (T-free)
-        // This will be established by the swap ensures.
+        //  count of w_prev_adj after swap: same as w_prev (T-free)
+        //  This will be established by the swap ensures.
 
-        // Swap
+        //  Swap
         let (ok_swap, w_prev_adj, tfree_adj, plus2_adj) = match last_step {
             DerivationStep::FreeExpand { position: p, symbol: sym } =>
                 lemma_swap_tfree_past_expand(data, w_prev, w_before_tfree, w_after_tfree, p, sym, step_tfree),
@@ -4657,7 +4657,7 @@ proof fn lemma_bubble_tfree_to_front(
         if !ok_swap { return (false, arbitrary(), arbitrary(), arbitrary()); }
         lemma_step_preserves_word_valid(data, w_prev, tfree_adj);
 
-        // Build new suffix: [plus2_adj] ++ suffix
+        //  Build new suffix: [plus2_adj] ++ suffix
         let plus2_seq: Seq<DerivationStep> = seq![plus2_adj];
         assert(plus2_seq.first() == plus2_adj);
         assert(plus2_seq.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4668,7 +4668,7 @@ proof fn lemma_bubble_tfree_to_front(
         lemma_derivation_concat(hp, plus2_seq, suffix, w_prev_adj, w_after_tfree, w_end);
         let new_suffix = plus2_seq + suffix;
 
-        // forall on shorter_prefix
+        //  forall on shorter_prefix
         assert forall|j: int| 0 <= j < shorter_prefix.len() implies
             match #[trigger] shorter_prefix[j] {
                 DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
@@ -4677,20 +4677,20 @@ proof fn lemma_bubble_tfree_to_front(
             }
         by { assert(shorter_prefix[j] == prefix[j]); };
 
-        // Recurse with shorter prefix
+        //  Recurse with shorter prefix
         lemma_bubble_tfree_to_front(
             data, shorter_prefix, tfree_adj, new_suffix,
             w, w_prev, w_prev_adj, w_end, total_len)
     }
 }
 
-/// Recursive scan for first non-+2 step. When found:
-/// - If -2: peak, call bubble_peak_to_front
-/// - If T-free: n-round swap to front
-/// - If +2: extend prefix, recurse
+///  Recursive scan for first non-+2 step. When found:
+///  - If -2: peak, call bubble_peak_to_front
+///  - If T-free: n-round swap to front
+///  - If +2: extend prefix, recurse
 ///
-/// prefix: accumulated +2 steps (derivation from w to w_current)
-/// remaining: steps after prefix (derivation from w_current to w_end)
+///  prefix: accumulated +2 steps (derivation from w to w_current)
+///  remaining: steps after prefix (derivation from w_current to w_end)
 proof fn lemma_scan_and_handle(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     prefix: Seq<DerivationStep>,
@@ -4702,7 +4702,7 @@ proof fn lemma_scan_and_handle(
         hnn_associations_isomorphic(data),
         steps.len() >= 5,
         prefix.len() >= 2,
-        remaining.len() >= 2,  // need at least 2 more steps to reach base
+        remaining.len() >= 2,  //  need at least 2 more steps to reach base
         is_base_word(w, data.base.num_generators),
         is_base_word(w_end, data.base.num_generators),
         word_valid(w, data.base.num_generators + 1),
@@ -4715,7 +4715,7 @@ proof fn lemma_scan_and_handle(
         }),
         stable_letter_count(w_current, data.base.num_generators) == 2 * prefix.len(),
         prefix.len() + remaining.len() == steps.len(),
-        // All prefix steps are +2
+        //  All prefix steps are +2
         forall|j: int| 0 <= j < prefix.len() ==>
             match #[trigger] prefix[j] {
                 DerivationStep::FreeExpand { symbol, .. } =>
@@ -4750,30 +4750,30 @@ proof fn lemma_scan_and_handle(
     let rest = remaining.drop_first();
 
     if c_next < stable_letter_count(w_current, n) {
-        // first_step is -2. Peak at (prefix.len()-1, prefix.len()).
-        // w_current is w_before_peak (count 2*prefix.len())
-        // w_next is w_after_peak (count 2*prefix.len() - 2)
+        //  first_step is -2. Peak at (prefix.len()-1, prefix.len()).
+        //  w_current is w_before_peak (count 2*prefix.len())
+        //  w_next is w_after_peak (count 2*prefix.len() - 2)
 
-        // But wait — the peak is between the LAST prefix step (+2) and first_step (-2).
-        // The last prefix step took w_{prev} → w_current. first_step takes w_current → w_next.
-        // This doesn't have a word BETWEEN them at the peak top.
-        // Actually: the peak is at counts (2*(prefix.len()-1), 2*prefix.len(), 2*(prefix.len()-1)).
-        // step_up = prefix.last(), step_down = first_step
-        // w_before = word at prefix.len()-1, w_at = w_current, w_after = w_next
+        //  But wait — the peak is between the LAST prefix step (+2) and first_step (-2).
+        //  The last prefix step took w_{prev} → w_current. first_step takes w_current → w_next.
+        //  This doesn't have a word BETWEEN them at the peak top.
+        //  Actually: the peak is at counts (2*(prefix.len()-1), 2*prefix.len(), 2*(prefix.len()-1)).
+        //  step_up = prefix.last(), step_down = first_step
+        //  w_before = word at prefix.len()-1, w_at = w_current, w_after = w_next
 
-        // Split prefix to get w_before
+        //  Split prefix to get w_before
         lemma_derivation_split(hp, prefix, w, w_current, (prefix.len() - 1) as nat);
         let new_prefix = prefix.subrange(0, prefix.len() as int - 1);
         let w_before = derivation_produces(hp, new_prefix, w).unwrap();
         lemma_derivation_preserves_word_valid(data, new_prefix, w, w_before);
 
-        // Establish derivation for rest
+        //  Establish derivation for rest
         lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
         assert(derivation_produces(hp, rest, w_next) == Some(w_end));
 
-        // Cancel check
+        //  Cancel check
         if w_next =~= w_before {
-            // Cancel: remove the peak steps
+            //  Cancel: remove the peak steps
             lemma_derivation_concat(hp, new_prefix, rest, w, w_before, w_end);
             let short = new_prefix + rest;
             assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
@@ -4781,22 +4781,22 @@ proof fn lemma_scan_and_handle(
             };
             (true, w, Seq::<DerivationStep>::empty(), short)
         } else {
-            // Non-cancel: bubble peak to front
+            //  Non-cancel: bubble peak to front
             let last_prefix_step = prefix[prefix.len() as int - 1];
-            // Establish count and +2 type for last_prefix_step
+            //  Establish count and +2 type for last_prefix_step
             assert(match last_prefix_step {
                 DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
                 DerivationStep::RelatorInsert { relator_index, .. } => relator_index as int >= data.base.relators.len(),
                 _ => false,
             });
-            // Establish counts
+            //  Establish counts
             lemma_base_implies_count_zero(w, n);
             lemma_plus2_prefix_gives_count(data, new_prefix, w, w_before, 0nat);
             assert(stable_letter_count(w_before, n) == 2 * new_prefix.len());
             assert(stable_letter_count(w_current, n) == 2 * new_prefix.len() + 2);
             assert(stable_letter_count(w_next, n) == 2 * new_prefix.len());
 
-            // forall on new_prefix steps
+            //  forall on new_prefix steps
             assert forall|j: int| 0 <= j < new_prefix.len() implies
                 match #[trigger] new_prefix[j] {
                     DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
@@ -4805,7 +4805,7 @@ proof fn lemma_scan_and_handle(
                 }
             by { assert(new_prefix[j] == prefix[j]); };
 
-            // Establish apply_step for the peak steps
+            //  Establish apply_step for the peak steps
             let last_step_seq = prefix.subrange(prefix.len() as int - 1, prefix.len() as int);
             assert(last_step_seq.len() == 1);
             assert(last_step_seq.first() == last_prefix_step);
@@ -4818,8 +4818,8 @@ proof fn lemma_scan_and_handle(
             (true, wb, ls, rs)
         }
     } else if c_next == stable_letter_count(w_current, n) {
-        // first_step is T-free. Swap past last prefix step, reducing prefix by 1.
-        // Then recurse — the T-free step is now one position closer to front.
+        //  first_step is T-free. Swap past last prefix step, reducing prefix by 1.
+        //  Then recurse — the T-free step is now one position closer to front.
         let last_prefix_step = prefix[prefix.len() as int - 1];
         assert(match last_prefix_step {
             DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
@@ -4827,7 +4827,7 @@ proof fn lemma_scan_and_handle(
             _ => false,
         });
 
-        // Get w_before (word before last prefix step)
+        //  Get w_before (word before last prefix step)
         lemma_derivation_split(hp, prefix, w, w_current, (prefix.len() - 1) as nat);
         let shorter_prefix = prefix.subrange(0, prefix.len() as int - 1);
         let w_before = derivation_produces(hp, shorter_prefix, w).unwrap();
@@ -4838,7 +4838,7 @@ proof fn lemma_scan_and_handle(
         assert(apply_step(hp, w_before, last_prefix_step) == Some(w_current));
         lemma_derivation_preserves_word_valid(data, shorter_prefix, w, w_before);
 
-        // Swap first_step (T-free) past last_prefix_step (+2)
+        //  Swap first_step (T-free) past last_prefix_step (+2)
         let (ok_swap, w_before_adj, tfree_adj, plus2_adj) = match last_prefix_step {
             DerivationStep::FreeExpand { position: p, symbol: sym } =>
                 lemma_swap_tfree_past_expand(data, w_before, w_current, w_next, p, sym, first_step),
@@ -4847,10 +4847,10 @@ proof fn lemma_scan_and_handle(
             _ => { assert(false); arbitrary() },
         };
         if !ok_swap { return (false, arbitrary(), arbitrary(), arbitrary()); }
-        // tfree_adj on w_before → w_before_adj (T-free, count 2*(prefix.len()-1))
-        // plus2_adj on w_before_adj → w_next (+2)
+        //  tfree_adj on w_before → w_before_adj (T-free, count 2*(prefix.len()-1))
+        //  plus2_adj on w_before_adj → w_next (+2)
 
-        // New derivation: shorter_prefix ++ [tfree_adj] produces w_before_adj from w
+        //  New derivation: shorter_prefix ++ [tfree_adj] produces w_before_adj from w
         let tfree_seq: Seq<DerivationStep> = seq![tfree_adj];
         assert(tfree_seq.first() == tfree_adj);
         assert(tfree_seq.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4861,7 +4861,7 @@ proof fn lemma_scan_and_handle(
         lemma_derivation_concat(hp, shorter_prefix, tfree_seq, w, w_before, w_before_adj);
         let new_prefix_with_tfree = shorter_prefix + tfree_seq;
 
-        // New remaining: [plus2_adj] ++ rest
+        //  New remaining: [plus2_adj] ++ rest
         let plus2_seq: Seq<DerivationStep> = seq![plus2_adj];
         assert(plus2_seq.first() == plus2_adj);
         assert(plus2_seq.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4873,7 +4873,7 @@ proof fn lemma_scan_and_handle(
         lemma_derivation_concat(hp, plus2_seq, rest, w_before_adj, w_next, w_end);
         let new_remaining = plus2_seq + rest;
 
-        // Use lemma_bubble_tfree_to_front to swap T-free all the way to position 0
+        //  Use lemma_bubble_tfree_to_front to swap T-free all the way to position 0
         lemma_base_word_valid_down(w, n);
         lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
         let (ok_bubble, w_base, base_step, remaining_deriv) =
@@ -4883,7 +4883,7 @@ proof fn lemma_scan_and_handle(
                 steps.len());
         if !ok_bubble { return (false, arbitrary(), arbitrary(), arbitrary()); }
 
-        // left = [base_step], right = remaining_deriv
+        //  left = [base_step], right = remaining_deriv
         let left_steps: Seq<DerivationStep> = seq![base_step];
         assert(left_steps.first() == base_step);
         assert(left_steps.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4894,24 +4894,24 @@ proof fn lemma_scan_and_handle(
 
         (true, w_base, left_steps, remaining_deriv)
     } else {
-        // first_step is +2. Extend prefix, recurse.
+        //  first_step is +2. Extend prefix, recurse.
         assert(c_next == stable_letter_count(w_current, n) + 2);
 
         if rest.len() < 2 {
-            // Not enough remaining steps to reach base — contradiction
-            // From count 2*(prefix.len()+1) with < 2 steps remaining,
-            // can reduce by at most 4. Need to reach 0.
-            // 2*(prefix.len()+1) ≥ 2*(2+1) = 6 > 4.
-            // So can't reach 0. But w_end is base (count 0).
-            // Need at least prefix.len()+1 steps of -2 to reach 0.
-            // remaining has at most 1 step. prefix.len()+1 ≥ 3 > 1.
-            // Contradiction.
+            //  Not enough remaining steps to reach base — contradiction
+            //  From count 2*(prefix.len()+1) with < 2 steps remaining,
+            //  can reduce by at most 4. Need to reach 0.
+            //  2*(prefix.len()+1) ≥ 2*(2+1) = 6 > 4.
+            //  So can't reach 0. But w_end is base (count 0).
+            //  Need at least prefix.len()+1 steps of -2 to reach 0.
+            //  remaining has at most 1 step. prefix.len()+1 ≥ 3 > 1.
+            //  Contradiction.
             lemma_derivation_split(hp, remaining, w_current, w_end, 1nat);
             if rest.len() == 0 {
-                // Only first_step. first_step takes c to c+2. w_end has count 0. c+2 > 0.
+                //  Only first_step. first_step takes c to c+2. w_end has count 0. c+2 > 0.
                 assert(false);
             } else {
-                // rest has 1 step. w_next has count ≥ 6. 1 step can reduce by at most 2. ≥4 > 0.
+                //  rest has 1 step. w_next has count ≥ 6. 1 step can reduce by at most 2. ≥4 > 0.
                 assert(rest.len() == 1);
                 lemma_derivation_unfold_1(hp, rest, w_next, w_end);
                 lemma_count4_step_cant_reach_base(data, w_next, w_end, rest.first());
@@ -4919,11 +4919,11 @@ proof fn lemma_scan_and_handle(
             }
             arbitrary()
         } else {
-            // Extend prefix and recurse
+            //  Extend prefix and recurse
             let new_prefix = prefix + seq![first_step];
             lemma_plus2_step_type(data, w_current, w_next, first_step, n);
 
-            // Prove new_prefix derivation
+            //  Prove new_prefix derivation
             let first_step_seq: Seq<DerivationStep> = seq![first_step];
             assert(first_step_seq.first() == first_step);
             assert(first_step_seq.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -4933,7 +4933,7 @@ proof fn lemma_scan_and_handle(
             assert(derivation_produces(hp, first_step_seq, w_current) == Some(w_next));
             lemma_derivation_concat(hp, prefix, first_step_seq, w, w_current, w_next);
 
-            // Prove forall on new_prefix
+            //  Prove forall on new_prefix
             assert forall|j: int| 0 <= j < new_prefix.len() implies
                 match #[trigger] new_prefix[j] {
                     DerivationStep::FreeExpand { symbol, .. } => generator_index(symbol) == n,
@@ -4951,9 +4951,9 @@ proof fn lemma_scan_and_handle(
     }
 }
 
-/// Handle c_3 ≥ 6 case. Returns (w_base, left, right) where w_base is base
-/// and left ++ right is a shorter derivation from w to w_end via w_base.
-/// For cancel: left is empty, right is the shorter derivation.
+///  Handle c_3 ≥ 6 case. Returns (w_base, left, right) where w_base is base
+///  and left ++ right is a shorter derivation from w to w_end via w_base.
+///  For cancel: left is empty, right is the shorter derivation.
 pub proof fn lemma_k5_c3_ge6(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w3: Word,
@@ -5008,12 +5008,12 @@ pub proof fn lemma_k5_c3_ge6(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // c3 = 6 (only possibility from c2=4, change ±2, c3≥6)
+    //  c3 = 6 (only possibility from c2=4, change ±2, c3≥6)
     assert(stable_letter_count(w3, n) == 6nat) by {
         lemma_stable_count_reduce_step(data, w2, step2, n);
     };
 
-    // k=5: c3≥6 is impossible (can't reach 0 in 2 remaining steps)
+    //  k=5: c3≥6 is impossible (can't reach 0 in 2 remaining steps)
     if steps.len() == 5 {
         assert(tail_steps.len() == 2);
         let s3 = tail_steps[0int];
@@ -5030,7 +5030,7 @@ pub proof fn lemma_k5_c3_ge6(
         return arbitrary();
     }
 
-    // Get step3 and w4
+    //  Get step3 and w4
     assert(tail_steps.len() >= 1);
     let step3_inner = tail_steps[0int];
     assert(apply_step(hp, w3, step3_inner).is_some());
@@ -5043,9 +5043,9 @@ pub proof fn lemma_k5_c3_ge6(
     let inner_suffix = tail_steps.subrange(1, tail_steps.len() as int);
 
     if c4 == 4 {
-        // Peak at (2,3). Use bubble chain.
+        //  Peak at (2,3). Use bubble chain.
         let prefix_steps = steps.subrange(0, 2);
-        // Build derivation_produces for the full steps from components
+        //  Build derivation_produces for the full steps from components
         lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
         let first2: Seq<DerivationStep> = seq![step0, step1];
         assert(first2 =~= prefix_steps);
@@ -5061,7 +5061,7 @@ pub proof fn lemma_k5_c3_ge6(
         assert(derivation_produces(hp, prefix_steps, w) == Some(w2));
 
         if w4 =~= w2 {
-            // Cancel
+            //  Cancel
             lemma_derivation_concat(hp, prefix_steps, inner_suffix, w, w2, w_end);
             let short = prefix_steps + inner_suffix;
             assert(derivation_produces(hp, Seq::<DerivationStep>::empty(), w) == Some(w)) by {
@@ -5069,7 +5069,7 @@ pub proof fn lemma_k5_c3_ge6(
             };
             (true, w, Seq::<DerivationStep>::empty(), short)
         } else {
-            // Non-cancel: bubble peak to front
+            //  Non-cancel: bubble peak to front
             lemma_plus2_step_type(data, w2, w3, step2, n);
             lemma_plus2_step_type(data, w1, w2, step1, n);
             assert forall|j: int| 0 <= j < prefix_steps.len() implies
@@ -5092,9 +5092,9 @@ pub proof fn lemma_k5_c3_ge6(
             (true, wb, ls, rs)
         }
     } else {
-        // c4 >= 6: for k=6 this is impossible; for k≥7 need deeper scan
+        //  c4 >= 6: for k=6 this is impossible; for k≥7 need deeper scan
         if steps.len() == 6 {
-            // k=6, c4≥6: count can't reach 0 in remaining steps
+            //  k=6, c4≥6: count can't reach 0 in remaining steps
             let step4_inner = inner_suffix[0int];
             assert(apply_step(hp, w4, step4_inner).is_some());
             let w5 = apply_step(hp, w4, step4_inner).unwrap();
@@ -5109,9 +5109,9 @@ pub proof fn lemma_k5_c3_ge6(
             assert(false);
             arbitrary()
         } else {
-            // k≥7, c4≥6: step3 is T-free (c4=6) or +2 (c4=8).
+            //  k≥7, c4≥6: step3 is T-free (c4=6) or +2 (c4=8).
             if c4 == 6 {
-                // step3 is T-free. 3-round swap to front. Delegate to helper.
+                //  step3 is T-free. 3-round swap to front. Delegate to helper.
                 lemma_plus2_step_type(data, w2, w3, step2, n);
                 lemma_plus2_step_type(data, w1, w2, step1, n);
                 lemma_base_word_valid_down(w, n);
@@ -5119,8 +5119,8 @@ pub proof fn lemma_k5_c3_ge6(
                     data, steps, w, w_end, w1, w2, w3, w4,
                     step0, step1, step2, step3_inner, inner_suffix)
             } else {
-                // c4 = 8: step3 is +2. Extend prefix and recurse.
-                // prefix = [step0, step1, step2, step3], all +2
+                //  c4 = 8: step3 is +2. Extend prefix and recurse.
+                //  prefix = [step0, step1, step2, step3], all +2
                 let prefix4 = steps.subrange(0, 4);
                 lemma_plus2_step_type(data, w1, w2, step1, n);
                 lemma_plus2_step_type(data, w2, w3, step2, n);
@@ -5137,7 +5137,7 @@ pub proof fn lemma_k5_c3_ge6(
                     else if j == 2 { assert(prefix4[j] == step2); }
                     else { assert(prefix4[j] == step3_inner); }
                 };
-                // Build derivation for prefix4
+                //  Build derivation for prefix4
                 lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
                 let first2: Seq<DerivationStep> = seq![step0, step1];
                 let step2_seq: Seq<DerivationStep> = seq![step2];
@@ -5160,7 +5160,7 @@ pub proof fn lemma_k5_c3_ge6(
                 assert(prefix4 =~= first3 + step3_seq);
                 assert(derivation_produces(hp, prefix4, w) == Some(w4));
 
-                // Recurse: scan inner_suffix for first non-+2 step
+                //  Recurse: scan inner_suffix for first non-+2 step
                 lemma_scan_and_handle(data, steps, w, w_end,
                     prefix4, inner_suffix, w4)
             }
@@ -5168,10 +5168,10 @@ pub proof fn lemma_k5_c3_ge6(
     }
 }
 
-/// Non-cancel sub-case of k=4 FR×FR overlap handler.
-/// After commuting step2/step3, the new peak (step1, step3_adj) is non-cancel.
-/// General k≥4 overlap handler: commute step2/step3, then peak-commute.
-/// Works for any k≥4. Falls back to lemma_overlap_peak_elimination if can't commute.
+///  Non-cancel sub-case of k=4 FR×FR overlap handler.
+///  After commuting step2/step3, the new peak (step1, step3_adj) is non-cancel.
+///  General k≥4 overlap handler: commute step2/step3, then peak-commute.
+///  Works for any k≥4. Falls back to lemma_overlap_peak_elimination if can't commute.
 pub proof fn lemma_handle_overlap_general(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w3: Word,
@@ -5220,33 +5220,33 @@ pub proof fn lemma_handle_overlap_general(
     lemma_base_implies_count_zero(w_end, n);
     lemma_step_preserves_word_valid(data, w3, step3);
     lemma_stable_count_reduce_step(data, w3, step3, n);
-    // step3 is -2: stable_letter_count(w4) == stable_letter_count(w3) - 2
-    // (w3 has count 2, so w4 has count 0 or 2 or 4. Since step3 is a reduction step
-    // taking count from 2 towards 0, and there must be enough steps to reach base,
-    // w4 has count 0 or 2. But we need the exact -2.)
-    // For k=4: w4 = w_end (count 0), so count(w4) = 0 = 2-2. ✓
-    // For k≥5: w4 may not be base. count(w4) ∈ {0, 2, 4}.
-    // However, the commutation helpers just need count(w4) = count(w3) - 2 OR count(w3).
-    // Actually the helpers require the EXACT -2 relationship.
-    // Let's check: if step3 is FR, lemma_stable_count_reduce gives the exact.
-    // If step3 is RD, the relator count determines the change.
-    // We can use: step2 takes c=4→2 (-2), step3 should take c=2→something.
-    // The precondition doesn't guarantee step3 is -2 for k≥5.
-    // For the commutation to work, we need step3 to reduce count by 2.
-    // If step3 is T-free (count stays 2) or +2 (count goes to 4),
-    // the commutation still works structurally but the count postcondition differs.
-    // Let me just establish the count of w4 from the reduce_step lemma.
+    //  step3 is -2: stable_letter_count(w4) == stable_letter_count(w3) - 2
+    //  (w3 has count 2, so w4 has count 0 or 2 or 4. Since step3 is a reduction step
+    //  taking count from 2 towards 0, and there must be enough steps to reach base,
+    //  w4 has count 0 or 2. But we need the exact -2.)
+    //  For k=4: w4 = w_end (count 0), so count(w4) = 0 = 2-2. ✓
+    //  For k≥5: w4 may not be base. count(w4) ∈ {0, 2, 4}.
+    //  However, the commutation helpers just need count(w4) = count(w3) - 2 OR count(w3).
+    //  Actually the helpers require the EXACT -2 relationship.
+    //  Let's check: if step3 is FR, lemma_stable_count_reduce gives the exact.
+    //  If step3 is RD, the relator count determines the change.
+    //  We can use: step2 takes c=4→2 (-2), step3 should take c=2→something.
+    //  The precondition doesn't guarantee step3 is -2 for k≥5.
+    //  For the commutation to work, we need step3 to reduce count by 2.
+    //  If step3 is T-free (count stays 2) or +2 (count goes to 4),
+    //  the commutation still works structurally but the count postcondition differs.
+    //  Let me just establish the count of w4 from the reduce_step lemma.
     let c4 = stable_letter_count(w4, n);
 
-    // Only proceed if step3 is -2 (reduces stable count by 2).
-    // The commutation helpers require both steps to be -2.
+    //  Only proceed if step3 is -2 (reduces stable count by 2).
+    //  The commutation helpers require both steps to be -2.
     if c4 != (stable_letter_count(w3, n) - 2) as nat {
-        // step3 is not -2 (T-free or +2). Fall back to standard handler.
+        //  step3 is not -2 (T-free or +2). Fall back to standard handler.
         lemma_overlap_peak_elimination(data, steps, w, w_end, fuel);
         return;
     }
 
-    // Check if step2/step3 can be commuted
+    //  Check if step2/step3 can be commuted
     let can_commute: bool = match (step2, step3) {
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::FreeReduce { position: p3 }) =>
@@ -5281,7 +5281,7 @@ pub proof fn lemma_handle_overlap_general(
         return;
     }
 
-    // Commute step2 and step3
+    //  Commute step2 and step3
     let (w2_prime, step3_adj, step2_adj) = match (step2, step3) {
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::FreeReduce { position: p3 }) =>
@@ -5304,7 +5304,7 @@ pub proof fn lemma_handle_overlap_general(
     lemma_step_preserves_word_valid(data, w2_prime, step2_adj);
 
     if w2_prime =~= w1 {
-        // Cancel: build [step0, step2_adj] + tail_rest
+        //  Cancel: build [step0, step2_adj] + tail_rest
         assert(apply_step(hp, w1, step2_adj) == Some(w4)) by { assert(w2_prime =~= w1); };
         let one_s: Seq<DerivationStep> = seq![step0];
         assert(one_s.first() == step0);
@@ -5341,9 +5341,9 @@ pub proof fn lemma_handle_overlap_general(
     }
 }
 
-/// Handle c3=4 T-free overlap: commute step2(T-free) past step3(-2) to create a peak.
-/// Only handles the case where step2 and step3 are both FR (most common).
-/// Falls back to lemma_overlap_peak_elimination for other combinations.
+///  Handle c3=4 T-free overlap: commute step2(T-free) past step3(-2) to create a peak.
+///  Only handles the case where step2 and step3 are both FR (most common).
+///  Falls back to lemma_overlap_peak_elimination for other combinations.
 pub proof fn lemma_handle_tfree_overlap(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w3: Word, w4: Word,
@@ -5374,8 +5374,8 @@ pub proof fn lemma_handle_tfree_overlap(
         }),
         stable_letter_count(w1, data.base.num_generators) == 2nat,
         stable_letter_count(w2, data.base.num_generators) == 4nat,
-        stable_letter_count(w3, data.base.num_generators) == 4nat, // step2 is T-free
-        stable_letter_count(w4, data.base.num_generators) == 2nat, // step3 is -2
+        stable_letter_count(w3, data.base.num_generators) == 4nat, //  step2 is T-free
+        stable_letter_count(w4, data.base.num_generators) == 2nat, //  step3 is -2
         match step1 {
             DerivationStep::FreeExpand { position, symbol } =>
                 generator_index(symbol) == data.base.num_generators,
@@ -5390,7 +5390,7 @@ pub proof fn lemma_handle_tfree_overlap(
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Try to commute step2 and step3 based on their types
+    //  Try to commute step2 and step3 based on their types
     let commuted: bool = match (step2, step3) {
         (DerivationStep::FreeReduce { position: p2 },
          DerivationStep::FreeReduce { position: p3 }) =>
@@ -5473,7 +5473,7 @@ pub proof fn lemma_handle_tfree_overlap(
     }
 }
 
-/// Inner helper for tfree overlap (after commutation, handles cancel/non-cancel).
+///  Inner helper for tfree overlap (after commutation, handles cancel/non-cancel).
 proof fn lemma_handle_tfree_overlap_inner(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     w1: Word, w2: Word, w2p: Word, w4: Word,
@@ -5546,9 +5546,9 @@ proof fn lemma_handle_tfree_overlap_inner(
     }
 }
 
-/// General non-cancel overlap handler: works for any k≥4.
-/// After commuting step2/step3, the peak (step1, step3_adj) is non-cancel.
-/// Builds left=[step0, step3_adj2] and right=[step1_adj, step2_adj]+tail_rest.
+///  General non-cancel overlap handler: works for any k≥4.
+///  After commuting step2/step3, the peak (step1, step3_adj) is non-cancel.
+///  Builds left=[step0, step3_adj2] and right=[step1_adj, step2_adj]+tail_rest.
 pub proof fn lemma_handle_overlap_noncancel_general(
     data: HNNData, w: Word, w_end: Word,
     w1: Word, w2: Word, w2_prime: Word, w4: Word,
@@ -5601,15 +5601,15 @@ pub proof fn lemma_handle_overlap_noncancel_general(
 
     let (ok_, w_prime, step3_adj2, step1_adj) =
         lemma_k4_peak_noncancel_commute(data, w1, w2, w2_prime, step1, step3_adj);
-    // Guard on ok_ — if false, the commuted peak also overlaps
+    //  Guard on ok_ — if false, the commuted peak also overlaps
     if !ok_ {
-        // Fall back to lemma_overlap_peak_elimination on the original steps
-        // Build original steps sequence
+        //  Fall back to lemma_overlap_peak_elimination on the original steps
+        //  Build original steps sequence
         let orig_prefix: Seq<DerivationStep> = seq![step0, step1];
         let orig_s3a_seq: Seq<DerivationStep> = seq![step3_adj];
         let orig_s2a_seq: Seq<DerivationStep> = seq![step2_adj];
-        // We have: step0→w1, step1→w2, step3_adj→w2_prime, step2_adj→w4, tail_rest→w_end
-        // This is a valid derivation. Build it and recurse.
+        //  We have: step0→w1, step1→w2, step3_adj→w2_prime, step2_adj→w4, tail_rest→w_end
+        //  This is a valid derivation. Build it and recurse.
         lemma_derivation_produces_2(hp, step0, step1, w, w1, w2);
         lemma_derivation_produces_2(hp, step3_adj, step2_adj, w2, w2_prime, w4);
         let mid: Seq<DerivationStep> = seq![step3_adj, step2_adj];
@@ -5620,18 +5620,18 @@ pub proof fn lemma_handle_overlap_noncancel_general(
         return;
     }
 
-    // Left: [step0, step3_adj2] from w to w_prime (2 steps)
+    //  Left: [step0, step3_adj2] from w to w_prime (2 steps)
     lemma_derivation_produces_2(hp, step0, step3_adj2, w, w1, w_prime);
     let left_steps: Seq<DerivationStep> = seq![step0, step3_adj2];
 
-    // Right: [step1_adj, step2_adj] + tail_rest from w_prime to w_end
+    //  Right: [step1_adj, step2_adj] + tail_rest from w_prime to w_end
     lemma_step_preserves_word_valid(data, w_prime, step1_adj);
     lemma_derivation_produces_2(hp, step1_adj, step2_adj, w_prime, w2_prime, w4);
     let prefix2: Seq<DerivationStep> = seq![step1_adj, step2_adj];
     lemma_derivation_concat(hp, prefix2, tail_rest, w_prime, w4, w_end);
     let right_steps = prefix2 + tail_rest;
 
-    // Recurse
+    //  Recurse
     lemma_overlap_peak_elimination(data, left_steps, w, w_prime, fuel);
     if right_steps.len() >= 2 {
         lemma_overlap_peak_elimination(data, right_steps, w_prime, w_end, fuel);
@@ -5642,11 +5642,11 @@ pub proof fn lemma_handle_overlap_noncancel_general(
     }
     lemma_equiv_transitive(data.base, w, w_prime, w_end);
 }
-/// The modified derivation replaces the overlapping peak with its near-cancel
-/// equivalent. The near-cancel inserts trivial base content (e.g., inv(b_j)
-/// from the isomorphism argument) which reduces the peak height.
+///  The modified derivation replaces the overlapping peak with its near-cancel
+///  equivalent. The near-cancel inserts trivial base content (e.g., inv(b_j)
+///  from the isomorphism argument) which reduces the peak height.
 ///
-/// fuel starts at derivation_count_sum and decreases with each peak elimination.
+///  fuel starts at derivation_count_sum and decreases with each peak elimination.
 pub proof fn lemma_overlap_peak_elimination(
     data: HNNData, steps: Seq<DerivationStep>, w: Word, w_end: Word,
     fuel: nat,
@@ -5664,26 +5664,26 @@ pub proof fn lemma_overlap_peak_elimination(
         equiv_in_presentation(data.base, w, w_end),
     decreases fuel, steps.len(),
 {
-    // Strategy: find a peak or T-free step, eliminate it to produce
-    // a shorter or lower-count_sum derivation, then recurse.
+    //  Strategy: find a peak or T-free step, eliminate it to produce
+    //  a shorter or lower-count_sum derivation, then recurse.
     //
-    // For shorter derivation: call lemma_base_derivation_equiv (safe,
-    // shorter steps means the mutual recursion terminates).
+    //  For shorter derivation: call lemma_base_derivation_equiv (safe,
+    //  shorter steps means the mutual recursion terminates).
     //
-    // For same-length lower-count_sum: call self with fuel-1.
+    //  For same-length lower-count_sum: call self with fuel-1.
     //
-    // The implementation follows the standard Britton's lemma peak
-    // elimination, handling both overlap and non-overlap cases.
+    //  The implementation follows the standard Britton's lemma peak
+    //  elimination, handling both overlap and non-overlap cases.
     let hp = hnn_presentation(data);
     let n = data.base.num_generators;
 
-    // Base case: len=2 (single segment with 2 steps)
+    //  Base case: len=2 (single segment with 2 steps)
     if steps.len() == 2 {
         let s0 = steps.first();
         let w1_check = apply_step(hp, w, s0).unwrap();
         lemma_step_preserves_word_valid(data, w, s0);
         if is_base_word(w1_check, n) {
-            // Both steps are T-free → base equivalences
+            //  Both steps are T-free → base equivalences
             lemma_t_free_step_is_base_step(data, w, s0);
             lemma_single_step_equiv(data.base, w, s0, w1_check);
             let rest = steps.drop_first();
@@ -5693,30 +5693,30 @@ pub proof fn lemma_overlap_peak_elimination(
             lemma_single_step_equiv(data.base, w1_check, s1, w_end);
             lemma_equiv_transitive(data.base, w, w1_check, w_end);
         } else {
-            // Single segment k=2
+            //  Single segment k=2
             lemma_single_segment_k2(data, steps, w, w_end);
         }
         return;
     }
 
-    // Step 0: check for base intermediates (split point)
+    //  Step 0: check for base intermediates (split point)
     let step0 = steps.first();
     let w1 = apply_step(hp, w, step0).unwrap();
     lemma_step_preserves_word_valid(data, w, step0);
 
     if is_base_word(w1, n) {
-        // w1 is base: T-free step. Apply in base group and recurse on shorter.
+        //  w1 is base: T-free step. Apply in base group and recurse on shorter.
         lemma_t_free_step_is_base_step(data, w, step0);
         lemma_single_step_equiv(data.base, w, step0, w1);
         let rest = steps.drop_first();
-        // rest has len >= 2 (since steps.len() >= 3)
-        // Recurse — rest is shorter than steps (fuel, rest.len()) < (fuel, steps.len())
+        //  rest has len >= 2 (since steps.len() >= 3)
+        //  Recurse — rest is shorter than steps (fuel, rest.len()) < (fuel, steps.len())
         lemma_overlap_peak_elimination(data, rest, w1, w_end, fuel);
         lemma_equiv_transitive(data.base, w, w1, w_end);
         return;
     }
 
-    // w1 is non-base. Find first base intermediate.
+    //  w1 is non-base. Find first base intermediate.
     lemma_first_base_is_base(hp, steps, w, w_end, n);
     let k = first_base_intermediate(hp, steps, w, n);
     lemma_word_at_one(hp, steps, w);
@@ -5727,8 +5727,8 @@ pub proof fn lemma_overlap_peak_elimination(
     };
 
     if k < steps.len() {
-        // Base intermediate at position k < steps.len()
-        // Split and handle each piece separately
+        //  Base intermediate at position k < steps.len()
+        //  Split and handle each piece separately
         let w_k = derivation_word_at(hp, steps, w, k);
         lemma_derivation_split(hp, steps, w, w_end, k);
         let left_steps = steps.subrange(0, k as int);
@@ -5736,30 +5736,30 @@ pub proof fn lemma_overlap_peak_elimination(
         lemma_word_at_produces(hp, steps, w, k);
         lemma_word_at_valid(data, steps, w, k);
 
-        // Left piece: k steps, single segment (shorter → recurse)
-        // left has len k ≥ 2 (since k ≥ 2), shorter than steps
+        //  Left piece: k steps, single segment (shorter → recurse)
+        //  left has len k ≥ 2 (since k ≥ 2), shorter than steps
         lemma_overlap_peak_elimination(data, left_steps, w, w_k, fuel);
 
-        // Right piece: shorter → recurse
+        //  Right piece: shorter → recurse
         if right_steps.len() >= 2 {
             lemma_overlap_peak_elimination(data, right_steps, w_k, w_end, fuel);
         } else if right_steps.len() == 1 {
-            // Single T-free step
+            //  Single T-free step
             lemma_derivation_unfold_1(hp, right_steps, w_k, w_end);
             lemma_t_free_step_is_base_step(data, w_k, right_steps.first());
             lemma_single_step_equiv(data.base, w_k, right_steps.first(), w_end);
         } else {
-            // right_steps.len() == 0: w_k == w_end
+            //  right_steps.len() == 0: w_k == w_end
             assert(w_k == w_end);
             lemma_equiv_refl(data.base, w);
         }
 
         lemma_equiv_transitive(data.base, w, w_k, w_end);
     } else {
-        // k == steps.len(): all intermediates are non-base.
-        // Peak elimination via the standard Britton argument.
+        //  k == steps.len(): all intermediates are non-base.
+        //  Peak elimination via the standard Britton argument.
         //
-        // Step 0 is +2 (base → non-base).
+        //  Step 0 is +2 (base → non-base).
         lemma_base_word_valid_down(w, n);
         lemma_base_to_nonbase_step_type(data, w, w1, step0);
         lemma_base_implies_count_zero(w, n);
@@ -5773,7 +5773,7 @@ pub proof fn lemma_overlap_peak_elimination(
         lemma_stable_count_reduce_step(data, w1, step1, n);
         let c2 = stable_letter_count(w2, n);
 
-        // Get remaining derivation from w2
+        //  Get remaining derivation from w2
         let rest0 = steps.drop_first();
         assert(rest0.first() == step1);
         assert(derivation_produces(hp, rest0, w1) == Some(w_end));
@@ -5788,8 +5788,8 @@ pub proof fn lemma_overlap_peak_elimination(
         };
         assert(derivation_produces(hp, remaining, w2) == Some(w_end));
 
-        // w2 is non-base (all intermediates are non-base since k == steps.len())
-        // Use lemma_no_base_before_first: for j < first_base_intermediate, word at j is non-base
+        //  w2 is non-base (all intermediates are non-base since k == steps.len())
+        //  Use lemma_no_base_before_first: for j < first_base_intermediate, word at j is non-base
         if steps.len() >= 3 {
             lemma_no_base_before_first(hp, steps, w, w_end, n, 2nat);
             assert(!is_base_word(derivation_word_at(hp, steps, w, 2nat), n));
@@ -5797,7 +5797,7 @@ pub proof fn lemma_overlap_peak_elimination(
         assert(!is_base_word(w2, n));
 
         if c2 == 2 {
-            // Step 1 is T-free. Commute past step 0.
+            //  Step 1 is T-free. Commute past step 0.
             let (ok, w_prime, step1_base, step0_adj) = match step0 {
                 DerivationStep::FreeExpand { position: p0, symbol: sym } => {
                     match step1 {
@@ -5818,7 +5818,7 @@ pub proof fn lemma_overlap_peak_elimination(
             if ok {
                 lemma_single_step_equiv(data.base, w, step1_base, w_prime);
 
-                // Build (k-1)-step derivation from w' to w_end
+                //  Build (k-1)-step derivation from w' to w_end
                 let one_step: Seq<DerivationStep> = seq![step0_adj];
                 assert(one_step.first() == step0_adj);
                 assert(one_step.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -5828,11 +5828,11 @@ pub proof fn lemma_overlap_peak_elimination(
                 assert(derivation_produces(hp, one_step, w_prime) == Some(w2));
                 lemma_derivation_concat(hp, one_step, remaining, w_prime, w2, w_end);
                 let new_steps = one_step + remaining;
-                // (k-1) steps, shorter → recurse
+                //  (k-1) steps, shorter → recurse
                 lemma_overlap_peak_elimination(data, new_steps, w_prime, w_end, fuel);
                 lemma_equiv_transitive(data.base, w, w_prime, w_end);
             } else {
-                // Overlap case: fall back to general T-free swap
+                //  Overlap case: fall back to general T-free swap
                 let (ok2, w_prime2, step1_adj2, step0_adj2) = match step0 {
                     DerivationStep::FreeExpand { position: p0, symbol: sym } => {
                         lemma_swap_tfree_past_expand(data, w, w1, w2, p0, sym, step1)
@@ -5842,8 +5842,8 @@ pub proof fn lemma_overlap_peak_elimination(
                     },
                     _ => { assert(false); arbitrary() },
                 };
-                // TODO: ok2 overlap cases not yet proved
-                // w_prime2 has count 0 (base) since count(w) = 0 and swap preserves count
+                //  TODO: ok2 overlap cases not yet proved
+                //  w_prime2 has count 0 (base) since count(w) = 0 and swap preserves count
                 lemma_zero_count_implies_base(w_prime2, n);
                 lemma_t_free_step_is_base_step(data, w, step1_adj2);
                 lemma_single_step_equiv(data.base, w, step1_adj2, w_prime2);
@@ -5860,14 +5860,14 @@ pub proof fn lemma_overlap_peak_elimination(
                 lemma_equiv_transitive(data.base, w, w_prime2, w_end);
             }
         } else {
-            // c2 ∈ {0, 4} (from stable_count_reduce_step). c2=0 means base → contradiction.
+            //  c2 ∈ {0, 4} (from stable_count_reduce_step). c2=0 means base → contradiction.
             if c2 == 0 {
                 lemma_zero_count_implies_base(w2, n);
-                assert(false); // w2 is base but all intermediates non-base
+                assert(false); //  w2 is base but all intermediates non-base
             }
             assert(c2 == 4nat);
 
-            // Get step2 and w3
+            //  Get step2 and w3
             let step2 = remaining[0int];
             assert(apply_step(hp, w2, step2).is_some());
             let w3 = apply_step(hp, w2, step2).unwrap();
@@ -5875,15 +5875,15 @@ pub proof fn lemma_overlap_peak_elimination(
             lemma_stable_count_reduce_step(data, w2, step2, n);
             let c3 = stable_letter_count(w3, n);
 
-            // Split remaining at step2
+            //  Split remaining at step2
             lemma_derivation_split(hp, remaining, w2, w_end, 1nat);
             let tail = remaining.subrange(1, remaining.len() as int);
             assert(derivation_produces(hp, tail, w3) == Some(w_end));
 
             if c3 == 2 {
-                // Peak at steps (1,2). Cancel or commute.
+                //  Peak at steps (1,2). Cancel or commute.
                 if w3 =~= w1 {
-                    // Cancel: remove steps 1,2. Build [step0] ++ tail (k-2 steps)
+                    //  Cancel: remove steps 1,2. Build [step0] ++ tail (k-2 steps)
                     let prefix_one: Seq<DerivationStep> = seq![step0];
                     assert(prefix_one.first() == step0);
                     assert(prefix_one.drop_first() =~= Seq::<DerivationStep>::empty());
@@ -5893,18 +5893,18 @@ pub proof fn lemma_overlap_peak_elimination(
                     assert(derivation_produces(hp, prefix_one, w) == Some(w1));
                     lemma_derivation_concat(hp, prefix_one, tail, w, w1, w_end);
                     let short = prefix_one + tail;
-                    // k-2 steps, shorter → recurse
+                    //  k-2 steps, shorter → recurse
                     if short.len() >= 2 {
                         lemma_overlap_peak_elimination(data, short, w, w_end, fuel);
                     } else {
-                        // short has 1 step: single T-free step
+                        //  short has 1 step: single T-free step
                         lemma_derivation_unfold_1(hp, short, w, w_end);
                         lemma_t_free_step_is_base_step(data, w, short.first());
                         lemma_single_step_equiv(data.base, w, short.first(), w_end);
                     }
                 } else {
-                    // Non-cancel peak at (1,2) with counts (2,4,2).
-                    // Use peak elimination with bypass (handles overlap via step2/step3 commutation)
+                    //  Non-cancel peak at (1,2) with counts (2,4,2).
+                    //  Use peak elimination with bypass (handles overlap via step2/step3 commutation)
                     lemma_plus2_step_type(data, w1, w2, step1, n);
 
                     let (ok_, w_prime, left, right) =
@@ -5913,11 +5913,11 @@ pub proof fn lemma_overlap_peak_elimination(
                             step0, step1, step2, tail);
 
                     if !ok_ {
-                        // Peak commutation failed (overlap). Fall back to general commutation
-                        // which always succeeds (may use assume(false) internally for overlap).
+                        //  Peak commutation failed (overlap). Fall back to general commutation
+                        //  which always succeeds (may use assume(false) internally for overlap).
                         let (w_prime2, step2_adj2, step1_adj2) = lemma_peak_commute_general(
                             data, w1, w2, w3, step1, step2);
-                        // w_prime2 has count 0 (base) since w1 has count 2
+                        //  w_prime2 has count 0 (base) since w1 has count 2
                         lemma_zero_count_implies_base(w_prime2, n);
                         lemma_derivation_produces_2(hp, step0, step2_adj2, w, w1, w_prime2);
                         let left2: Seq<DerivationStep> = seq![step0, step2_adj2];
@@ -5932,7 +5932,7 @@ pub proof fn lemma_overlap_peak_elimination(
                         lemma_derivation_concat(hp, one2, tail, w_prime2, w3, w_end);
                         let right2 = one2 + tail;
 
-                        // Recurse on each piece
+                        //  Recurse on each piece
                         if left2.len() >= 2 {
                             lemma_overlap_peak_elimination(data, left2, w, w_prime2, fuel);
                         } else {
@@ -5954,7 +5954,7 @@ pub proof fn lemma_overlap_peak_elimination(
                         return;
                     }
 
-                    // Both shorter → recurse
+                    //  Both shorter → recurse
                     if left.len() >= 2 {
                         lemma_overlap_peak_elimination(data, left, w, w_prime, fuel);
                     } else if left.len() == 1 {
@@ -5978,27 +5978,27 @@ pub proof fn lemma_overlap_peak_elimination(
                     lemma_equiv_transitive(data.base, w, w_prime, w_end);
                 }
             } else if c3 == 4 && steps.len() >= 5 {
-                // c3 = 4, k≥5: step2 is T-free. Two-round swap.
+                //  c3 = 4, k≥5: step2 is T-free. Two-round swap.
                 lemma_plus2_step_type(data, w1, w2, step1, n);
                 let (ok_tr, w_base, base_step, deriv_steps) =
                     lemma_k5_c3_eq4_two_round(
                         data, steps, w, w_end, w1, w2, w3,
                         step0, step1, step2, tail);
-                // TODO: ok_tr overlap cases not yet proved
-                // w_base is base and word_valid (from ensures of two_round)
+                //  TODO: ok_tr overlap cases not yet proved
+                //  w_base is base and word_valid (from ensures of two_round)
                 lemma_single_step_equiv(data.base, w, base_step, w_base);
-                // deriv has < steps.len() steps (from ensures). steps.len()>=5 → deriv >= 2.
+                //  deriv has < steps.len() steps (from ensures). steps.len()>=5 → deriv >= 2.
                 assert(deriv_steps.len() < steps.len());
                 assert(steps.len() >= 5);
-                // deriv could be 0..steps.len()-1. Need >= 2.
-                // Actually deriv = steps.len() - 1 = k-1 since it's one base step peeled off.
-                // But the ensures only says < steps.len(), not == steps.len()-1.
-                // We need a tighter bound. Let me check what the helper actually returns.
-                // lemma_k5_c3_eq4_two_round returns (ok, w_base, base_step, deriv_steps) where
-                // deriv_steps has specific structure: [step0_adj, step1_adj] ++ tail.
-                // tail = [step2_adj] ++ original_tail. So deriv = 2 + 1 + tail.len() = 3 + tail.len().
-                // tail.len() = steps.len() - 4. So deriv = steps.len() - 1.
-                // But the ensures only says < steps.len(). Let me just check >= 2 differently.
+                //  deriv could be 0..steps.len()-1. Need >= 2.
+                //  Actually deriv = steps.len() - 1 = k-1 since it's one base step peeled off.
+                //  But the ensures only says < steps.len(), not == steps.len()-1.
+                //  We need a tighter bound. Let me check what the helper actually returns.
+                //  lemma_k5_c3_eq4_two_round returns (ok, w_base, base_step, deriv_steps) where
+                //  deriv_steps has specific structure: [step0_adj, step1_adj] ++ tail.
+                //  tail = [step2_adj] ++ original_tail. So deriv = 2 + 1 + tail.len() = 3 + tail.len().
+                //  tail.len() = steps.len() - 4. So deriv = steps.len() - 1.
+                //  But the ensures only says < steps.len(). Let me just check >= 2 differently.
                 if deriv_steps.len() < 2 {
                     if deriv_steps.len() == 0 {
                         assert(w_base == w_end);
@@ -6013,14 +6013,14 @@ pub proof fn lemma_overlap_peak_elimination(
                 }
                 lemma_equiv_transitive(data.base, w, w_base, w_end);
             } else if c3 >= 6 && steps.len() >= 5 {
-                // c3 >= 6, k≥5: delegate to scan handler
+                //  c3 >= 6, k≥5: delegate to scan handler
                 let (ok_ge6, w_base, left_s, right_s) = lemma_k5_c3_ge6(
                     data, steps, w, w_end, w1, w2, w3,
                     step0, step1, step2, tail);
-                // TODO: ok_ge6 overlap cases not yet proved
-                // w_base is base and word_valid (from ensures of c3_ge6)
-                // Helper: handle a sub-derivation of any length
-                // For left piece:
+                //  TODO: ok_ge6 overlap cases not yet proved
+                //  w_base is base and word_valid (from ensures of c3_ge6)
+                //  Helper: handle a sub-derivation of any length
+                //  For left piece:
                 if left_s.len() == 0 {
                     assert(w_base == w);
                     lemma_equiv_refl(data.base, w);
@@ -6031,7 +6031,7 @@ pub proof fn lemma_overlap_peak_elimination(
                 } else {
                     lemma_overlap_peak_elimination(data, left_s, w, w_base, fuel);
                 }
-                // For right piece:
+                //  For right piece:
                 if right_s.len() == 0 {
                     assert(w_base == w_end);
                     lemma_equiv_refl(data.base, w_base);
@@ -6044,13 +6044,13 @@ pub proof fn lemma_overlap_peak_elimination(
                 }
                 lemma_equiv_transitive(data.base, w, w_base, w_end);
             } else {
-                // k=4 with c3=4 or c3>=6: these are impossible.
-                // k=4: count goes 0,2,4,c3,0. c3 must satisfy c3→0 in 1 step.
-                // If c3=4: need -4 in 1 step → impossible.
-                // If c3>=6: even worse.
+                //  k=4 with c3=4 or c3>=6: these are impossible.
+                //  k=4: count goes 0,2,4,c3,0. c3 must satisfy c3→0 in 1 step.
+                //  If c3=4: need -4 in 1 step → impossible.
+                //  If c3>=6: even worse.
                 assert(steps.len() == 4);
-                // tail has 1 step. w3(c3) → w_end(0). step reduces by at most 2.
-                // c3 >= 4 → w_end count >= 2 > 0. But w_end is base (count 0).
+                //  tail has 1 step. w3(c3) → w_end(0). step reduces by at most 2.
+                //  c3 >= 4 → w_end count >= 2 > 0. But w_end is base (count 0).
                 lemma_derivation_unfold_1(hp, tail, w3, w_end);
                 lemma_count4_step_cant_reach_base(data, w3, w_end, tail.first());
                 assert(false);
@@ -6059,10 +6059,10 @@ pub proof fn lemma_overlap_peak_elimination(
     }
 }
 
-/// Commute two non-overlapping FreeReduce steps.
-/// Given step2: w2 → w3 (FR at p2) and step3: w3 → w_end (FR at p3),
-/// where the adjusted positions don't overlap,
-/// produce step3_adj: w2 → w2' and step2_adj: w2' → w_end.
+///  Commute two non-overlapping FreeReduce steps.
+///  Given step2: w2 → w3 (FR at p2) and step3: w3 → w_end (FR at p3),
+///  where the adjusted positions don't overlap,
+///  produce step3_adj: w2 → w2' and step2_adj: w2' → w_end.
 pub proof fn lemma_commute_fr_fr(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, p3: int,
@@ -6076,13 +6076,13 @@ pub proof fn lemma_commute_fr_fr(
             &&& apply_step(hp, w2, DerivationStep::FreeReduce { position: p2 }) == Some(w3)
             &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
         }),
-        // Both FRs reduce stable count by 2
+        //  Both FRs reduce stable count by 2
         stable_letter_count(w2, data.base.num_generators) >= 4,
         stable_letter_count(w3, data.base.num_generators) ==
             (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
         stable_letter_count(w_end, data.base.num_generators) ==
             (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
-        // Non-overlapping in w2: step3's adjusted position doesn't overlap with step2
+        //  Non-overlapping in w2: step3's adjusted position doesn't overlap with step2
         p3 < p2 ==> p3 + 2 <= p2,
     ensures ({
         let (w2_prime, step3_adj, step2_adj) = result;
@@ -6092,7 +6092,7 @@ pub proof fn lemma_commute_fr_fr(
         &&& word_valid(w2_prime, data.base.num_generators + 1)
         &&& stable_letter_count(w2_prime, data.base.num_generators) ==
             (stable_letter_count(w2, data.base.num_generators) - 2) as nat
-        // Expose s3a position for non-overlap proofs
+        //  Expose s3a position for non-overlap proofs
         &&& step3_adj == DerivationStep::FreeReduce {
             position: if p3 < p2 { p3 } else { (p3 + 2) as int }
         }
@@ -6106,24 +6106,24 @@ pub proof fn lemma_commute_fr_fr(
     assert(has_cancellation_at(w3, p3));
     assert(w_end =~= reduce_at(w3, p3));
 
-    // Prove step3 removes stable letters (gen_idx == n)
+    //  Prove step3 removes stable letters (gen_idx == n)
     lemma_stable_count_reduce(w3, p3, n);
     lemma_stable_count_reduce(w2, p2, n);
-    // count(w3) = count(w2) - 2 >= 4 - 2 = 2
+    //  count(w3) = count(w2) - 2 >= 4 - 2 = 2
     let cnt_3 = stable_letter_count(w3, n);
     assert(cnt_3 >= 2);
-    // If gen_idx(w3[p3]) != n, FR doesn't change count. But count(w_end) = count(w3) - 2 < count(w3).
+    //  If gen_idx(w3[p3]) != n, FR doesn't change count. But count(w_end) = count(w3) - 2 < count(w3).
     if generator_index(w3[p3]) != n {
-        // count(reduce_at(w3, p3)) = count(w3) - 0 = count(w3)
-        // But w_end =~= reduce_at(w3, p3) and count(w_end) = count(w3) - 2
-        // So count(w3) = count(w3) - 2, impossible since count(w3) >= 2
+        //  count(reduce_at(w3, p3)) = count(w3) - 0 = count(w3)
+        //  But w_end =~= reduce_at(w3, p3) and count(w_end) = count(w3) - 2
+        //  So count(w3) = count(w3) - 2, impossible since count(w3) >= 2
         assert(false);
     }
     assert(generator_index(w3[p3]) == n);
 
     if p3 < p2 {
-        // step3 acts before step2 in the word
-        // p3_adj = p3 (same position in w2)
+        //  step3 acts before step2 in the word
+        //  p3_adj = p3 (same position in w2)
         assert(w3[p3] == w2[p3]);
         assert(w3[p3 + 1] == w2[p3 + 1]);
         assert(has_cancellation_at(w2, p3));
@@ -6132,38 +6132,38 @@ pub proof fn lemma_commute_fr_fr(
         let w2_prime = reduce_at(w2, p3);
         assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
         lemma_stable_count_reduce(w2, p3, n);
-        // w3[p3] == w2[p3] (p3 < p2, unaffected by step2), so gen_idx transfers
+        //  w3[p3] == w2[p3] (p3 < p2, unaffected by step2), so gen_idx transfers
         assert(generator_index(w2[p3]) == generator_index(w3[p3]));
         lemma_step_preserves_word_valid(data, w2, step3_adj);
 
-        // step2_adj at p2-2 in w2'
+        //  step2_adj at p2-2 in w2'
         let step2_adj = DerivationStep::FreeReduce { position: (p2 - 2) as int };
-        // w2'[p2-2] = w2[p2] and w2'[p2-1] = w2[p2+1]
+        //  w2'[p2-2] = w2[p2] and w2'[p2-1] = w2[p2+1]
         assert(w2_prime[(p2 - 2) as int] == w2[p2]);
         assert(w2_prime[(p2 - 1) as int] == w2[p2 + 1]);
         assert(has_cancellation_at(w2_prime, (p2 - 2) as int));
 
-        // Prove the final result matches w_end
+        //  Prove the final result matches w_end
         let result_word = reduce_at(w2_prime, (p2 - 2) as int);
         assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
-            // w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
-            // w2_prime = w2 minus {p3,p3+1}. result_word = w2_prime minus {p2-2,p2-1}.
-            // Both remove the same 4 positions from w2: {p3,p3+1,p2,p2+1}.
+            //  w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
+            //  w2_prime = w2 minus {p3,p3+1}. result_word = w2_prime minus {p2-2,p2-1}.
+            //  Both remove the same 4 positions from w2: {p3,p3+1,p2,p2+1}.
             if k < p3 {
-                // Both = w2[k]
+                //  Both = w2[k]
                 assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
                 assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
             } else if k < p2 - 2 {
-                // Both = w2[k+2]
-                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 < p2 so w3[k+2] = w2[k+2].
+                //  Both = w2[k+2]
+                //  w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 < p2 so w3[k+2] = w2[k+2].
                 assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2) as int]);
-                // result_word[k]: k < p2-2 so result_word[k] = w2_prime[k]. k >= p3 so w2_prime[k] = w2[k+2].
+                //  result_word[k]: k < p2-2 so result_word[k] = w2_prime[k]. k >= p3 so w2_prime[k] = w2[k+2].
                 assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + 2) as int]);
             } else {
-                // k >= p2-2: both = w2[k+4]
-                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
+                //  k >= p2-2: both = w2[k+4]
+                //  w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
                 assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 4) as int]);
-                // result_word[k]: k >= p2-2 so result_word[k] = w2_prime[k+2]. k+2 >= p2 > p3 so w2_prime[k+2] = w2[k+4].
+                //  result_word[k]: k >= p2-2 so result_word[k] = w2_prime[k+2]. k+2 >= p2 > p3 so w2_prime[k+2] = w2[k+4].
                 assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 4) as int]);
             }
         };
@@ -6172,8 +6172,8 @@ pub proof fn lemma_commute_fr_fr(
 
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // p3 >= p2: step3 acts after step2's removal
-        // In w3, position p3 corresponds to position p3+2 in w2
+        //  p3 >= p2: step3 acts after step2's removal
+        //  In w3, position p3 corresponds to position p3+2 in w2
         let p3_adj = (p3 + 2) as int;
         assert(w3[p3] == w2[p3_adj]);
         assert(w3[p3 + 1] == w2[(p3_adj + 1) as int]);
@@ -6183,11 +6183,11 @@ pub proof fn lemma_commute_fr_fr(
         let w2_prime = reduce_at(w2, p3_adj);
         assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
         lemma_stable_count_reduce(w2, p3_adj, n);
-        // w3[p3] == w2[p3+2] = w2[p3_adj], so gen_idx transfers
+        //  w3[p3] == w2[p3+2] = w2[p3_adj], so gen_idx transfers
         assert(generator_index(w2[p3_adj]) == generator_index(w3[p3]));
         lemma_step_preserves_word_valid(data, w2, step3_adj);
 
-        // step2_adj at p2 in w2' (unchanged since step3_adj acts after p2)
+        //  step2_adj at p2 in w2' (unchanged since step3_adj acts after p2)
         let step2_adj = DerivationStep::FreeReduce { position: p2 };
         assert(w2_prime[p2] == w2[p2]);
         assert(w2_prime[p2 + 1] == w2[p2 + 1]);
@@ -6195,24 +6195,24 @@ pub proof fn lemma_commute_fr_fr(
 
         let result_word = reduce_at(w2_prime, p2);
         assert forall|k: int| 0 <= k < w_end.len() implies w_end[k] == result_word[k] by {
-            // w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
-            // w2_prime = w2 minus {p3+2,p3+3}. result_word = w2_prime minus {p2,p2+1}.
-            // Both remove same 4 positions from w2: {p2,p2+1,p3+2,p3+3}.
+            //  w3 = w2 minus {p2,p2+1}. w_end = w3 minus {p3,p3+1}.
+            //  w2_prime = w2 minus {p3+2,p3+3}. result_word = w2_prime minus {p2,p2+1}.
+            //  Both remove same 4 positions from w2: {p2,p2+1,p3+2,p3+3}.
             if k < p2 {
-                // Both = w2[k]
+                //  Both = w2[k]
                 assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
                 assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
             } else if k < p3 {
-                // Both = w2[k+2]
-                // w_end[k]: k < p3 so w_end[k] = w3[k]. k >= p2 so w3[k] = w2[k+2].
+                //  Both = w2[k+2]
+                //  w_end[k]: k < p3 so w_end[k] = w3[k]. k >= p2 so w3[k] = w2[k+2].
                 assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k + 2) as int]);
-                // result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 < p3+2 so w2_prime[k+2] = w2[k+2].
+                //  result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 < p3+2 so w2_prime[k+2] = w2[k+2].
                 assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 2) as int]);
             } else {
-                // k >= p3: both = w2[k+4]
-                // w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
+                //  k >= p3: both = w2[k+4]
+                //  w_end[k]: k >= p3 so w_end[k] = w3[k+2]. k+2 >= p2 so w3[k+2] = w2[k+4].
                 assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 4) as int]);
-                // result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 >= p3+2 so w2_prime[k+2] = w2[k+4].
+                //  result_word[k]: k >= p2 so result_word[k] = w2_prime[k+2]. k+2 >= p3+2 so w2_prime[k+2] = w2[k+4].
                 assert(result_word[k] == w2_prime[(k + 2) as int]); assert(w2_prime[(k + 2) as int] == w2[(k + 4) as int]);
             }
         };
@@ -6223,8 +6223,8 @@ pub proof fn lemma_commute_fr_fr(
     }
 }
 
-/// General commutation of two non-overlapping FreeReduce steps (no stable count restriction).
-/// Works for T-free × -2 and -2 × T-free combinations.
+///  General commutation of two non-overlapping FreeReduce steps (no stable count restriction).
+///  Works for T-free × -2 and -2 × T-free combinations.
 pub proof fn lemma_commute_fr_fr_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, p3: int,
@@ -6302,8 +6302,8 @@ pub proof fn lemma_commute_fr_fr_general(
     }
 }
 
-/// General commutation of non-overlapping FE (step2) × FR (step3).
-/// FE adds 2 elements at p2, FR removes 2 at p3. Non-overlapping regions.
+///  General commutation of non-overlapping FE (step2) × FR (step3).
+///  FE adds 2 elements at p2, FR removes 2 at p3. Non-overlapping regions.
 pub proof fn lemma_commute_fe_fr_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, sym2: Symbol, p3: int,
@@ -6317,9 +6317,9 @@ pub proof fn lemma_commute_fe_fr_general(
             &&& apply_step(hp, w2, DerivationStep::FreeExpand { position: p2, symbol: sym2 }) == Some(w3)
             &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
         }),
-        // Non-overlapping: FR region doesn't overlap with FE region in w3
-        // FE inserts at p2, creating elements at [p2, p2+2) in w3
-        // FR at p3 in w3: must not overlap with [p2, p2+2)
+        //  Non-overlapping: FR region doesn't overlap with FE region in w3
+        //  FE inserts at p2, creating elements at [p2, p2+2) in w3
+        //  FR at p3 in w3: must not overlap with [p2, p2+2)
         p3 + 2 <= p2 || p3 >= p2 + 2,
     ensures ({
         let (w2_prime, step3_adj, step2_adj) = result;
@@ -6335,7 +6335,7 @@ pub proof fn lemma_commute_fe_fr_general(
     assert(has_cancellation_at(w3, p3));
 
     if p3 + 2 <= p2 {
-        // FR before FE region. In w3, p3 maps to p3 in w2 (before insertion).
+        //  FR before FE region. In w3, p3 maps to p3 in w2 (before insertion).
         assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
         assert(has_cancellation_at(w2, p3));
         let step3_adj = DerivationStep::FreeReduce { position: p3 };
@@ -6362,7 +6362,7 @@ pub proof fn lemma_commute_fe_fr_general(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // FR after FE region. p3 >= p2+2. In w3, p3 maps to p3-2 in w2.
+        //  FR after FE region. p3 >= p2+2. In w3, p3 maps to p3-2 in w2.
         let p3_adj = (p3 - 2) as int;
         assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
         assert(has_cancellation_at(w2, p3_adj));
@@ -6394,8 +6394,8 @@ pub proof fn lemma_commute_fe_fr_general(
     }
 }
 
-/// General commutation of non-overlapping FE (step2) × RD (step3).
-/// FE adds 2 elements at p2, RD removes relator at p3. No stable count restriction.
+///  General commutation of non-overlapping FE (step2) × RD (step3).
+///  FE adds 2 elements at p2, RD removes relator at p3. No stable count restriction.
 pub proof fn lemma_commute_fe_rd_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, sym2: Symbol, p3: int, ri3: nat, inv3: bool,
@@ -6409,7 +6409,7 @@ pub proof fn lemma_commute_fe_rd_general(
             &&& apply_step(hp, w2, DerivationStep::FreeExpand { position: p2, symbol: sym2 }) == Some(w3)
             &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
         }),
-        // Non-overlapping: RD region doesn't overlap with FE region in w3
+        //  Non-overlapping: RD region doesn't overlap with FE region in w3
         ({
             let r3 = get_relator(hnn_presentation(data), ri3, inv3);
             p3 + r3.len() <= p2 || p3 >= p2 + 2
@@ -6430,8 +6430,8 @@ pub proof fn lemma_commute_fe_rd_general(
     assert(w3.subrange(p3, p3 + r3_len) =~= r3);
 
     if p3 + r3_len <= p2 {
-        // RD before FE. In w3, RD region [p3, p3+r3_len) is before FE pair [p2, p2+2).
-        // Adjusted: RD at p3 in w2. FE at p2 - r3_len in w2'.
+        //  RD before FE. In w3, RD region [p3, p3+r3_len) is before FE pair [p2, p2+2).
+        //  Adjusted: RD at p3 in w2. FE at p2 - r3_len in w2'.
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
         assert(w2.subrange(p3, p3 + r3_len) =~= r3);
         let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
@@ -6458,7 +6458,7 @@ pub proof fn lemma_commute_fe_rd_general(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // RD after FE. p3 >= p2 + 2. Adjusted: RD at p3 - 2 in w2. FE at p2 in w2'.
+        //  RD after FE. p3 >= p2 + 2. Adjusted: RD at p3 - 2 in w2. FE at p2 in w2'.
         let p3_adj = (p3 - 2) as int;
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k - 2) as int] by {};
         assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
@@ -6490,8 +6490,8 @@ pub proof fn lemma_commute_fe_rd_general(
     }
 }
 
-/// General commutation of non-overlapping RI (step2) × FR (step3).
-/// RI inserts relator at p2, FR removes pair at p3. No stable count restriction.
+///  General commutation of non-overlapping RI (step2) × FR (step3).
+///  RI inserts relator at p2, FR removes pair at p3. No stable count restriction.
 pub proof fn lemma_commute_ri_fr_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int,
@@ -6505,7 +6505,7 @@ pub proof fn lemma_commute_ri_fr_general(
             &&& apply_step(hp, w2, DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
             &&& apply_step(hp, w3, DerivationStep::FreeReduce { position: p3 }) == Some(w_end)
         }),
-        // Non-overlapping: FR region in w3 doesn't overlap RI region [p2, p2+r2_len)
+        //  Non-overlapping: FR region in w3 doesn't overlap RI region [p2, p2+r2_len)
         ({
             let r2 = get_relator(hnn_presentation(data), ri2, inv2);
             p3 + 2 <= p2 || p3 >= p2 + r2.len()
@@ -6525,7 +6525,7 @@ pub proof fn lemma_commute_ri_fr_general(
     assert(has_cancellation_at(w3, p3));
 
     if p3 + 2 <= p2 {
-        // FR before RI region. w3[p3] = w2[p3], w3[p3+1] = w2[p3+1].
+        //  FR before RI region. w3[p3] = w2[p3], w3[p3+1] = w2[p3+1].
         assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
         assert(has_cancellation_at(w2, p3));
         let step3_adj = DerivationStep::FreeReduce { position: p3 };
@@ -6551,7 +6551,7 @@ pub proof fn lemma_commute_ri_fr_general(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // FR after RI region. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
+        //  FR after RI region. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
         let p3_adj = (p3 - r2_len) as int;
         assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
         assert(has_cancellation_at(w2, p3_adj));
@@ -6569,15 +6569,15 @@ pub proof fn lemma_commute_ri_fr_general(
                 assert(result_word[k] == r2[(k-p2) as int]);
                 assert(w_end[k] == w3[k]); assert(w3[k] == r2[(k-p2) as int]);
             } else if k < p3 {
-                // Between RI end and FR: w_end[k] = w3[k] = w2[k-r2_len]
+                //  Between RI end and FR: w_end[k] = w3[k] = w2[k-r2_len]
                 assert(result_word[k] == w2_prime[(k-r2_len) as int]); assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len) as int]);
                 assert(w_end[k] == w3[k]); assert(w3[k] == w2[(k-r2_len) as int]);
             } else {
-                // After FR: w_end[k] = w3[k+2] = w2[k+2-r2_len]
+                //  After FR: w_end[k] = w3[k+2] = w2[k+2-r2_len]
                 assert(w_end[k] == w3[(k+2) as int]); assert(w3[(k+2) as int] == w2[(k+2-r2_len) as int]);
-                // result_word[k] = w2_prime[k-r2_len]. k-r2_len >= p3-r2_len = p3_adj.
-                // Since k >= p3 and p3_adj = p3-r2_len: k-r2_len >= p3_adj.
-                // w2_prime[k-r2_len] = w2[k-r2_len+2] (shifted by FR at p3_adj).
+                //  result_word[k] = w2_prime[k-r2_len]. k-r2_len >= p3-r2_len = p3_adj.
+                //  Since k >= p3 and p3_adj = p3-r2_len: k-r2_len >= p3_adj.
+                //  w2_prime[k-r2_len] = w2[k-r2_len+2] (shifted by FR at p3_adj).
                 assert(result_word[k] == w2_prime[(k-r2_len) as int]);
                 assert((k - r2_len) as int >= p3_adj);
                 assert(w2_prime[(k-r2_len) as int] == w2[(k-r2_len+2) as int]);
@@ -6589,8 +6589,8 @@ pub proof fn lemma_commute_ri_fr_general(
     }
 }
 
-/// General commutation of non-overlapping RI (step2) × RD (step3).
-/// RI inserts relator r2 at p2, RD removes relator r3 at p3. No stable count restriction.
+///  General commutation of non-overlapping RI (step2) × RD (step3).
+///  RI inserts relator r2 at p2, RD removes relator r3 at p3. No stable count restriction.
 pub proof fn lemma_commute_ri_rd_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
@@ -6604,7 +6604,7 @@ pub proof fn lemma_commute_ri_rd_general(
             &&& apply_step(hp, w2, DerivationStep::RelatorInsert { position: p2, relator_index: ri2, inverted: inv2 }) == Some(w3)
             &&& apply_step(hp, w3, DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 }) == Some(w_end)
         }),
-        // Non-overlapping in w3
+        //  Non-overlapping in w3
         ({
             let r2 = get_relator(hnn_presentation(data), ri2, inv2);
             let r3 = get_relator(hnn_presentation(data), ri3, inv3);
@@ -6627,7 +6627,7 @@ pub proof fn lemma_commute_ri_rd_general(
     assert(w3.subrange(p3, p3 + r3_len) =~= r3);
 
     if p3 + r3_len <= p2 {
-        // RD before RI. In w3, RD at p3 maps to p3 in w2.
+        //  RD before RI. In w3, RD at p3 maps to p3 in w2.
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
         assert(w2.subrange(p3, p3 + r3_len) =~= r3);
         let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
@@ -6653,7 +6653,7 @@ pub proof fn lemma_commute_ri_rd_general(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // RD after RI. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
+        //  RD after RI. p3 >= p2 + r2_len. In w3, p3 maps to p3-r2_len in w2.
         let p3_adj = (p3 - r2_len) as int;
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k-r2_len) as int] by {};
         assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
@@ -6684,7 +6684,7 @@ pub proof fn lemma_commute_ri_rd_general(
     }
 }
 
-/// General commutation of non-overlapping RD (step2) × FR (step3). No count restriction.
+///  General commutation of non-overlapping RD (step2) × FR (step3). No count restriction.
 pub proof fn lemma_commute_rd_fr_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int,
@@ -6711,8 +6711,8 @@ pub proof fn lemma_commute_rd_fr_general(
         &&& word_valid(w2_prime, data.base.num_generators + 1)
     }),
 {
-    // Delegate to the existing lemma_commute_rd_fr which handles both left/right cases.
-    // But it has stable count preconditions. Use direct position arithmetic instead.
+    //  Delegate to the existing lemma_commute_rd_fr which handles both left/right cases.
+    //  But it has stable count preconditions. Use direct position arithmetic instead.
     let hp = hnn_presentation(data);
     let r2 = get_relator(hp, ri2, inv2);
     let r2_len = r2.len() as int;
@@ -6721,7 +6721,7 @@ pub proof fn lemma_commute_rd_fr_general(
     assert(has_cancellation_at(w3, p3));
 
     if p3 < p2 {
-        // FR before RD region. p3_adj = p3 in w2.
+        //  FR before RD region. p3_adj = p3 in w2.
         assert(w3[p3] == w2[p3]); assert(w3[p3+1] == w2[p3+1]);
         assert(has_cancellation_at(w2, p3));
         let step3_adj = DerivationStep::FreeReduce { position: p3 };
@@ -6746,7 +6746,7 @@ pub proof fn lemma_commute_rd_fr_general(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // FR after RD region. p3_adj = p3 + r2_len in w2.
+        //  FR after RD region. p3_adj = p3 + r2_len in w2.
         let p3_adj = (p3 + r2_len) as int;
         assert(w3[p3] == w2[p3_adj]); assert(w3[p3+1] == w2[(p3_adj+1) as int]);
         assert(has_cancellation_at(w2, p3_adj));
@@ -6776,7 +6776,7 @@ pub proof fn lemma_commute_rd_fr_general(
     }
 }
 
-/// General commutation of non-overlapping RD (step2) × RD (step3). No count restriction.
+///  General commutation of non-overlapping RD (step2) × RD (step3). No count restriction.
 pub proof fn lemma_commute_rd_rd_general(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
@@ -6813,7 +6813,7 @@ pub proof fn lemma_commute_rd_rd_general(
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + r2_len, w2.len() as int));
 
     if p3 < p2 {
-        // RD3 before RD2. p3_adj = p3 in w2.
+        //  RD3 before RD2. p3_adj = p3 in w2.
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
         assert(w2.subrange(p3, p3 + r3_len) =~= r3);
         let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
@@ -6839,7 +6839,7 @@ pub proof fn lemma_commute_rd_rd_general(
         };
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // RD3 after RD2. p3_adj = p3 + r2_len in w2.
+        //  RD3 after RD2. p3_adj = p3 + r2_len in w2.
         let p3_adj = (p3 + r2_len) as int;
         assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k+r2_len) as int] by {};
         assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
@@ -6868,7 +6868,7 @@ pub proof fn lemma_commute_rd_rd_general(
     }
 }
 
-/// Commute non-overlapping FR (step2) × RD (step3), case p3 >= p2 (RD after FR).
+///  Commute non-overlapping FR (step2) × RD (step3), case p3 >= p2 (RD after FR).
 pub proof fn lemma_commute_fr_rd_right(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, p3: int, ri3: nat, inv3: bool,
@@ -6912,14 +6912,14 @@ pub proof fn lemma_commute_fr_rd_right(
     let w2_prime = w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int);
     assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
     lemma_relator_stable_count(data, ri3, inv3);
-    // step3 reduces stable count by 2 → relator must be HNN (not base)
-    // If base relator: count(r3) = 0, so RD doesn't change stable count.
-    // But count(w_end) = count(w3) - 2, so the relator must have count 2.
+    //  step3 reduces stable count by 2 → relator must be HNN (not base)
+    //  If base relator: count(r3) = 0, so RD doesn't change stable count.
+    //  But count(w_end) = count(w3) - 2, so the relator must have count 2.
     if (ri3 as int) < data.base.relators.len() {
-        // Base relator: count(r3) = 0. RD removes 0 stable letters.
-        // count(w_end) = count(w3). But precondition says count(w_end) = count(w3) - 2.
-        // count(w3) >= 2 (from count(w2) >= 4, step2 FR removes 2).
-        // So count(w3) = count(w3) - 2 is impossible. Contradiction.
+        //  Base relator: count(r3) = 0. RD removes 0 stable letters.
+        //  count(w_end) = count(w3). But precondition says count(w_end) = count(w3) - 2.
+        //  count(w3) >= 2 (from count(w2) >= 4, step2 FR removes 2).
+        //  So count(w3) = count(w3) - 2 is impossible. Contradiction.
         lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
         lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
         lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
@@ -6930,7 +6930,7 @@ pub proof fn lemma_commute_fr_rd_right(
     assert(stable_letter_count(w2.subrange(p3_adj, p3_adj + r3_len), n) == 2nat);
     lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj + r3_len, w2.len() as int), n);
     lemma_stable_letter_count_concat(w2.subrange(0, p3_adj), w2.subrange(p3_adj, w2.len() as int), n);
-    // count(w2_prime) = count(w2[0..p3_adj]) + count(w2[p3_adj+r3_len..]) = count(w2) - 2
+    //  count(w2_prime) = count(w2[0..p3_adj]) + count(w2[p3_adj+r3_len..]) = count(w2) - 2
     assert(w2_prime =~= w2.subrange(0, p3_adj) + w2.subrange(p3_adj + r3_len, w2.len() as int));
     lemma_step_preserves_word_valid(data, w2, step3_adj);
 
@@ -6955,7 +6955,7 @@ pub proof fn lemma_commute_fr_rd_right(
     (w2_prime, step3_adj, step2_adj)
 }
 
-/// Commute non-overlapping FR (step2) × RD (step3), case p3 < p2 (RD before FR).
+///  Commute non-overlapping FR (step2) × RD (step3), case p3 < p2 (RD before FR).
 pub proof fn lemma_commute_fr_rd_left(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, p3: int, ri3: nat, inv3: bool,
@@ -6977,7 +6977,7 @@ pub proof fn lemma_commute_fr_rd_left(
         p3 < p2,
         ({
             let r3 = get_relator(hnn_presentation(data), ri3, inv3);
-            p3 + r3.len() <= p2 // RD region ends before FR region
+            p3 + r3.len() <= p2 //  RD region ends before FR region
         }),
     ensures ({
         let (w2_prime, step3_adj, step2_adj) = result;
@@ -6995,7 +6995,7 @@ pub proof fn lemma_commute_fr_rd_left(
     let r3_len = r3.len() as int;
 
     assert(w3 =~= reduce_at(w2, p2));
-    // RD at p3 in w3: p3 < p2, so w3[p3..p3+r3_len] = w2[p3..p3+r3_len]
+    //  RD at p3 in w3: p3 < p2, so w3[p3..p3+r3_len] = w2[p3..p3+r3_len]
     assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
     assert(w2.subrange(p3, p3 + r3_len) =~= r3);
 
@@ -7003,13 +7003,13 @@ pub proof fn lemma_commute_fr_rd_left(
     let w2_prime = w2.subrange(0, p3) + w2.subrange(p3 + r3_len, w2.len() as int);
     assert(apply_step(hp, w2, step3_adj) == Some(w2_prime));
 
-    // Stable count
+    //  Stable count
     lemma_relator_stable_count(data, ri3, inv3);
     if (ri3 as int) < data.base.relators.len() {
         lemma_stable_count_subrange(w3, p3, p3 + r3_len, n);
         lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3 + r3_len, w3.len() as int), n);
         lemma_stable_letter_count_concat(w3.subrange(0, p3), w3.subrange(p3, w3.len() as int), n);
-        assert(false); // base relator can't reduce count by 2
+        assert(false); //  base relator can't reduce count by 2
     }
     assert(stable_letter_count(r3, n) == 2nat);
     lemma_stable_count_subrange(w2, p3, p3 + r3_len, n);
@@ -7017,7 +7017,7 @@ pub proof fn lemma_commute_fr_rd_left(
     lemma_stable_letter_count_concat(w2.subrange(0, p3), w2.subrange(p3, w2.len() as int), n);
     lemma_step_preserves_word_valid(data, w2, step3_adj);
 
-    // FR at adjusted position p2 - r3_len
+    //  FR at adjusted position p2 - r3_len
     let step2_adj = DerivationStep::FreeReduce { position: (p2 - r3_len) as int };
     assert(w2_prime[(p2 - r3_len) as int] == w2[p2]);
     assert(w2_prime[(p2 - r3_len + 1) as int] == w2[p2 + 1]);
@@ -7039,8 +7039,8 @@ pub proof fn lemma_commute_fr_rd_left(
     (w2_prime, step3_adj, step2_adj)
 }
 
-/// Commute non-overlapping RD (step2) × FR (step3).
-/// step2 = RD(p2, ri2, inv2) on w2→w3, step3 = FR(p3) on w3→w_end.
+///  Commute non-overlapping RD (step2) × FR (step3).
+///  step2 = RD(p2, ri2, inv2) on w2→w3, step3 = FR(p3) on w3→w_end.
 pub proof fn lemma_commute_rd_fr(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int,
@@ -7059,7 +7059,7 @@ pub proof fn lemma_commute_rd_fr(
             (stable_letter_count(w2, data.base.num_generators) - 2) as nat,
         stable_letter_count(w_end, data.base.num_generators) ==
             (stable_letter_count(w3, data.base.num_generators) - 2) as nat,
-        // Non-overlapping: FR region in w2 doesn't overlap with RD region
+        //  Non-overlapping: FR region in w2 doesn't overlap with RD region
         ({
             let r2 = get_relator(hnn_presentation(data), ri2, inv2);
             let p3_adj: int = if p3 < p2 { p3 } else { (p3 + r2.len()) as int };
@@ -7084,16 +7084,16 @@ pub proof fn lemma_commute_rd_fr(
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + r2_len, w2.len() as int));
     assert(has_cancellation_at(w3, p3));
 
-    // Prove step3 removes stable letters
+    //  Prove step3 removes stable letters
     lemma_stable_count_reduce(w3, p3, n);
     lemma_relator_stable_count(data, ri2, inv2);
     if generator_index(w3[p3]) != n {
         assert(stable_letter_count(reduce_at(w3, p3), n) == stable_letter_count(w3, n));
-        assert(false); // count(w3) >= 2, but count(w_end) = count(w3) - 2
+        assert(false); //  count(w3) >= 2, but count(w_end) = count(w3) - 2
     }
 
     if p3 < p2 {
-        // FR acts before RD region. p3_adj = p3.
+        //  FR acts before RD region. p3_adj = p3.
         let p3_adj = p3;
         assert(w3[p3] == w2[p3]);
         assert(w3[p3 + 1] == w2[p3 + 1]);
@@ -7114,11 +7114,11 @@ pub proof fn lemma_commute_rd_fr(
                 assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[k]);
                 assert(w_end[k] == w3[k]); assert(w3[k] == w2[k]);
             } else if k < p2 - 2 {
-                // After FR removal, before RD removal
+                //  After FR removal, before RD removal
                 assert(result_word[k] == w2_prime[k]); assert(w2_prime[k] == w2[(k + 2) as int]);
                 assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2) as int]);
             } else {
-                // After both removals: both shifted by 2 (FR) + r2_len (RD)
+                //  After both removals: both shifted by 2 (FR) + r2_len (RD)
                 assert(result_word[k] == w2_prime[(k + r2_len) as int]); assert(w2_prime[(k + r2_len) as int] == w2[(k + r2_len + 2) as int]);
                 assert(w_end[k] == w3[(k + 2) as int]); assert(w3[(k + 2) as int] == w2[(k + 2 + r2_len) as int]);
             }
@@ -7127,7 +7127,7 @@ pub proof fn lemma_commute_rd_fr(
         assert(apply_step(hp, w2_prime, step2_adj) == Some(w_end));
         (w2_prime, step3_adj, step2_adj)
     } else {
-        // FR acts after RD region. p3_adj = p3 + r2_len.
+        //  FR acts after RD region. p3_adj = p3 + r2_len.
         let p3_adj = (p3 + r2_len) as int;
         assert(w3[p3] == w2[p3_adj]);
         assert(w3[p3 + 1] == w2[(p3_adj + 1) as int]);
@@ -7161,7 +7161,7 @@ pub proof fn lemma_commute_rd_fr(
     }
 }
 
-/// Commute non-overlapping RD × RD, case p3 < p2 (RD3 before RD2).
+///  Commute non-overlapping RD × RD, case p3 < p2 (RD3 before RD2).
 pub proof fn lemma_commute_rd_rd_left(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
@@ -7183,7 +7183,7 @@ pub proof fn lemma_commute_rd_rd_left(
         p3 < p2,
         ({
             let r3 = get_relator(hnn_presentation(data), ri3, inv3);
-            p3 + r3.len() <= p2 // RD3 region ends before RD2 region
+            p3 + r3.len() <= p2 //  RD3 region ends before RD2 region
         }),
     ensures ({
         let (w2_prime, step3_adj, step2_adj) = result;
@@ -7215,7 +7215,7 @@ pub proof fn lemma_commute_rd_rd_left(
         assert(false);
     }
     assert(stable_letter_count(r3, n) == 2nat);
-    // RD3 before RD2. p3_adj = p3.
+    //  RD3 before RD2. p3_adj = p3.
     assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[k] by {};
     assert(w2.subrange(p3, p3 + r3_len) =~= r3);
     let step3_adj = DerivationStep::RelatorDelete { position: p3, relator_index: ri3, inverted: inv3 };
@@ -7247,7 +7247,7 @@ pub proof fn lemma_commute_rd_rd_left(
     (w2_prime, step3_adj, step2_adj)
 }
 
-/// Commute non-overlapping RD × RD, case p3 >= p2 (RD3 after RD2).
+///  Commute non-overlapping RD × RD, case p3 >= p2 (RD3 after RD2).
 pub proof fn lemma_commute_rd_rd_right(
     data: HNNData, w2: Word, w3: Word, w_end: Word,
     p2: int, ri2: nat, inv2: bool, p3: int, ri3: nat, inv3: bool,
@@ -7270,7 +7270,7 @@ pub proof fn lemma_commute_rd_rd_right(
         ({
             let r2 = get_relator(hnn_presentation(data), ri2, inv2);
             let r3 = get_relator(hnn_presentation(data), ri3, inv3);
-            (p3 + r2.len()) as int + r3.len() <= w2.len() // adjusted position fits
+            (p3 + r2.len()) as int + r3.len() <= w2.len() //  adjusted position fits
         }),
     ensures ({
         let (w2_prime, step3_adj, step2_adj) = result;
@@ -7302,7 +7302,7 @@ pub proof fn lemma_commute_rd_rd_right(
     }
     assert(stable_letter_count(r3, n) == 2nat);
 
-    // RD3 after RD2. p3_adj = p3 + r2_len.
+    //  RD3 after RD2. p3_adj = p3 + r2_len.
     let p3_adj = (p3 + r2_len) as int;
     assert forall|k: int| p3 <= k < p3 + r3_len implies w3[k] == w2[(k + r2_len) as int] by {};
     assert(w2.subrange(p3_adj, p3_adj + r3_len) =~= r3);
@@ -7335,8 +7335,8 @@ pub proof fn lemma_commute_rd_rd_right(
     (w2_prime, step3_adj, step2_adj)
 }
 
-/// When a_j is empty, b_j is equivalent to ε in the base group.
-/// Uses the HNN isomorphism: a_j ≡ ε iff b_j ≡ ε.
+///  When a_j is empty, b_j is equivalent to ε in the base group.
+///  Uses the HNN isomorphism: a_j ≡ ε iff b_j ≡ ε.
 pub proof fn lemma_aj_empty_bj_trivial(
     data: HNNData, j: int,
 )
@@ -7344,7 +7344,7 @@ pub proof fn lemma_aj_empty_bj_trivial(
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
         0 <= j < data.associations.len(),
-        data.associations[j].0.len() == 0, // a_j = []
+        data.associations[j].0.len() == 0, //  a_j = []
     ensures
         equiv_in_presentation(data.base, data.associations[j].1, empty_word()),
 {
@@ -7353,7 +7353,7 @@ pub proof fn lemma_aj_empty_bj_trivial(
     let b_words = Seq::new(k, |i: int| data.associations[i].1);
     let (a_j, b_j) = data.associations[j];
 
-    // Construct witness word: w = [Gen(j)]
+    //  Construct witness word: w = [Gen(j)]
     let w: Word = seq![Symbol::Gen(j as nat)];
     assert(word_valid(w, k as nat)) by {
         assert(w.len() == 1);
@@ -7363,7 +7363,7 @@ pub proof fn lemma_aj_empty_bj_trivial(
         };
     };
 
-    // apply_embedding(a_words, [Gen(j)]) = concat(a_j, empty_word()) = a_j
+    //  apply_embedding(a_words, [Gen(j)]) = concat(a_j, empty_word()) = a_j
     assert(apply_embedding(a_words, w) =~= concat(apply_embedding_symbol(a_words, Symbol::Gen(j as nat)),
         apply_embedding(a_words, w.drop_first())));
     assert(w.drop_first() =~= Seq::<Symbol>::empty());
@@ -7375,14 +7375,14 @@ pub proof fn lemma_aj_empty_bj_trivial(
     assert(apply_embedding(a_words, w) =~= concat(empty_word(), empty_word()));
     assert(concat(empty_word(), empty_word()) =~= empty_word());
 
-    // So apply_embedding(a_words, w) ≡ ε trivially
+    //  So apply_embedding(a_words, w) ≡ ε trivially
     lemma_equiv_refl(data.base, empty_word());
     assert(equiv_in_presentation(data.base, apply_embedding(a_words, w), empty_word()));
 
-    // By isomorphism: apply_embedding(b_words, w) ≡ ε
+    //  By isomorphism: apply_embedding(b_words, w) ≡ ε
     assert(equiv_in_presentation(data.base, apply_embedding(b_words, w), empty_word()));
 
-    // apply_embedding(b_words, [Gen(j)]) = b_j
+    //  apply_embedding(b_words, [Gen(j)]) = b_j
     assert(apply_embedding(b_words, w) =~= concat(apply_embedding_symbol(b_words, Symbol::Gen(j as nat)),
         apply_embedding(b_words, w.drop_first())));
     assert(apply_embedding(b_words, w.drop_first()) =~= empty_word());
@@ -7392,7 +7392,7 @@ pub proof fn lemma_aj_empty_bj_trivial(
     assert(concat(b_j, empty_word()) =~= b_j);
 }
 
-/// When a_j is empty, inv(b_j) is equivalent to ε in the base group.
+///  When a_j is empty, inv(b_j) is equivalent to ε in the base group.
 pub proof fn lemma_aj_empty_inv_bj_trivial(
     data: HNNData, j: int,
 )
@@ -7406,14 +7406,14 @@ pub proof fn lemma_aj_empty_inv_bj_trivial(
 {
     let (a_j, b_j) = data.associations[j];
     lemma_aj_empty_bj_trivial(data, j);
-    // b_j ≡ ε → inv(b_j) ≡ ε
+    //  b_j ≡ ε → inv(b_j) ≡ ε
     reveal(presentation_valid);
     lemma_inverse_word_valid(b_j, data.base.num_generators);
     crate::tietze::lemma_inverse_of_identity(data.base, b_j);
 }
 
-/// Check if a +2 step and -2 step overlap in their affected regions.
-/// Returns true if they don't overlap (i.e., safe to commute).
+///  Check if a +2 step and -2 step overlap in their affected regions.
+///  Returns true if they don't overlap (i.e., safe to commute).
 pub open spec fn peak_steps_non_overlapping(
     hp: Presentation, step_up: DerivationStep, step_down: DerivationStep,
     w1: Word,
@@ -7448,9 +7448,9 @@ pub open spec fn peak_steps_non_overlapping(
     }
 }
 
-/// For the RI+FR overlap case with a_j=[], prove that w1 and w3 differ only by
-/// insertion of inv(b_j) (which is trivial by the isomorphism).
-/// This establishes equiv_in_presentation(data.base, w1, w3) for the overlap case.
+///  For the RI+FR overlap case with a_j=[], prove that w1 and w3 differ only by
+///  insertion of inv(b_j) (which is trivial by the isomorphism).
+///  This establishes equiv_in_presentation(data.base, w1, w3) for the overlap case.
 proof fn lemma_overlap_ri_fr_w1_equiv_w3(
     data: HNNData,
     w1: Word, w2: Word, w3: Word,
@@ -7466,9 +7466,9 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
         ri1 as int >= data.base.relators.len(),
         j1 == (ri1 as int - data.base.relators.len()) as int,
         0 <= j1 < data.associations.len(),
-        !inv1, // non-inverted case
-        data.associations[j1].0.len() == 0, // a_j = []
-        p2 == p1, // FR at relator start (inside case, both elements)
+        !inv1, //  non-inverted case
+        data.associations[j1].0.len() == 0, //  a_j = []
+        p2 == p1, //  FR at relator start (inside case, both elements)
         ({
             let hp = hnn_presentation(data);
             &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
@@ -7483,49 +7483,49 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
     let r1 = get_relator(hp, ri1, inv1);
     let (a_j1, b_j1) = data.associations[j1];
 
-    // r1 = [Inv(n), Gen(n)] ++ inv(b_j1) since a_j1 = []
+    //  r1 = [Inv(n), Gen(n)] ++ inv(b_j1) since a_j1 = []
     lemma_hnn_relator_stable_positions(data, j1);
     assert(r1[0int] == stable_letter_inv(data));
     assert(r1[1int] == stable_letter(data));
 
-    // w2 = w1[0..p1] + r1 + w1[p1..]
+    //  w2 = w1[0..p1] + r1 + w1[p1..]
     assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
 
-    // FR at p1 removes [Inv(n), Gen(n)] from w2
-    // w3 = w2[0..p1] + w2[p1+2..] = w1[0..p1] + r1[2..] + w1[p1..]
-    // r1[2..] = inv(b_j1) (since r1 = [Inv(n), Gen(n)] ++ inv(b_j1))
+    //  FR at p1 removes [Inv(n), Gen(n)] from w2
+    //  w3 = w2[0..p1] + w2[p1+2..] = w1[0..p1] + r1[2..] + w1[p1..]
+    //  r1[2..] = inv(b_j1) (since r1 = [Inv(n), Gen(n)] ++ inv(b_j1))
     let inv_bj1 = inverse_word(b_j1);
 
-    // Show w3 = w1[0..p1] + inv(b_j1) + w1[p1..]
+    //  Show w3 = w1[0..p1] + inv(b_j1) + w1[p1..]
     let left = w1.subrange(0, p1);
     let right = w1.subrange(p1, w1.len() as int);
 
-    // w3 = concat(left, concat(inv_bj1, right))
-    // w1 = concat(left, right)
+    //  w3 = concat(left, concat(inv_bj1, right))
+    //  w1 = concat(left, right)
     assert(w1 =~= left + right);
 
-    // Prove inv(b_j1) ≡ ε using isomorphism
+    //  Prove inv(b_j1) ≡ ε using isomorphism
     lemma_aj_empty_inv_bj_trivial(data, j1);
 
-    // Now use lemma_insert_trivial_equiv
+    //  Now use lemma_insert_trivial_equiv
     reveal(presentation_valid);
     lemma_inverse_word_valid(b_j1, n);
     lemma_insert_trivial_equiv(data.base, left, right, inv_bj1);
-    // This gives: equiv_in_presentation(data.base, concat(left, right), concat(left, concat(inv_bj1, right)))
-    // i.e., equiv_in_presentation(data.base, w1, concat(left, concat(inv_bj1, right)))
+    //  This gives: equiv_in_presentation(data.base, concat(left, right), concat(left, concat(inv_bj1, right)))
+    //  i.e., equiv_in_presentation(data.base, w1, concat(left, concat(inv_bj1, right)))
 
-    // Need to show w3 =~= concat(left, concat(inv_bj1, right))
+    //  Need to show w3 =~= concat(left, concat(inv_bj1, right))
     assert(concat(left, right) =~= w1);
     assert(concat(left, concat(inv_bj1, right)) =~= left + inv_bj1 + right);
 
-    // Show w3 =~= left + inv_bj1 + right
-    // w3 = w2[0..p1] + w2[p1+2..]
-    // w2[0..p1] = w1[0..p1] = left
-    // w2[p1+2..] = r1[2..] + w1[p1..] where r1[2..] should be inv_bj1
+    //  Show w3 =~= left + inv_bj1 + right
+    //  w3 = w2[0..p1] + w2[p1+2..]
+    //  w2[0..p1] = w1[0..p1] = left
+    //  w2[p1+2..] = r1[2..] + w1[p1..] where r1[2..] should be inv_bj1
 
-    // r1 structure: r1 = [Inv(n)] ++ a_j1 ++ [Gen(n)] ++ inv(b_j1)
-    // With a_j1 = []: r1 = [Inv(n), Gen(n)] ++ inv(b_j1)
-    // r1_len = 2 + inv_bj1.len()
+    //  r1 structure: r1 = [Inv(n)] ++ a_j1 ++ [Gen(n)] ++ inv(b_j1)
+    //  With a_j1 = []: r1 = [Inv(n), Gen(n)] ++ inv(b_j1)
+    //  r1_len = 2 + inv_bj1.len()
     lemma_hnn_relator_structure(data, j1);
     let t = stable_letter(data);
     let t_inv = stable_letter_inv(data);
@@ -7534,19 +7534,19 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
     assert(a_j1.len() == 0);
     assert(a_j1 =~= Seq::<Symbol>::empty());
 
-    // r1 = [t_inv, t] ++ inv_bj1
+    //  r1 = [t_inv, t] ++ inv_bj1
     assert(hp.relators[ri1 as int] =~= seq![t_inv] + seq![t] + inv_bj1);
     assert(hp.relators[ri1 as int] =~= seq![t_inv, t] + inv_bj1);
 
-    // get_relator returns hp.relators[ri1] or its inverse
-    // Since inv1 = false: get_relator returns hp.relators[ri1]
+    //  get_relator returns hp.relators[ri1] or its inverse
+    //  Since inv1 = false: get_relator returns hp.relators[ri1]
     assert(r1 =~= hp.relators[ri1 as int]);
     assert(r1 =~= seq![t_inv, t] + inv_bj1);
 
-    // r1.subrange(2, r1.len()) =~= inv_bj1
+    //  r1.subrange(2, r1.len()) =~= inv_bj1
     assert(r1.subrange(2, r1.len() as int) =~= inv_bj1);
 
-    // w2[p1+2..] = r1[2..] + right = inv_bj1 + right
+    //  w2[p1+2..] = r1[2..] + right = inv_bj1 + right
     assert forall|k: int| 0 <= k < w3.len() implies w3[k] == (left + inv_bj1 + right)[k] by {
         if k < p1 {
             assert(w3[k] == w2[k]);
@@ -7561,10 +7561,10 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
             assert(w3[k] == w2[(k + 2) as int]);
             let r1_len = r1.len() as int;
             assert(w2[(k + 2) as int] == w1[((k + 2) - r1_len + p1 - p1) as int]);
-            // Actually: w2 = left + r1 + right.
-            // w2[k+2] where k+2 >= p1 + r1_len: w2[k+2] = right[(k+2-p1-r1_len) as int] = w1[(k+2-r1_len) as int]
-            // But k >= p1 + inv_bj1.len() means k+2 >= p1 + 2 + inv_bj1.len() = p1 + r1_len.
-            // So w2[k+2] = right[(k - p1 - inv_bj1.len()) as int]
+            //  Actually: w2 = left + r1 + right.
+            //  w2[k+2] where k+2 >= p1 + r1_len: w2[k+2] = right[(k+2-p1-r1_len) as int] = w1[(k+2-r1_len) as int]
+            //  But k >= p1 + inv_bj1.len() means k+2 >= p1 + 2 + inv_bj1.len() = p1 + r1_len.
+            //  So w2[k+2] = right[(k - p1 - inv_bj1.len()) as int]
             assert((left + inv_bj1 + right)[k] == right[(k - p1 - inv_bj1.len()) as int]);
         }
     };
@@ -7572,9 +7572,9 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3(
     assert(w3 =~= concat(left, concat(inv_bj1, right)));
 }
 
-/// For the RI+FR overlap case with inverted relator, a_j=[], prove that w1 and w3 differ
-/// only by insertion of b_j (which is trivial by the isomorphism since a_j=[]).
-/// This establishes equiv_in_presentation(data.base, w1, w3) for the inverted overlap case.
+///  For the RI+FR overlap case with inverted relator, a_j=[], prove that w1 and w3 differ
+///  only by insertion of b_j (which is trivial by the isomorphism since a_j=[]).
+///  This establishes equiv_in_presentation(data.base, w1, w3) for the inverted overlap case.
 proof fn lemma_overlap_ri_fr_w1_equiv_w3_inverted(
     data: HNNData,
     w1: Word, w2: Word, w3: Word,
@@ -7590,10 +7590,10 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_inverted(
         ri1 as int >= data.base.relators.len(),
         j1 == (ri1 as int - data.base.relators.len()) as int,
         0 <= j1 < data.associations.len(),
-        inv1, // inverted case
-        data.associations[j1].0.len() == 0, // a_j = []
-        data.associations[j1].1.len() > 0, // b_j ≠ []
-        p2 == p1 + data.associations[j1].1.len(), // FR at the stable pair position
+        inv1, //  inverted case
+        data.associations[j1].0.len() == 0, //  a_j = []
+        data.associations[j1].1.len() > 0, //  b_j ≠ []
+        p2 == p1 + data.associations[j1].1.len(), //  FR at the stable pair position
         ({
             let hp = hnn_presentation(data);
             &&& apply_step(hp, w1, DerivationStep::RelatorInsert { position: p1, relator_index: ri1, inverted: inv1 }) == Some(w2)
@@ -7608,37 +7608,37 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_inverted(
     let r1 = get_relator(hp, ri1, inv1);
     let (a_j1, b_j1) = data.associations[j1];
 
-    // Inverted relator: r1 = b_j + [Inv(n)] + inv(a_j) + [Gen(n)]
-    // With a_j = []: r1 = b_j + [Inv(n), Gen(n)]
+    //  Inverted relator: r1 = b_j + [Inv(n)] + inv(a_j) + [Gen(n)]
+    //  With a_j = []: r1 = b_j + [Inv(n), Gen(n)]
     lemma_hnn_relator_inverted_stable_positions(data, j1);
     let sb = b_j1.len() as int;
 
-    // w2 = w1[0..p1] + r1 + w1[p1..]
+    //  w2 = w1[0..p1] + r1 + w1[p1..]
     assert(w2 =~= w1.subrange(0, p1) + r1 + w1.subrange(p1, w1.len() as int));
     assert(a_j1 =~= Seq::<Symbol>::empty());
     assert(r1.len() == sb + 2) by {
         assert(r1.len() == 2 + a_j1.len() + b_j1.len());
     };
 
-    // FR at p2 = p1 + sb removes [Inv(n), Gen(n)] inside the relator
-    // w3 = w2[0..p2] + w2[p2+2..]
-    // r1[sb+2..] is empty (r1_len = sb+2), so:
-    // w3 = w1[0..p1] + b_j + w1[p1..]
+    //  FR at p2 = p1 + sb removes [Inv(n), Gen(n)] inside the relator
+    //  w3 = w2[0..p2] + w2[p2+2..]
+    //  r1[sb+2..] is empty (r1_len = sb+2), so:
+    //  w3 = w1[0..p1] + b_j + w1[p1..]
 
     let left = w1.subrange(0, p1);
     let right = w1.subrange(p1, w1.len() as int);
 
     assert(w1 =~= left + right);
 
-    // Prove b_j ≡ ε in base group using isomorphism (a_j = [] implies b_j ≡ ε)
+    //  Prove b_j ≡ ε in base group using isomorphism (a_j = [] implies b_j ≡ ε)
     lemma_aj_empty_bj_trivial(data, j1);
 
-    // Use lemma_insert_trivial_equiv: left·right ≡ left·b_j·right
+    //  Use lemma_insert_trivial_equiv: left·right ≡ left·b_j·right
     reveal(presentation_valid);
     assert(word_valid(b_j1, n)) by { reveal(hnn_data_valid); };
     lemma_insert_trivial_equiv(data.base, left, right, b_j1);
 
-    // Show w3 =~= left + b_j + right
+    //  Show w3 =~= left + b_j + right
     assert forall|k: int| 0 <= k < w3.len() implies w3[k] == (left + b_j1 + right)[k] by {
         if k < p1 {
             assert(w3[k] == w2[k]);
@@ -7658,7 +7658,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_inverted(
     assert(w3 =~= concat(left, concat(b_j1, right)));
 }
 
-/// Left boundary inverted, b_j=[]: proves equiv(w1, w3) by inserting inv(a_j) ≡ ε.
+///  Left boundary inverted, b_j=[]: proves equiv(w1, w3) by inserting inv(a_j) ≡ ε.
 proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
     data: HNNData,
     w1: Word, w2: Word, w3: Word,
@@ -7675,7 +7675,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
         j1 == (ri1 as int - data.base.relators.len()) as int,
         0 <= j1 < data.associations.len(),
         inv1,
-        data.associations[j1].1.len() == 0, // b_j = []
+        data.associations[j1].1.len() == 0, //  b_j = []
         p2 == p1 - 1,
         ({
             let hp = hnn_presentation(data);
@@ -7699,7 +7699,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
     assert(has_cancellation_at(w2, p2));
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + 2, w2.len() as int));
 
-    // Inverted relator structure with b_j=[]: r1 = [Inv(n)] + inv(a_j) + [Gen(n)]
+    //  Inverted relator structure with b_j=[]: r1 = [Inv(n)] + inv(a_j) + [Gen(n)]
     assert(b_j1 =~= Seq::<Symbol>::empty());
     assert(r1 =~= Seq::<Symbol>::empty() + seq![stable_letter_inv(data)]
         + inv_aj + seq![stable_letter(data)]);
@@ -7708,7 +7708,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
         assert(r1.len() == 2 + a_j1.len() + b_j1.len());
     };
 
-    // b_j=[] → a_j ≡ ε → inv(a_j) ≡ ε
+    //  b_j=[] → a_j ≡ ε → inv(a_j) ≡ ε
     assert(b_j1 =~= empty_word()) by { assert(b_j1.len() == 0); };
     lemma_empty_association_implies_trivial_rev(data, j1);
     reveal(presentation_valid);
@@ -7723,43 +7723,43 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_left_inv(
 
     lemma_insert_trivial_equiv(data.base, left, gen_n_seq + right, inv_aj);
 
-    // w3 = w2[0..p1-1] + w2[p1+1..] = left + r1[1..] + right
-    // r1[1..] = inv(a_j) + [Gen(n)]
+    //  w3 = w2[0..p1-1] + w2[p1+1..] = left + r1[1..] + right
+    //  r1[1..] = inv(a_j) + [Gen(n)]
     assert forall|k: int| 0 <= k < w3.len() implies
         w3[k] == (left + inv_aj + gen_n_seq + right)[k] by {
         if k < p1 - 1 {
             assert(w3[k] == w2[k]);
             assert(w2[k] == w1[k]);
         } else if k < p1 - 1 + inv_aj.len() as int {
-            // inv(a_j) region: w3[k] = w2[k+2] = r1[k+2-p1] = r1[1 + (k-(p1-1))]
-            // = inv_aj[k-(p1-1)]
+            //  inv(a_j) region: w3[k] = w2[k+2] = r1[k+2-p1] = r1[1 + (k-(p1-1))]
+            //  = inv_aj[k-(p1-1)]
             assert(w3[k] == w2[(k + 2) as int]);
             let ridx = ((k + 2) - p1) as int;
             assert(w2[(k + 2) as int] == r1[ridx]);
-            // r1 = [Inv(n)] + inv_aj + [Gen(n)]. ridx = k-p1+2 >= 1.
-            // ridx-1 = k-p1+1 = k-(p1-1). For k < p1-1+inv_aj.len(): ridx-1 < inv_aj.len().
+            //  r1 = [Inv(n)] + inv_aj + [Gen(n)]. ridx = k-p1+2 >= 1.
+            //  ridx-1 = k-p1+1 = k-(p1-1). For k < p1-1+inv_aj.len(): ridx-1 < inv_aj.len().
             assert(ridx >= 1);
             assert(r1[ridx] == inv_aj[(ridx - 1) as int]);
         } else if k == p1 - 1 + inv_aj.len() as int {
-            // Gen(n) position: w3[k] = w2[k+2] = r1[k+2-p1] = r1[1+inv_aj.len()] = Gen(n)
+            //  Gen(n) position: w3[k] = w2[k+2] = r1[k+2-p1] = r1[1+inv_aj.len()] = Gen(n)
             assert(w3[k] == w2[(k + 2) as int]);
             let ridx = ((k + 2) - p1) as int;
             assert(w2[(k + 2) as int] == r1[ridx]);
             assert(ridx == 1 + inv_aj.len() as int);
         } else {
-            // right region: w3[k] = w2[k+2], k+2 >= p1+r1_len
+            //  right region: w3[k] = w2[k+2], k+2 >= p1+r1_len
             assert(w3[k] == w2[(k + 2) as int]);
         }
     };
     assert(w3 =~= left + inv_aj + gen_n_seq + right);
 
-    // Connect to the concat forms used by lemma_insert_trivial_equiv
+    //  Connect to the concat forms used by lemma_insert_trivial_equiv
     assert(concat(left, gen_n_seq + right) =~= w1);
     assert(concat(left, concat(inv_aj, gen_n_seq + right)) =~= left + inv_aj + gen_n_seq + right);
     assert(concat(left, concat(inv_aj, gen_n_seq + right)) =~= w3);
 }
 
-/// Right boundary non-inverted, b_j=[]: proves equiv(w1, w3) by inserting a_j ≡ ε.
+///  Right boundary non-inverted, b_j=[]: proves equiv(w1, w3) by inserting a_j ≡ ε.
 proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_right_noninv(
     data: HNNData,
     w1: Word, w2: Word, w3: Word,
@@ -7776,7 +7776,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_right_noninv(
         j1 == (ri1 as int - data.base.relators.len()) as int,
         0 <= j1 < data.associations.len(),
         !inv1,
-        data.associations[j1].1.len() == 0, // b_j = []
+        data.associations[j1].1.len() == 0, //  b_j = []
         ({
             let hp = hnn_presentation(data);
             let r1 = get_relator(hp, ri1, inv1);
@@ -7800,7 +7800,7 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_right_noninv(
     assert(has_cancellation_at(w2, p2));
     assert(w3 =~= w2.subrange(0, p2) + w2.subrange(p2 + 2, w2.len() as int));
 
-    // b_j=[] → a_j ≡ ε
+    //  b_j=[] → a_j ≡ ε
     assert(b_j1 =~= empty_word()) by { assert(b_j1.len() == 0); };
     lemma_empty_association_implies_trivial_rev(data, j1);
     reveal(presentation_valid);
@@ -7836,4 +7836,4 @@ proof fn lemma_overlap_ri_fr_w1_equiv_w3_boundary_right_noninv(
     assert(w3 =~= concat(left + inv_n_seq, concat(a_j1, right)));
 }
 
-} // verus!
+} //  verus!

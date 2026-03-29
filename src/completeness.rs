@@ -9,9 +9,9 @@ use crate::presentation::*;
 use crate::todd_coxeter::*;
 use crate::finite::coset_table_complete;
 
-// ─── Column/validity helpers ─────────────────────────────────────────────────
+//  ─── Column/validity helpers ─────────────────────────────────────────────────
 
-/// inverse_column(symbol_to_column(s)) == symbol_to_column(inverse_symbol(s)).
+///  inverse_column(symbol_to_column(s)) == symbol_to_column(inverse_symbol(s)).
 pub proof fn lemma_inverse_column_symbol(s: Symbol)
     ensures
         inverse_column(symbol_to_column(s)) == symbol_to_column(inverse_symbol(s)),
@@ -28,7 +28,7 @@ pub proof fn lemma_inverse_column_symbol(s: Symbol)
     }
 }
 
-/// symbol_valid implies symbol_to_column is in range.
+///  symbol_valid implies symbol_to_column is in range.
 pub proof fn lemma_valid_symbol_column(s: Symbol, num_gens: nat)
     requires symbol_valid(s, num_gens),
     ensures symbol_to_column(s) < 2 * num_gens,
@@ -43,7 +43,7 @@ pub proof fn lemma_valid_symbol_column(s: Symbol, num_gens: nat)
     }
 }
 
-/// word_valid implies all symbol_to_column values are in range.
+///  word_valid implies all symbol_to_column values are in range.
 pub proof fn lemma_valid_word_columns(w: Word, num_gens: nat)
     requires word_valid(w, num_gens),
     ensures forall|k: int| 0 <= k < w.len() ==> symbol_to_column(w[k]) < 2 * num_gens,
@@ -53,9 +53,9 @@ pub proof fn lemma_valid_word_columns(w: Word, num_gens: nat)
     by { lemma_valid_symbol_column(w[k], num_gens); }
 }
 
-// ─── Trace completeness: complete table → trace always Some ──────────────────
+//  ─── Trace completeness: complete table → trace always Some ──────────────────
 
-/// If the table is complete and wf, trace_word always returns Some.
+///  If the table is complete and wf, trace_word always returns Some.
 pub proof fn lemma_trace_complete(t: CosetTable, c: nat, w: Word)
     requires
         coset_table_wf(t),
@@ -79,9 +79,9 @@ pub proof fn lemma_trace_complete(t: CosetTable, c: nat, w: Word)
     }
 }
 
-// ─── Helper: trace_word_split ────────────────────────────────────────────────
+//  ─── Helper: trace_word_split ────────────────────────────────────────────────
 
-/// Splitting a word at position pos: trace w = trace prefix then suffix.
+///  Splitting a word at position pos: trace w = trace prefix then suffix.
 pub proof fn lemma_trace_word_split(t: CosetTable, c: nat, w: Word, pos: int)
     requires
         coset_table_wf(t),
@@ -97,9 +97,9 @@ pub proof fn lemma_trace_word_split(t: CosetTable, c: nat, w: Word, pos: int)
     assert(concat(w.subrange(0, pos), w.subrange(pos, w.len() as int)) =~= w);
 }
 
-// ─── Lemma 1: trace of inverse pair cancels ─────────────────────────────────
+//  ─── Lemma 1: trace of inverse pair cancels ─────────────────────────────────
 
-/// Tracing a single symbol from coset c.
+///  Tracing a single symbol from coset c.
 pub proof fn lemma_trace_single(t: CosetTable, c: nat, s: Symbol)
     requires
         coset_table_wf(t),
@@ -115,14 +115,14 @@ pub proof fn lemma_trace_single(t: CosetTable, c: nat, s: Symbol)
     assert(w.len() == 1);
     assert(w.first() == s);
     assert(w.drop_first() =~= Seq::<Symbol>::empty());
-    // By completeness, table[c][col] is Some
+    //  By completeness, table[c][col] is Some
     assert(t.table[c as int][col as int] is Some);
     let d = t.table[c as int][col as int].unwrap();
-    // trace_word(t, c, [s]) = trace_word(t, d, []) = Some(d)
+    //  trace_word(t, c, [s]) = trace_word(t, d, []) = Some(d)
     assert(trace_word(t, d, Seq::<Symbol>::empty()) == Some(d));
 }
 
-/// Tracing [s, inv(s)] returns to the starting coset.
+///  Tracing [s, inv(s)] returns to the starting coset.
 pub proof fn lemma_trace_inverse_pair(t: CosetTable, c: nat, s: Symbol)
     requires
         coset_table_wf(t),
@@ -143,19 +143,19 @@ pub proof fn lemma_trace_inverse_pair(t: CosetTable, c: nat, s: Symbol)
     let inv_col = symbol_to_column(inv_s);
     assert(t.table[d as int][inv_col as int] == Some(c)) by { reveal(coset_table_consistent); }
 
-    // [s, inv_s] = [s] ++ [inv_s]
+    //  [s, inv_s] = [s] ++ [inv_s]
     assert(seq![s, inv_s] =~= seq![s] + seq![inv_s]);
     lemma_trace_single(t, c, s);
     assert(trace_word(t, c, seq![s]) == Some(d));
     lemma_trace_word_concat(t, c, seq![s], seq![inv_s]);
-    // trace(c, [s, inv_s]) = trace(d, [inv_s])
+    //  trace(c, [s, inv_s]) = trace(d, [inv_s])
     lemma_trace_single(t, d, inv_s);
     assert(trace_word(t, d, seq![inv_s]) == Some(c));
 }
 
-// ─── Lemma 2: free reduction preserves trace ────────────────────────────────
+//  ─── Lemma 2: free reduction preserves trace ────────────────────────────────
 
-/// Removing an inverse pair at position pos preserves trace_word.
+///  Removing an inverse pair at position pos preserves trace_word.
 pub proof fn lemma_trace_free_reduce(t: CosetTable, c: nat, w: Word, pos: int)
     requires
         coset_table_wf(t),
@@ -175,30 +175,30 @@ pub proof fn lemma_trace_free_reduce(t: CosetTable, c: nat, w: Word, pos: int)
     assert(pair =~= seq![s, inverse_symbol(s)]);
     assert(w =~= prefix + pair + suffix);
 
-    // prefix symbols valid
+    //  prefix symbols valid
     assert forall|k: int| 0 <= k < prefix.len()
         implies symbol_to_column(prefix[k]) < 2 * t.num_gens
     by { assert(prefix[k] == w[k]); }
 
-    // trace prefix
+    //  trace prefix
     lemma_trace_complete(t, c, prefix);
     let d = trace_word(t, c, prefix).unwrap();
 
-    // trace(c, w) via split at pos
+    //  trace(c, w) via split at pos
     lemma_trace_word_split(t, c, w, pos);
     let tail = w.subrange(pos, w.len() as int);
     assert(tail =~= pair + suffix);
 
-    // pair cancels
+    //  pair cancels
     lemma_trace_inverse_pair(t, d, s);
     lemma_trace_word_concat(t, d, pair, suffix);
 
-    // trace(c, reduce_at(w, pos)) = trace(c, prefix ++ suffix) = trace(d, suffix)
+    //  trace(c, reduce_at(w, pos)) = trace(c, prefix ++ suffix) = trace(d, suffix)
     assert(reduce_at(w, pos) =~= prefix + suffix);
     lemma_trace_word_concat(t, c, prefix, suffix);
 }
 
-/// Inserting an inverse pair preserves trace_word.
+///  Inserting an inverse pair preserves trace_word.
 pub proof fn lemma_trace_free_expand(t: CosetTable, c: nat, w: Word, pos: int, s: Symbol)
     requires
         coset_table_wf(t),
@@ -227,19 +227,19 @@ pub proof fn lemma_trace_free_expand(t: CosetTable, c: nat, w: Word, pos: int, s
 
     lemma_trace_inverse_pair(t, d, s);
 
-    // expanded = prefix ++ pair ++ suffix, pair traces d → d
-    // w = prefix ++ suffix
-    // So trace(c, expanded) = trace(c, w)
+    //  expanded = prefix ++ pair ++ suffix, pair traces d → d
+    //  w = prefix ++ suffix
+    //  So trace(c, expanded) = trace(c, w)
     assert(w =~= prefix + suffix);
-    // Use symmetry: trace(c, prefix ++ suffix) = trace(c, prefix ++ pair ++ suffix)
-    // This is lemma_trace_insert_cancel but backwards.
-    // insert_cancel: trace(c, prefix ++ mid ++ suffix) = trace(c, prefix ++ suffix)
+    //  Use symmetry: trace(c, prefix ++ suffix) = trace(c, prefix ++ pair ++ suffix)
+    //  This is lemma_trace_insert_cancel but backwards.
+    //  insert_cancel: trace(c, prefix ++ mid ++ suffix) = trace(c, prefix ++ suffix)
     lemma_trace_insert_cancel(t, c, prefix, pair, suffix);
 }
 
-// ─── Lemma 3: relator insertion/deletion preserves trace ─────────────────────
+//  ─── Lemma 3: relator insertion/deletion preserves trace ─────────────────────
 
-/// If trace(start, w) = Some(end), then trace(end, inverse_word(w)) = Some(start).
+///  If trace(start, w) = Some(end), then trace(end, inverse_word(w)) = Some(start).
 pub proof fn lemma_trace_inverse_word(t: CosetTable, start: nat, w: Word)
     requires
         coset_table_wf(t),
@@ -269,23 +269,23 @@ pub proof fn lemma_trace_inverse_word(t: CosetTable, start: nat, w: Word)
         lemma_trace_complete(t, d, rest);
         let end_coset = trace_word(t, start, w).unwrap();
 
-        // IH: trace(end, inv(rest)) = Some(d)
+        //  IH: trace(end, inv(rest)) = Some(d)
         lemma_trace_inverse_word(t, d, rest);
 
-        // inv(w) = inv(rest) ++ [inv(s)]
+        //  inv(w) = inv(rest) ++ [inv(s)]
         assert(inverse_word(w) =~= inverse_word(rest) + seq![inverse_symbol(s)]);
 
-        // trace(end, inv(w)) = trace(d, [inv(s)])
+        //  trace(end, inv(w)) = trace(d, [inv(s)])
         lemma_trace_word_concat(t, end_coset, inverse_word(rest), seq![inverse_symbol(s)]);
 
-        // table[d][inv_col] = Some(start) by consistency
+        //  table[d][inv_col] = Some(start) by consistency
         lemma_inverse_column_symbol(s);
         let inv_s = inverse_symbol(s);
         lemma_trace_single(t, d, inv_s);
     }
 }
 
-/// The inverse of a relator traces back to the starting coset.
+///  The inverse of a relator traces back to the starting coset.
 proof fn lemma_trace_inverse_relator(t: CosetTable, p: Presentation, c: nat, rel_idx: nat)
     requires
         coset_table_wf(t),
@@ -302,17 +302,17 @@ proof fn lemma_trace_inverse_relator(t: CosetTable, p: Presentation, c: nat, rel
     reveal(relator_closed);
     reveal(presentation_valid);
     let r = p.relators[rel_idx as int];
-    // trace(c, r) = Some(c) by relator_closed
+    //  trace(c, r) = Some(c) by relator_closed
     assert(trace_word(t, c, r) == Some(c));
-    // r is word_valid → columns valid
+    //  r is word_valid → columns valid
     assert(word_valid(r, p.num_generators));
     lemma_valid_word_columns(r, p.num_generators);
-    // By lemma_trace_inverse_word: trace(c, inv(r)) = Some(c)
+    //  By lemma_trace_inverse_word: trace(c, inv(r)) = Some(c)
     lemma_trace_inverse_word(t, c, r);
 }
 
-/// Helper: trace(c, prefix ++ mid ++ suffix) = trace(c, prefix ++ suffix)
-/// when trace(d, mid) = Some(d) and d = trace(c, prefix).unwrap().
+///  Helper: trace(c, prefix ++ mid ++ suffix) = trace(c, prefix ++ suffix)
+///  when trace(d, mid) = Some(d) and d = trace(c, prefix).unwrap().
 proof fn lemma_trace_insert_cancel(
     t: CosetTable, c: nat,
     prefix: Word, mid: Word, suffix: Word,
@@ -332,7 +332,7 @@ proof fn lemma_trace_insert_cancel(
     lemma_trace_word_concat(t, c, prefix, suffix);
 }
 
-/// Inserting a relator at position pos preserves trace_word.
+///  Inserting a relator at position pos preserves trace_word.
 pub proof fn lemma_trace_relator_insert(
     t: CosetTable, p: Presentation, c: nat, w: Word,
     pos: int, rel_idx: nat, inverted: bool,
@@ -376,7 +376,7 @@ pub proof fn lemma_trace_relator_insert(
     lemma_trace_insert_cancel(t, c, prefix, r, suffix);
 }
 
-/// Deleting a relator from position pos preserves trace_word.
+///  Deleting a relator from position pos preserves trace_word.
 pub proof fn lemma_trace_relator_delete(
     t: CosetTable, p: Presentation, c: nat, w: Word,
     pos: int, rel_idx: nat, inverted: bool,
@@ -425,14 +425,14 @@ pub proof fn lemma_trace_relator_delete(
         assert(trace_word(t, d, r) == Some(d));
     }
 
-    // w = prefix ++ mid ++ suffix, mid traces d → d
-    // So trace(c, w) = trace(c, prefix ++ suffix)
+    //  w = prefix ++ mid ++ suffix, mid traces d → d
+    //  So trace(c, w) = trace(c, prefix ++ suffix)
     lemma_trace_insert_cancel(t, c, prefix, mid, suffix);
 }
 
-// ─── Lemma 4: single derivation step preserves trace ─────────────────────────
+//  ─── Lemma 4: single derivation step preserves trace ─────────────────────────
 
-/// A single derivation step preserves trace_word.
+///  A single derivation step preserves trace_word.
 pub proof fn lemma_trace_single_step(
     t: CosetTable, p: Presentation, c: nat,
     w: Word, step: DerivationStep, w_next: Word,
@@ -461,7 +461,7 @@ pub proof fn lemma_trace_single_step(
             let pair = seq![symbol, inverse_symbol(symbol)];
             let expanded = w.subrange(0, position) + pair + w.subrange(position, w.len() as int);
             assert(w_next =~= expanded);
-            // symbol is valid since w_next is word_valid and w_next[position] == symbol
+            //  symbol is valid since w_next is word_valid and w_next[position] == symbol
             assert(w_next[position] == symbol) by {
                 assert((w.subrange(0, position) + pair).len() == position + 2);
                 assert((w.subrange(0, position) + pair)[position] == pair[0]);
@@ -480,10 +480,10 @@ pub proof fn lemma_trace_single_step(
     }
 }
 
-// ─── Step preserves word_valid ───────────────────────────────────────────────
+//  ─── Step preserves word_valid ───────────────────────────────────────────────
 
-/// A single step preserves word_valid.
-/// Now fully proved: apply_step's FreeExpand guard ensures symbol_valid.
+///  A single step preserves word_valid.
+///  Now fully proved: apply_step's FreeExpand guard ensures symbol_valid.
 proof fn lemma_step_preserves_word_valid(
     p: Presentation, w: Word, step: DerivationStep, w_next: Word,
 )
@@ -506,7 +506,7 @@ proof fn lemma_step_preserves_word_valid(
             }
         },
         DerivationStep::FreeExpand { position, symbol } => {
-            // apply_step guard ensures symbol_valid(symbol, n)
+            //  apply_step guard ensures symbol_valid(symbol, n)
             lemma_inverse_preserves_valid(symbol, n);
             let pfx = w.subrange(0, position);
             let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
@@ -545,9 +545,9 @@ proof fn lemma_step_preserves_word_valid(
     }
 }
 
-// ─── Lemma 5: full derivation preserves trace ───────────────────────────────
+//  ─── Lemma 5: full derivation preserves trace ───────────────────────────────
 
-/// A full derivation preserves trace_word.
+///  A full derivation preserves trace_word.
 pub proof fn lemma_trace_derivation(
     t: CosetTable, p: Presentation, c: nat,
     steps: Seq<DerivationStep>, w_start: Word,
@@ -572,23 +572,23 @@ pub proof fn lemma_trace_derivation(
         let w_next = apply_step(p, w_start, first_step).unwrap();
         let rest = steps.drop_first();
 
-        // w_next is word_valid
+        //  w_next is word_valid
         lemma_step_preserves_word_valid(p, w_start, first_step, w_next);
 
-        // Single step: trace(c, w_start) == trace(c, w_next)
+        //  Single step: trace(c, w_start) == trace(c, w_next)
         lemma_trace_single_step(t, p, c, w_start, first_step, w_next);
 
-        // Recurse
+        //  Recurse
         if rest.len() > 0 {
             lemma_trace_derivation(t, p, c, rest, w_next);
         }
     }
 }
 
-// ─── Main Theorem ────────────────────────────────────────────────────────────
+//  ─── Main Theorem ────────────────────────────────────────────────────────────
 
-/// If two words are equivalent in the presented group, they trace identically
-/// through any valid, complete, consistent, relator-closed coset table.
+///  If two words are equivalent in the presented group, they trace identically
+///  through any valid, complete, consistent, relator-closed coset table.
 pub proof fn lemma_trace_respects_equiv(
     t: CosetTable, p: Presentation, c: nat, w1: Word, w2: Word,
 )
@@ -611,4 +611,4 @@ pub proof fn lemma_trace_respects_equiv(
     lemma_trace_derivation(t, p, c, d.steps, w1);
 }
 
-} // verus!
+} //  verus!
