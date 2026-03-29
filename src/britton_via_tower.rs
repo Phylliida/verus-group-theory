@@ -7229,9 +7229,17 @@ proof fn lemma_hnn_relator_decompose(
     lemma_textbook_act_concat(data, t_inv_word, a_i, h_psi, syls_psi);
     //  act(t_inv_word, (concat(a_i, h_psi), syls_psi)) = psi_p_inv(concat(a_i, h_psi), syls_psi)
     //  Help Z3 see: act([Inv(ng)], h, syls) = psi_p_inv(h, syls)
+    //  Chain: act(r) → act(A, h', syls) → act(B, h_psi, syls_psi) → act(t_inv, h2, syls_psi) → psi_p_inv
+    //  Help Z3 see act(t_word, h', syls) = (h_psi, syls_psi)
+    assert(textbook_act_hnn(data, t_word, h_prime, syls) == (h_psi, syls_psi)) by {
+        reveal_with_fuel(textbook_act_hnn, 2);
+    }
     let h2 = concat(a_i, h_psi);
+    //  Help Z3 see act(t_inv_word, h2, syls_psi) = psi_p_inv(h2, syls_psi)
     assert(textbook_act_hnn(data, t_inv_word, h2, syls_psi)
-        == textbook_psi_p_inv(data, h2, syls_psi));
+        == textbook_psi_p_inv(data, h2, syls_psi)) by {
+        reveal_with_fuel(textbook_act_hnn, 2);
+    }
 }
 
 /// Inner helper: assembles the relator proof using the conjugation chain + Lemma 0b + Tier 1b.
