@@ -2205,7 +2205,7 @@ proof fn lemma_a_rcoset_h_min_len_equiv(
 ///  RIGHT A-coset h-part equiv invariance: if g₁ ≡ g₂ and reps match, h-parts match.
 ///  Mirrors lemma_b_rcoset_h_equiv_invariant for A-cosets.
 #[verifier::rlimit(40)]
-proof fn lemma_a_rcoset_h_equiv_invariant(
+pub proof fn lemma_a_rcoset_h_equiv_invariant(
     data: AmalgamatedData, g1: Word, g2: Word,
     h_witness1: Word, h_witness2: Word,
 )
@@ -3446,7 +3446,7 @@ proof fn lemma_b_rcoset_h_min_len_equiv_general(
 
 ///  B-coset h-part equiv invariant for GENERAL reps (mirrors A-coset version).
 #[verifier::rlimit(60)]
-proof fn lemma_b_rcoset_h_equiv_invariant_general(
+pub proof fn lemma_b_rcoset_h_equiv_invariant_general(
     data: AmalgamatedData, g1: Word, g2: Word,
     h_witness1: Word, h_witness2: Word,
 )
@@ -9108,7 +9108,7 @@ proof fn lemma_same_a_rcoset_symmetric(
 }
 
 ///  Right A-coset rep invariance: same_a_rcoset → same a_rcoset_rep.
-proof fn lemma_a_rcoset_rep_invariant(
+pub proof fn lemma_a_rcoset_rep_invariant(
     data: AmalgamatedData, g1: Word, g2: Word,
 )
     requires
@@ -9474,7 +9474,7 @@ proof fn lemma_rcoset_decompose_subgroup_times_rep(
 }
 
 ///  If g1 ≡ g2, then same_a_rcoset(g1, g2).
-proof fn lemma_same_a_rcoset_from_equiv(
+pub proof fn lemma_same_a_rcoset_from_equiv(
     data: AmalgamatedData, g1: Word, g2: Word,
 )
     requires
@@ -10340,7 +10340,7 @@ proof fn lemma_same_b_rcoset_symmetric(
 }
 
 ///  If g1 ≡ g2 in G₂, then same_b_rcoset(g1, g2).
-proof fn lemma_same_b_rcoset_from_equiv(
+pub proof fn lemma_same_b_rcoset_from_equiv(
     data: AmalgamatedData, g1: Word, g2: Word,
 )
     requires
@@ -10452,7 +10452,7 @@ proof fn lemma_b_rcoset_word_rank_transfer(
 }
 
 ///  B-rcoset rep invariance: same_b_rcoset → same b_rcoset_rep.
-proof fn lemma_b_rcoset_rep_invariant(
+pub proof fn lemma_b_rcoset_rep_invariant(
     data: AmalgamatedData, g1: Word, g2: Word,
 )
     requires

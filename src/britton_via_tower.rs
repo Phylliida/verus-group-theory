@@ -5894,7 +5894,204 @@ proof fn lemma_p_reduced_initial_no_collapse(data: HNNData, w: Word)
 //
 //  Then: textbook_act_hnn invariant under h-equivalence at each step
 //  → w ≡ ε implies textbook_act_hnn(w, ε, []).1 = []
-//  TODO: formalize this chain
+//  ---- Tier 0: h-equivalence (Miller "routine check" foundation) ----
+//
+//  Key insight: tower_presentation(data, 0) = data.base, so at level 0 both
+//  afp.p1 and afp.p2 are data.base. All coset decomposition happens in data.base.
+
+/// Lemma 0a: ψ(p) respects base-equivalence of h.
+/// If h1 ≡ h2 in the base group, then textbook_psi_p gives identical output.
+proof fn lemma_psi_p_respects_base_equiv(
+    data: HNNData, h1: Word, h2: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(h1, data.base.num_generators),
+        word_valid(h2, data.base.num_generators),
+        equiv_in_presentation(data.base, h1, h2),
+    ensures
+        textbook_psi_p(data, h1, syls) == textbook_psi_p(data, h2, syls),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+    //  afp.p2 = data.base (by definition of tower_afp_data)
+
+    //  Step 1: same B-coset
+    crate::normal_form_afp_textbook::lemma_same_b_rcoset_from_equiv(afp, h1, h2);
+
+    //  Step 2: same rep
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_invariant(afp, h1, h2);
+
+    //  Step 3: same h_id — need witnesses
+    //  From b_rcoset_rep_props: same_b_rcoset(g, rep) → in_right_subgroup → in_generated_subgroup
+    //  → subgroup_to_k_word gives the witness
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h1);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h2);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::b_rcoset_rep(afp, h1), ng);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::b_rcoset_rep(afp, h2), ng);
+    crate::word::lemma_concat_word_valid(
+        h1, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h1)), ng);
+    crate::word::lemma_concat_word_valid(
+        h2, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h2)), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, crate::normal_form_afp_textbook::b_words(afp),
+        concat(h1, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h1))));
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, crate::normal_form_afp_textbook::b_words(afp),
+        concat(h2, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h2))));
+    assert(crate::normal_form_afp_textbook::b_words(afp).len()
+        == crate::normal_form_afp_textbook::k_size(afp));
+    let hw1: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::b_words(afp), hw),
+            concat(h1, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h1))));
+    let hw2: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::b_words(afp), hw),
+            concat(h2, inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h2))));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_h_equiv_invariant_general(
+        afp, h1, h2, hw1, hw2);
+    //  Now b_rcoset_h(afp, h1) =~= b_rcoset_h(afp, h2)
+    //  Same rep + same h_id → same phi_inv_h → same branch → same output
+}
+
+/// Lemma 0b: ψ(p⁻¹) respects base-equivalence of h.
+/// At level 0, afp.p1 = tower_presentation(data, 0) = data.base,
+/// so A-coset decomposition also uses data.base equivalence.
+proof fn lemma_psi_p_inv_respects_base_equiv(
+    data: HNNData, h1: Word, h2: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(h1, data.base.num_generators),
+        word_valid(h2, data.base.num_generators),
+        equiv_in_presentation(data.base, h1, h2),
+    ensures
+        textbook_psi_p_inv(data, h1, syls) == textbook_psi_p_inv(data, h2, syls),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+    //  afp.p1 = tower_presentation(data, 0) = data.base (since n == 0)
+
+    //  Step 1: same A-coset
+    crate::normal_form_afp_textbook::lemma_same_a_rcoset_from_equiv(afp, h1, h2);
+
+    //  Step 2: same rep
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_invariant(afp, h1, h2);
+
+    //  Step 3: same h_id — need witnesses via subgroup_to_k_word
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h1);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h2);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::a_rcoset_rep(afp, h1), ng);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::a_rcoset_rep(afp, h2), ng);
+    crate::word::lemma_concat_word_valid(
+        h1, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h1)), ng);
+    crate::word::lemma_concat_word_valid(
+        h2, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h2)), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, crate::normal_form_afp_textbook::a_words(afp),
+        concat(h1, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h1))));
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, crate::normal_form_afp_textbook::a_words(afp),
+        concat(h2, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h2))));
+    assert(crate::normal_form_afp_textbook::a_words(afp).len()
+        == crate::normal_form_afp_textbook::k_size(afp));
+    let hw1: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::a_words(afp), hw),
+            concat(h1, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h1))));
+    let hw2: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::a_words(afp), hw),
+            concat(h2, inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, h2))));
+    crate::normal_form_afp_textbook::lemma_a_rcoset_h_equiv_invariant(
+        afp, h1, h2, hw1, hw2);
+    //  Now a_rcoset_h(afp, h1) =~= a_rcoset_h(afp, h2)
+    //  Same rep + same h_id → same phi_h → same branch → same output
+}
+
+/// Lemma 0c: textbook_act_hnn respects base-equivalence of h.
+/// Syllables match exactly; output h values are base-equivalent.
+/// (NOT full equality — when w is empty, act returns (h, syls) and h1 ≠ h2.)
+proof fn lemma_act_hnn_respects_base_equiv(
+    data: HNNData, w: Word, h1: Word, h2: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        word_valid(h1, data.base.num_generators),
+        word_valid(h2, data.base.num_generators),
+        equiv_in_presentation(data.base, h1, h2),
+    ensures
+        textbook_act_hnn(data, w, h1, syls).1
+            == textbook_act_hnn(data, w, h2, syls).1,
+        equiv_in_presentation(data.base,
+            textbook_act_hnn(data, w, h1, syls).0,
+            textbook_act_hnn(data, w, h2, syls).0),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        if s == Symbol::Gen(ng) {
+            //  ψ(p): Lemma 0a gives identical output → identical recursive input
+            lemma_psi_p_respects_base_equiv(data, h1, h2, syls);
+            let (h_new, syls_new) = textbook_psi_p(data, h1, syls);
+            assert(textbook_psi_p(data, h2, syls) == (h_new, syls_new));
+            //  Both sides recurse with identical state → identical output
+            //  Output h values are equal, hence base-equiv by reflexivity
+            lemma_equiv_refl(data.base, textbook_act_hnn(data, w.drop_last(), h_new, syls_new).0);
+        } else if s == Symbol::Inv(ng) {
+            //  ψ(p⁻¹): Lemma 0b gives identical output
+            lemma_psi_p_inv_respects_base_equiv(data, h1, h2, syls);
+            let (h_new, syls_new) = textbook_psi_p_inv(data, h1, syls);
+            assert(textbook_psi_p_inv(data, h2, syls) == (h_new, syls_new));
+            lemma_equiv_refl(data.base, textbook_act_hnn(data, w.drop_last(), h_new, syls_new).0);
+        } else {
+            //  Base symbol: concat([s], h1) ≡ concat([s], h2), recurse
+            let s_word: Word = Seq::new(1, |_i: int| s);
+            let new_h1 = concat(s_word, h1);
+            let new_h2 = concat(s_word, h2);
+
+            //  s is a base symbol (not stable) → symbol_valid(s, ng)
+            assert(generator_index(s) < ng) by {
+                match s {
+                    Symbol::Gen(i) => { assert(i != ng); }
+                    Symbol::Inv(i) => { assert(i != ng); }
+                }
+            }
+            assert(word_valid(s_word, ng)) by {
+                assert forall|k: int| 0 <= k < s_word.len()
+                    implies symbol_valid(#[trigger] s_word[k], ng)
+                by { }
+            }
+            crate::word::lemma_concat_word_valid(s_word, h1, ng);
+            crate::word::lemma_concat_word_valid(s_word, h2, ng);
+            lemma_equiv_concat_right(data.base, s_word, h1, h2);
+
+            assert(word_valid(w.drop_last(), ng + 1)) by {
+                assert forall|k: int| 0 <= k < w.drop_last().len()
+                    implies symbol_valid(#[trigger] w.drop_last()[k], ng + 1)
+                by { assert(w.drop_last()[k] == w[k]); }
+            }
+
+            lemma_act_hnn_respects_base_equiv(data, w.drop_last(), new_h1, new_h2, syls);
+        }
+    } else {
+        //  w empty: act returns (h, syls) directly
+        //  syls match trivially; h1 ≡ h2 by precondition
+    }
+}
 
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
 ///  If w ≡ ε in G* and w has stable letters, then w has a pinch.
