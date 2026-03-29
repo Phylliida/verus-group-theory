@@ -7648,16 +7648,54 @@ proof fn lemma_no_pinch_action_nontrivial(data: HNNData, w: Word)
     lemma_has_stable_implies_count(data, w);
 }
 
+/// Derivation induction: if derivation from w to ε, then act(w, ε, []).1 is empty.
+/// This is Miller's "θ⋆ψ is well-defined": equivalent words give the same action.
+/// Induction on derivation length.
+proof fn lemma_derivation_preserves_syls(
+    data: HNNData,
+    steps: Seq<DerivationStep>,
+    w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        derivation_produces(hnn_presentation(data), steps, w)
+            == Some(empty_word()),
+    ensures
+        textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1
+            =~= Seq::<Syllable>::empty(),
+    decreases steps.len(),
+{
+    if steps.len() == 0 {
+        //  w == ε, act(ε, ε, []) = (ε, []) ✓
+    } else {
+        //  w →step w' →(n-1 steps) ε
+        //  By IH: act(w', ε, []).1 =~= []
+        //  Per-step: act(w, ε, []).1 =~= act(w', ε, []).1
+        //  Therefore: act(w, ε, []).1 =~= []
+        let step = steps.first();
+        let w_next = apply_step(hnn_presentation(data), w, step).unwrap();
+        //  word_valid preserved by step
+        crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
+        //  Recurse: act(w_next, ε, []).1 =~= []
+        lemma_derivation_preserves_syls(data, steps.drop_first(), w_next);
+
+        //  Per-step preservation: act(w, ε, []).1 =~= act(w_next, ε, []).1
+        //  This requires decomposing w at the step position and showing the
+        //  middle (inserted/deleted word) acts trivially. Dispatches to Tiers 0-2.
+        //  PLACEHOLDER: per-step .1 preservation
+        //  (All individual lemmas verified; need step-type dispatch)
+    }
+}
+
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
 ///  If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
 ///  Proof (Miller's direct permutation representation argument):
 ///  1. If w has no pinch: action from (ε, []) gives ≥ 1 syllables (no-collapse)
-///  2. If w ≡ ε: action gives (ε, []) = 0 syllables (well-definedness)
+///  2. If w ≡ ε: derivation induction → action gives 0 syllables
 ///  3. Contradiction: 0 ≥ 1
-///
-///  Step 2 requires the derivation induction (Tier 3b), which is the only
-///  remaining piece. For now, we use the direct no-pinch nontriviality.
 pub proof fn britton_lemma_full(
     data: HNNData, w: Word,
 )
@@ -7675,12 +7713,13 @@ pub proof fn britton_lemma_full(
         lemma_no_pinch_action_nontrivial(data, w);
         //  textbook_act_hnn(w, ε, []).1.len() >= 1
 
-        //  Miller step 2: w ≡ ε → act(w, ε, []) == (ε, []) → syls == 0
-        //  This requires the derivation induction (lemma_equiv_implies_trivial_action)
-        //  which uses Tier 0 (h-equiv), Tier 1 (round-trip), Tier 2 (HNN relator).
-        //  TODO: implement lemma_equiv_implies_trivial_action
-        //  For now: placeholder
-        assert(false); //  PLACEHOLDER: derivation induction (Tier 3b)
+        //  Miller step 2: w ≡ ε → derivation → act(w, ε, []).1 =~= []
+        let d: Derivation = choose|d: Derivation|
+            derivation_valid(hnn_presentation(data), d, w, empty_word());
+        lemma_derivation_preserves_syls(data, d.steps, w);
+        //  textbook_act_hnn(w, ε, []).1 =~= [] → .1.len() == 0
+
+        //  Contradiction: .1.len() >= 1 AND .1.len() == 0
     }
 }
 
