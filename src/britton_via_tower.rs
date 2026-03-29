@@ -7657,7 +7657,6 @@ pub open spec fn hnn_canonical_state(data: HNNData, h: Word, syls: Seq<Syllable>
     &&& word_valid(h, ng)
     &&& (forall|j: int| #![trigger syls[j]] 0 <= j < syls.len() ==> ({
         &&& word_valid(syls[j].rep, ng)
-        &&& !(syls[j].rep =~= empty_word())
         &&& (syls[j].is_left ==>
                 crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls[j].rep)
                     =~= syls[j].rep)
@@ -7780,34 +7779,159 @@ proof fn lemma_act_hnn_h_valid(
     }
 }
 
-/// The action from (ε, []) preserves hnn_canonical_state.
-/// This is the HNN analogue of action_preserves_canonical from the AFP.
+/// Helper: psi_p preserves hnn_canonical_state.
+proof fn lemma_psi_p_preserves_canonical(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_canonical_state(data, h, syls),
+    ensures
+        hnn_canonical_state(data,
+            textbook_psi_p(data, h, syls).0,
+            textbook_psi_p(data, h, syls).1),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+    lemma_psi_p_h_valid_general(data, h, syls);
+    let (h1, syls1) = textbook_psi_p(data, h, syls);
+    let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let is_collapse = rep =~= empty_word() && syls.len() > 0 && syls.first().is_left;
+    if !is_collapse {
+        crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+        crate::normal_form_afp_textbook::lemma_b_rcoset_rep_idempotent(afp, h);
+    }
+    //  Syllable canonicity — split into word_valid + rest for Z3
+    assert forall|j: int| #![trigger syls1[j]] 0 <= j < syls1.len()
+        implies word_valid(syls1[j].rep, ng) by {
+        if !is_collapse {
+            if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
+        } else { assert(syls1[j] == syls[j + 1]); }
+    }
+    assert forall|j: int| #![trigger syls1[j]] 0 <= j < syls1.len()
+        implies (syls1[j].is_left ==>
+                crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls1[j].rep) =~= syls1[j].rep)
+            && (!syls1[j].is_left ==>
+                crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls1[j].rep) =~= syls1[j].rep)
+    by {
+        if !is_collapse {
+            if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
+        } else { assert(syls1[j] == syls[j + 1]); }
+    }
+}
+
+/// Helper: psi_p_inv preserves hnn_canonical_state.
+proof fn lemma_psi_p_inv_preserves_canonical(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_canonical_state(data, h, syls),
+    ensures
+        hnn_canonical_state(data,
+            textbook_psi_p_inv(data, h, syls).0,
+            textbook_psi_p_inv(data, h, syls).1),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+    let (h1, syls1) = textbook_psi_p_inv(data, h, syls);
+    let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    let is_collapse = rep =~= empty_word() && syls.len() > 0 && !syls.first().is_left;
+    if !is_collapse {
+        crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+        crate::normal_form_afp_textbook::lemma_a_rcoset_rep_idempotent(afp, h);
+    }
+    //  h1 word_valid
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(rep, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, crate::normal_form_afp_textbook::a_words(afp),
+        concat(h, inverse_word(rep)));
+    assert(crate::normal_form_afp_textbook::a_words(afp).len()
+        == crate::normal_form_afp_textbook::k_size(afp));
+    let hw: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::a_words(afp), hw),
+            concat(h, inverse_word(rep)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h, hw);
+    let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    crate::benign::lemma_apply_embedding_valid(
+        crate::normal_form_afp_textbook::b_words(afp), h_id, ng);
+    if is_collapse {
+        crate::word::lemma_concat_word_valid(
+            apply_embedding(crate::normal_form_afp_textbook::b_words(afp), h_id),
+            syls.first().rep, ng);
+    }
+    //  Syllable canonicity — split for Z3
+    assert forall|j: int| #![trigger syls1[j]] 0 <= j < syls1.len()
+        implies word_valid(syls1[j].rep, ng) by {
+        if !is_collapse {
+            if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
+        } else { assert(syls1[j] == syls[j + 1]); }
+    }
+    assert forall|j: int| #![trigger syls1[j]] 0 <= j < syls1.len()
+        implies (syls1[j].is_left ==>
+                crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls1[j].rep) =~= syls1[j].rep)
+            && (!syls1[j].is_left ==>
+                crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls1[j].rep) =~= syls1[j].rep)
+    by {
+        if !is_collapse {
+            if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
+        } else { assert(syls1[j] == syls[j + 1]); }
+    }
+}
+
+/// The action preserves hnn_canonical_state (canonical in → canonical out).
+/// HNN analogue of action_preserves_canonical from the AFP (Miller's Ω is closed).
 proof fn lemma_hnn_act_preserves_canonical(
-    data: HNNData, w: Word,
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
 )
     requires
         hnn_data_valid(data),
         word_valid(w, hnn_presentation(data).num_generators),
+        hnn_canonical_state(data, h, syls),
     ensures
         hnn_canonical_state(data,
-            textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).0,
-            textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1),
+            textbook_act_hnn(data, w, h, syls).0,
+            textbook_act_hnn(data, w, h, syls).1),
     decreases w.len(),
 {
     let ng = data.base.num_generators;
-    let ew = empty_word();
-    let es = Seq::<Syllable>::empty();
-    //  h word_valid from existing lemma
-    lemma_act_hnn_h_valid(data, w, ew, es);
-    //  Syllable canonicity: all syllable reps are word_valid, non-empty, and canonical.
-    //  The action only creates syllable reps via psi_p PREPEND (b_rcoset_rep)
-    //  or psi_p_inv PREPEND (a_rcoset_rep). Both are canonical by construction.
-    //  COLLAPSE only removes syllables, preserving canonicity of the rest.
-    //
-    //  Full inductive proof deferred — the structure mirrors lemma_act_hnn_h_valid
-    //  but tracks additional properties per syllable.
-    //  For now: the word_valid(h, ng) part is proven; syllable properties need induction.
-    //  PLACEHOLDER: syllable canonicity tracking
+    let afp = tower_afp_data(data, 0);
+    if w.len() > 0 {
+        let s = w.last();
+        assert(word_valid(w.drop_last(), ng + 1)) by {
+            assert forall|k: int| 0 <= k < w.drop_last().len()
+                implies symbol_valid(#[trigger] w.drop_last()[k], ng + 1)
+            by { assert(w.drop_last()[k] == w[k]); }
+        }
+        if s == Symbol::Gen(ng) {
+            lemma_psi_p_preserves_canonical(data, h, syls);
+            let (h1, syls1) = textbook_psi_p(data, h, syls);
+            lemma_hnn_act_preserves_canonical(data, w.drop_last(), h1, syls1);
+        } else if s == Symbol::Inv(ng) {
+            lemma_psi_p_inv_preserves_canonical(data, h, syls);
+            let (h1, syls1) = textbook_psi_p_inv(data, h, syls);
+            lemma_hnn_act_preserves_canonical(data, w.drop_last(), h1, syls1);
+        } else {
+            //  Base symbol: syls unchanged, h = concat([s], h) → canonical maintained
+            let s_word: Word = Seq::new(1, |_i: int| s);
+            assert(generator_index(s) < ng) by {
+                match s { Symbol::Gen(i) => { assert(i != ng); }
+                          Symbol::Inv(i) => { assert(i != ng); } }
+            }
+            assert(word_valid(s_word, ng)) by {
+                assert forall|k: int| 0 <= k < s_word.len()
+                    implies symbol_valid(#[trigger] s_word[k], ng) by {}
+            }
+            crate::word::lemma_concat_word_valid(s_word, h, ng);
+            lemma_hnn_act_preserves_canonical(data, w.drop_last(), concat(s_word, h), syls);
+        }
+    }
 }
 
 /// If middle acts trivially on act(suffix, ε, []), then inserting middle
