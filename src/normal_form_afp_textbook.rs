@@ -4991,7 +4991,7 @@ proof fn lemma_b_min_len_eq(
 ///  a_rcoset_h output satisfies the b_rcoset_h fixed-point condition.
 ///  Uses: witness transfer (A↔B) + lex rank injectivity to show the B-choose gives h.
 #[verifier::rlimit(200)]
-proof fn lemma_a_rcoset_h_b_canonical(
+pub proof fn lemma_a_rcoset_h_b_canonical(
     data: AmalgamatedData, g: Word, h_witness: Word,
 )
     requires
@@ -5226,7 +5226,7 @@ proof fn lemma_a_rcoset_h_b_canonical(
 
 ///  B-side self-consistency: b_rcoset_h output satisfies b_rcoset_h fixed point.
 ///  Mirrors lemma_a_rcoset_h_left_canonical for G₂.
-proof fn lemma_b_rcoset_h_b_canonical(
+pub proof fn lemma_b_rcoset_h_b_canonical(
     data: AmalgamatedData, g: Word, h_witness: Word,
 )
     requires
@@ -9678,7 +9678,7 @@ pub proof fn lemma_right_cancel(p: Presentation, a: Word, b: Word)
 }
 
 ///  Idempotency: a_rcoset_rep(a_rcoset_rep(g)) =~= a_rcoset_rep(g).
-proof fn lemma_a_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
+pub proof fn lemma_a_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         presentation_valid(data.p1),
@@ -10272,7 +10272,7 @@ proof fn lemma_no_smaller_b_rcoset_lex_implies_ge(
 }
 
 ///  If g is in the B-subgroup, then b_rcoset_rep(g) =~= ε.
-proof fn lemma_b_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
+pub proof fn lemma_b_rcoset_in_subgroup(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         presentation_valid(data.p2),
@@ -10510,7 +10510,7 @@ pub proof fn lemma_b_rcoset_rep_invariant(
 }
 
 ///  Idempotency of b_rcoset_rep.
-proof fn lemma_b_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
+pub proof fn lemma_b_rcoset_rep_idempotent(data: AmalgamatedData, g: Word)
     requires
         amalgamated_data_valid(data),
         presentation_valid(data.p2),

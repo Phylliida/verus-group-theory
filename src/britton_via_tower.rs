@@ -6093,6 +6093,771 @@ proof fn lemma_act_hnn_respects_base_equiv(
     }
 }
 
+//  ---- Tier 1: Stable letter pair cancellation (Miller "routine check") ----
+//
+//  Miller p.47: "A routine check shows that ψ(p) ∘ ψ(p⁻¹) and ψ(p⁻¹) ∘ ψ(p)
+//  are both the identity."
+//
+//  We prove: exact syllable restoration + h base-equivalence.
+//  The canonicity precondition on the top syllable matches Miller's Ω
+//  (the set of normal forms) — states produced by the action are always canonical.
+
+/// Isomorphism transfer: embed_b equiv → embed_a equiv (B→A direction).
+/// From identifications_isomorphic: embed_b(k1) ≡ embed_b(k2) → embed_a(k1) ≡ embed_a(k2).
+proof fn lemma_iso_transfer_b_to_a(
+    data: HNNData, k1: Word, k2: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let ks = crate::normal_form_afp_textbook::k_size(afp);
+            &&& word_valid(k1, ks) && word_valid(k2, ks)
+            &&& equiv_in_presentation(data.base,
+                    apply_embedding(crate::normal_form_afp_textbook::b_words(afp), k1),
+                    apply_embedding(crate::normal_form_afp_textbook::b_words(afp), k2))
+        }),
+    ensures
+        equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::a_words(tower_afp_data(data, 0)), k1),
+            apply_embedding(crate::normal_form_afp_textbook::a_words(tower_afp_data(data, 0)), k2)),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    let eb1 = apply_embedding(b_ws, k1);
+    let eb2 = apply_embedding(b_ws, k2);
+    let ea1 = apply_embedding(a_ws, k1);
+    let ea2 = apply_embedding(a_ws, k2);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks);
+    assert(b_ws.len() == ks);
+    crate::benign::lemma_apply_embedding_valid(b_ws, k1, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, k2, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, k1, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, k2, ng);
+
+    //  embed_b(k1) ≡ embed_b(k2) → concat(embed_b(k1), inv(embed_b(k2))) ≡ ε
+    crate::word::lemma_inverse_word_valid(eb2, ng);
+    lemma_equiv_concat_left(data.base, eb1, eb2, inverse_word(eb2));
+    lemma_word_inverse_right(data.base, eb2);
+    crate::word::lemma_concat_word_valid(eb1, inverse_word(eb2), ng);
+    lemma_equiv_transitive(data.base,
+        concat(eb1, inverse_word(eb2)),
+        concat(eb2, inverse_word(eb2)), empty_word());
+    //  embed_b(concat(k1, inv(k2))) =~= concat(embed_b(k1), inv(embed_b(k2)))
+    crate::word::lemma_inverse_word_valid(k2, ks);
+    let diff = concat(k1, inverse_word(k2));
+    crate::word::lemma_concat_word_valid(k1, inverse_word(k2), ks);
+    crate::benign::lemma_apply_embedding_concat(b_ws, k1, inverse_word(k2));
+    crate::benign::lemma_apply_embedding_inverse(b_ws, k2);
+    //  So embed_b(diff) ≡ ε. By iso: embed_a(diff) ≡ ε.
+    lemma_tower_identifications_isomorphic(data, 0);
+    //  embed_a(diff) =~= concat(embed_a(k1), inv(embed_a(k2)))
+    crate::benign::lemma_apply_embedding_concat(a_ws, k1, inverse_word(k2));
+    crate::benign::lemma_apply_embedding_inverse(a_ws, k2);
+    //  concat(embed_a(k1), inv(embed_a(k2))) ≡ ε → embed_a(k1) ≡ embed_a(k2)
+    crate::word::lemma_inverse_word_valid(ea2, ng);
+    crate::coset_group::lemma_cancel_inverse_right(data.base, ea1, ea2);
+}
+
+/// Isomorphism transfer: embed_a equiv → embed_b equiv (A→B direction).
+proof fn lemma_iso_transfer_a_to_b(
+    data: HNNData, k1: Word, k2: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let ks = crate::normal_form_afp_textbook::k_size(afp);
+            &&& word_valid(k1, ks) && word_valid(k2, ks)
+            &&& equiv_in_presentation(data.base,
+                    apply_embedding(crate::normal_form_afp_textbook::a_words(afp), k1),
+                    apply_embedding(crate::normal_form_afp_textbook::a_words(afp), k2))
+        }),
+    ensures
+        equiv_in_presentation(data.base,
+            apply_embedding(crate::normal_form_afp_textbook::b_words(tower_afp_data(data, 0)), k1),
+            apply_embedding(crate::normal_form_afp_textbook::b_words(tower_afp_data(data, 0)), k2)),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    let ea1 = apply_embedding(a_ws, k1);
+    let ea2 = apply_embedding(a_ws, k2);
+    let eb1 = apply_embedding(b_ws, k1);
+    let eb2 = apply_embedding(b_ws, k2);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks);
+    assert(b_ws.len() == ks);
+    crate::benign::lemma_apply_embedding_valid(a_ws, k1, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, k2, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, k1, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, k2, ng);
+
+    //  embed_a(k1) ≡ embed_a(k2) → concat(embed_a(k1), inv(embed_a(k2))) ≡ ε
+    crate::word::lemma_inverse_word_valid(ea2, ng);
+    lemma_equiv_concat_left(data.base, ea1, ea2, inverse_word(ea2));
+    lemma_word_inverse_right(data.base, ea2);
+    crate::word::lemma_concat_word_valid(ea1, inverse_word(ea2), ng);
+    lemma_equiv_transitive(data.base,
+        concat(ea1, inverse_word(ea2)),
+        concat(ea2, inverse_word(ea2)), empty_word());
+    //  embed_a(diff) ≡ ε where diff = concat(k1, inv(k2))
+    crate::word::lemma_inverse_word_valid(k2, ks);
+    let diff = concat(k1, inverse_word(k2));
+    crate::word::lemma_concat_word_valid(k1, inverse_word(k2), ks);
+    crate::benign::lemma_apply_embedding_concat(a_ws, k1, inverse_word(k2));
+    crate::benign::lemma_apply_embedding_inverse(a_ws, k2);
+    //  By iso (reverse direction): embed_b(diff) ≡ ε
+    lemma_tower_identifications_isomorphic(data, 0);
+    //  embed_b(diff) =~= concat(embed_b(k1), inv(embed_b(k2)))
+    crate::benign::lemma_apply_embedding_concat(b_ws, k1, inverse_word(k2));
+    crate::benign::lemma_apply_embedding_inverse(b_ws, k2);
+    //  concat(embed_b(k1), inv(embed_b(k2))) ≡ ε → embed_b(k1) ≡ embed_b(k2)
+    crate::word::lemma_inverse_word_valid(eb2, ng);
+    crate::coset_group::lemma_cancel_inverse_right(data.base, eb1, eb2);
+}
+
+/// Case A helper: psi_p_inv PREPENDs, then psi_p COLLAPSEs back.
+proof fn lemma_stable_pair_gen_inv_case_a(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        !({
+            let afp = tower_afp_data(data, 0);
+            let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            rep_a =~= empty_word() && syls.len() > 0 && !syls.first().is_left
+        }),
+    ensures ({
+        let mid = textbook_psi_p_inv(data, h, syls);
+        let out = textbook_psi_p(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+
+    let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    let h_id_a = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let phi_h = apply_embedding(b_ws, h_id_a);
+    assert(a_ws.len() == crate::normal_form_afp_textbook::k_size(afp));
+    assert(b_ws.len() == crate::normal_form_afp_textbook::k_size(afp));
+
+    //  A-decomposition witness + properties
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_a, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_a), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(h, inverse_word(rep_a)));
+    let hw_a: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(h, inverse_word(rep_a)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h, hw_a);
+    //  embed_a(h_id_a) · rep_a ≡ h
+
+    //  embed_b(h_id_a) ∈ B → rep_b = ε
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a, ng);
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup_g2(
+        data.base, b_ws, h_id_a);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_in_subgroup(afp, phi_h);
+
+    //  Round-trip: b_rcoset_h(embed_b(h_id_a)) =~= h_id_a
+    lemma_tower_identifications_isomorphic(data, 0);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_h_b_canonical(afp, h, hw_a);
+
+    //  psi_p_inv PREPENDs: mid = (phi_h, [{left, rep_a}] ++ syls)
+    //  psi_p: phi_h ∈ B → rep_b = ε, top is LEFT → COLLAPSES
+    //  h_out = concat(embed_a(h_id_a), rep_a), syls_out = syls
+
+    //  h-equiv: embed_a(h_id_a) · rep_a ≡ h → h ≡ embed_a(h_id_a) · rep_a
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_a, ng);
+    crate::word::lemma_concat_word_valid(apply_embedding(a_ws, h_id_a), rep_a, ng);
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(a_ws, h_id_a), rep_a), h);
+}
+
+/// Case B helper: psi_p_inv COLLAPSEs, then psi_p PREPENDs back.
+proof fn lemma_stable_pair_gen_inv_case_b(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            rep_a =~= empty_word() && syls.len() > 0 && !syls.first().is_left
+        }),
+        //  Canonicity: RIGHT top syllable rep is B-canonical and non-trivial
+        //  (In Miller's Ω, syllable reps represent non-trivial coset elements)
+        word_valid(syls.first().rep, data.base.num_generators),
+        !(syls.first().rep =~= empty_word()),
+        crate::normal_form_afp_textbook::b_rcoset_rep(
+            tower_afp_data(data, 0), syls.first().rep) =~= syls.first().rep,
+    ensures ({
+        let mid = textbook_psi_p_inv(data, h, syls);
+        let out = textbook_psi_p(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+
+    let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    let h_id_a = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let phi_h = apply_embedding(b_ws, h_id_a);
+    let top_rep = syls.first().rep;
+    let h_mid = concat(phi_h, top_rep);
+    assert(a_ws.len() == crate::normal_form_afp_textbook::k_size(afp));
+    assert(b_ws.len() == crate::normal_form_afp_textbook::k_size(afp));
+
+    //  A-decomposition witness + properties
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_a, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_a), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(h, inverse_word(rep_a)));
+    let hw_a: Word = choose|hw: Word|
+        word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+        && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(h, inverse_word(rep_a)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h, hw_a);
+
+    //  embed_b(h_id_a) ∈ B
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a, ng);
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup_g2(
+        data.base, b_ws, h_id_a);
+    crate::word::lemma_concat_word_valid(phi_h, top_rep, ng);
+
+    //  same_b_rcoset(h_mid, top_rep): concat(h_mid, inv(top_rep)) ≡ phi_h ∈ B
+    crate::word::lemma_inverse_word_valid(top_rep, ng);
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, phi_h, top_rep);
+    //  concat(concat(phi_h, top_rep), inv(top_rep)) ≡ phi_h
+    //  Need equiv in reverse direction for lemma_in_subgroup_equiv
+    crate::word::lemma_concat_word_valid(h_mid, inverse_word(top_rep), ng);
+    lemma_equiv_symmetric(data.base, concat(h_mid, inverse_word(top_rep)), phi_h);
+    //  phi_h ≡ concat(h_mid, inv(top_rep))
+    crate::normal_form_afp_textbook::lemma_in_subgroup_equiv(
+        data.base, b_ws, phi_h, concat(h_mid, inverse_word(top_rep)));
+    //  in_right_subgroup(afp, concat(h_mid, inv(top_rep))) = same_b_rcoset(h_mid, top_rep)
+
+    //  rep_b = b_rcoset_rep(h_mid) =~= b_rcoset_rep(top_rep) =~= top_rep (canonical)
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_invariant(afp, h_mid, top_rep);
+
+    //  Compute the round-trip explicitly
+    let mid = textbook_psi_p_inv(data, h, syls);
+    let out = textbook_psi_p(data, mid.0, mid.1);
+
+    //  mid = (concat(phi_h, top_rep), syls.drop_first()) = (h_mid, syls.drop_first())
+    assert(mid.0 =~= h_mid);
+    assert(mid.1 =~= syls.drop_first());
+
+    //  psi_p on mid: B-decompose h_mid, rep_b =~= top_rep, PREPEND
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid);
+    assert(rep_b =~= top_rep);  //  from rep_invariant + canonicity
+    //  out.1 = [{false, rep_b}] ++ syls.drop_first()
+    //  Since rep_b =~= top_rep and syls.first() = {false, top_rep}:
+    assert(out.1 =~= syls) by {
+        assert(out.1.len() == syls.len());
+        assert forall|k: int| 0 <= k < out.1.len()
+            implies #[trigger] out.1[k] == syls[k]
+        by {
+            if k == 0 {
+                //  out.1[0] = {false, rep_b} and syls[0] = {false, top_rep}
+                //  rep_b =~= top_rep
+            } else {
+                //  out.1[k] = syls.drop_first()[k-1] = syls[k]
+            }
+        }
+    }
+
+    //  h-equiv: out.0 = embed_a(b_rcoset_h(afp, h_mid)) ≡ h
+    lemma_stable_pair_case_b_h_equiv(data, h, h_mid, h_id_a, top_rep, hw_a);
+}
+
+/// Helper for Case B h-equivalence chain.
+/// Given that h_mid = embed_b(h_id_a) · top_rep, proves embed_a(b_rcoset_h(h_mid)) ≡ h.
+proof fn lemma_stable_pair_case_b_h_equiv(
+    data: HNNData, h: Word, h_mid: Word, h_id_a: Word, top_rep: Word, hw_a: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let ng = data.base.num_generators;
+            let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+            let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+            let ks = crate::normal_form_afp_textbook::k_size(afp);
+            &&& word_valid(h, ng)
+            &&& word_valid(h_mid, ng)
+            &&& word_valid(h_id_a, ks)
+            &&& word_valid(top_rep, ng)
+            &&& word_valid(hw_a, ks)
+            //  h_mid = embed_b(h_id_a) · top_rep
+            &&& h_mid =~= concat(apply_embedding(b_ws, h_id_a), top_rep)
+            //  A-decomposition: embed_a(h_id_a) · rep_a ≡ h (rep_a = ε)
+            &&& equiv_in_presentation(data.base,
+                    concat(apply_embedding(a_ws, h_id_a),
+                        crate::normal_form_afp_textbook::a_rcoset_rep(afp, h)), h)
+            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, h) =~= empty_word()
+            //  h_id_a = a_rcoset_h(afp, h)
+            &&& h_id_a =~= crate::normal_form_afp_textbook::a_rcoset_h(afp, h)
+            //  same_b_rcoset(h_mid, top_rep) already established
+            &&& crate::normal_form_amalgamated::in_right_subgroup(afp,
+                    concat(h_mid, inverse_word(top_rep)))
+            //  B-rcoset_rep(h_mid) =~= top_rep (from invariance + canonicity)
+            &&& crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid) =~= top_rep
+        }),
+    ensures
+        equiv_in_presentation(data.base,
+            apply_embedding(
+                crate::normal_form_afp_textbook::a_words(tower_afp_data(data, 0)),
+                crate::normal_form_afp_textbook::b_rcoset_h(tower_afp_data(data, 0), h_mid)),
+            h),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h_mid);
+    let embed_b_hb = apply_embedding(b_ws, h_id_b);
+    let embed_b_ha = apply_embedding(b_ws, h_id_a);
+    let embed_a_hb = apply_embedding(a_ws, h_id_b);
+    let embed_a_ha = apply_embedding(a_ws, h_id_a);
+
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks);
+    assert(b_ws.len() == ks);
+
+    //  Step 1: B-decomposition of h_mid → embed_b(h_id_b) · top_rep ≡ h_mid
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h_mid);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid), ng);
+    crate::word::lemma_concat_word_valid(h_mid,
+        inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid)), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h_mid,
+            inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid))));
+    let hw_b: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h_mid,
+                inverse_word(crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid))));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h_mid, hw_b);
+    //  embed_b(h_id_b) · top_rep ≡ h_mid = embed_b(h_id_a) · top_rep
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_b, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a, ng);
+
+    //  Step 2: embed_b(h_id_b) ≡ embed_b(h_id_a) via right cancellation
+    //  B-decomp gives: concat(embed_b_hb, rep_b) ≡ h_mid. Since rep_b =~= top_rep:
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h_mid);
+    assert(rep_b =~= top_rep);  //  from precondition
+    //  concat(embed_b_hb, rep_b) =~= concat(embed_b_hb, top_rep) since rep_b =~= top_rep
+    //  And h_mid =~= concat(embed_b_ha, top_rep) from precondition
+    //  So both sides ≡ h_mid. Use reflexivity for h_mid ≡ concat(embed_b_ha, top_rep):
+    lemma_equiv_refl(data.base, h_mid);
+    //  Since h_mid =~= concat(embed_b_ha, top_rep), Z3 should see equiv(h_mid, concat(embed_b_ha, top_rep))
+    lemma_equiv_symmetric(data.base, concat(embed_b_hb, top_rep), h_mid);
+    lemma_equiv_transitive(data.base,
+        concat(embed_b_hb, top_rep), h_mid, concat(embed_b_ha, top_rep));
+    //  concat(embed_b_hb, top_rep) ≡ concat(embed_b_ha, top_rep)
+    //  Cancel top_rep: get concat(embed_b_hb, inv(embed_b_ha)) ≡ ε chain
+    crate::word::lemma_concat_word_valid(embed_b_hb, top_rep, ng);
+    crate::word::lemma_concat_word_valid(embed_b_ha, top_rep, ng);
+    crate::word::lemma_inverse_word_valid(top_rep, ng);
+    //  Right cancel: concat(concat(X, top_rep), inv(top_rep)) ≡ X
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, embed_b_hb, top_rep);
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, embed_b_ha, top_rep);
+    //  Build: embed_b_hb ≡ RHS chain ≡ embed_b_ha
+    lemma_equiv_concat_left(data.base,
+        concat(embed_b_hb, top_rep), concat(embed_b_ha, top_rep), inverse_word(top_rep));
+    crate::word::lemma_concat_word_valid(concat(embed_b_hb, top_rep), inverse_word(top_rep), ng);
+    lemma_equiv_symmetric(data.base,
+        concat(concat(embed_b_hb, top_rep), inverse_word(top_rep)), embed_b_hb);
+    lemma_equiv_transitive(data.base, embed_b_hb,
+        concat(concat(embed_b_hb, top_rep), inverse_word(top_rep)),
+        concat(concat(embed_b_ha, top_rep), inverse_word(top_rep)));
+    lemma_equiv_transitive(data.base, embed_b_hb,
+        concat(concat(embed_b_ha, top_rep), inverse_word(top_rep)), embed_b_ha);
+    //  embed_b(h_id_b) ≡ embed_b(h_id_a) ✓
+
+    //  Step 3: Iso transfer → embed_b(h_id_b · inv(h_id_a)) ≡ ε → embed_a(h_id_b · inv(h_id_a)) ≡ ε
+    crate::word::lemma_inverse_word_valid(h_id_a, ks);
+    crate::word::lemma_concat_word_valid(h_id_b, inverse_word(h_id_a), ks);
+    let diff = concat(h_id_b, inverse_word(h_id_a));
+    //  embed_b(diff) =~= concat(embed_b_hb, inv(embed_b_ha))
+    crate::benign::lemma_apply_embedding_concat(b_ws, h_id_b, inverse_word(h_id_a));
+    crate::benign::lemma_apply_embedding_inverse(b_ws, h_id_a);
+    //  concat(embed_b_hb, inv(embed_b_ha)) ≡ ε
+    crate::word::lemma_inverse_word_valid(embed_b_ha, ng);
+    lemma_equiv_concat_left(data.base, embed_b_hb, embed_b_ha, inverse_word(embed_b_ha));
+    lemma_word_inverse_right(data.base, embed_b_ha);
+    crate::word::lemma_concat_word_valid(embed_b_hb, inverse_word(embed_b_ha), ng);
+    lemma_equiv_transitive(data.base,
+        concat(embed_b_hb, inverse_word(embed_b_ha)),
+        concat(embed_b_ha, inverse_word(embed_b_ha)), empty_word());
+    //  By identifications_isomorphic: embed_a(diff) ≡ ε
+    lemma_tower_identifications_isomorphic(data, 0);
+
+    //  Step 4: embed_a(h_id_b) ≡ embed_a(h_id_a) via cancel_inverse_right
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_b, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_a, ng);
+    crate::benign::lemma_apply_embedding_concat(a_ws, h_id_b, inverse_word(h_id_a));
+    crate::benign::lemma_apply_embedding_inverse(a_ws, h_id_a);
+    //  embed_a(diff) =~= concat(embed_a_hb, inv(embed_a_ha))
+    //  and embed_a(diff) ≡ ε (from iso), so concat(embed_a_hb, inv(embed_a_ha)) ≡ ε
+    crate::word::lemma_inverse_word_valid(embed_a_ha, ng);
+    crate::coset_group::lemma_cancel_inverse_right(data.base, embed_a_hb, embed_a_ha);
+    //  embed_a(h_id_b) ≡ embed_a(h_id_a) ✓
+
+    //  Step 5: embed_a(h_id_a) ≡ h (from A-decomposition, rep_a = ε)
+    lemma_equiv_symmetric(data.base,
+        concat(embed_a_ha, crate::normal_form_afp_textbook::a_rcoset_rep(afp, h)), h);
+
+    //  Step 6: chain embed_a(h_id_b) ≡ embed_a(h_id_a) ≡ h
+    lemma_equiv_transitive(data.base, embed_a_hb, embed_a_ha, h);
+}
+
+/// Lemma 1a: ψ(p) ∘ ψ(p⁻¹) restores syllables exactly, h is base-equivalent.
+/// Dispatches to Case A (PREPEND→COLLAPSE) or Case B (COLLAPSE→PREPEND).
+proof fn lemma_stable_pair_gen_inv(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        (syls.len() > 0 && !syls.first().is_left) ==> ({
+            let afp = tower_afp_data(data, 0);
+            &&& word_valid(syls.first().rep, data.base.num_generators)
+            &&& !(syls.first().rep =~= empty_word())
+            &&& crate::normal_form_afp_textbook::b_rcoset_rep(
+                    afp, syls.first().rep) =~= syls.first().rep
+        }),
+    ensures ({
+        let mid = textbook_psi_p_inv(data, h, syls);
+        let out = textbook_psi_p(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    let is_collapse = rep_a =~= empty_word()
+        && syls.len() > 0 && !syls.first().is_left;
+    if !is_collapse {
+        lemma_stable_pair_gen_inv_case_a(data, h, syls);
+    } else {
+        lemma_stable_pair_gen_inv_case_b(data, h, syls);
+    }
+}
+
+//  ---- Lemma 1b: ψ(p⁻¹) ∘ ψ(p) — symmetric to 1a, swaps A↔B, left↔right ----
+
+/// 1b Case A: psi_p PREPENDs (RIGHT), then psi_p_inv COLLAPSEs back.
+proof fn lemma_stable_pair_inv_gen_case_a(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        !({
+            let afp = tower_afp_data(data, 0);
+            let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            rep_b =~= empty_word() && syls.len() > 0 && syls.first().is_left
+        }),
+    ensures ({
+        let mid = textbook_psi_p(data, h, syls);
+        let out = textbook_psi_p_inv(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let embed_a_hb = apply_embedding(a_ws, h_id_b);  //  phi_inv_h
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    assert(a_ws.len() == ks);
+    assert(b_ws.len() == ks);
+
+    //  B-decomposition witness + properties
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_b, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_b), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h, inverse_word(rep_b)));
+    let hw_b: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h, inverse_word(rep_b)));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw_b);
+    //  embed_b(h_id_b) · rep_b ≡ h
+
+    //  embed_a(h_id_b) ∈ A → a_rcoset_rep = ε
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_b, ng);
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup(
+        data.base, a_ws, h_id_b);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_in_subgroup(afp, embed_a_hb);
+
+    //  psi_p PREPENDs: mid = (embed_a_hb, [{right, rep_b}] ++ syls)
+    //  psi_p_inv on mid: A-decompose embed_a_hb → rep_a = ε, top is RIGHT → COLLAPSE
+    //  h_id_a' = a_rcoset_h(embed_a_hb)
+    //  h_out = concat(embed_b(h_id_a'), rep_b)
+    //  syls_out = syls ✓
+
+    //  h-equiv via iso transfer:
+    //  A-decomposition of embed_a_hb: embed_a(h_id_a') · ε ≡ embed_a_hb = embed_a(h_id_b)
+    //  So embed_a(h_id_a') ≡ embed_a(h_id_b)
+    //  By iso (A→B): embed_b(h_id_a') ≡ embed_b(h_id_b)
+    //  B-decomposition: embed_b(h_id_b) · rep_b ≡ h
+    //  So concat(embed_b(h_id_a'), rep_b) ≡ h
+
+    //  Get A-decomposition of embed_a_hb
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, embed_a_hb);
+    crate::word::lemma_inverse_word_valid(
+        crate::normal_form_afp_textbook::a_rcoset_rep(afp, embed_a_hb), ng);
+    crate::word::lemma_concat_word_valid(embed_a_hb,
+        inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, embed_a_hb)), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(embed_a_hb,
+            inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, embed_a_hb))));
+    let hw_a2: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(embed_a_hb,
+                inverse_word(crate::normal_form_afp_textbook::a_rcoset_rep(afp, embed_a_hb))));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, embed_a_hb, hw_a2);
+    //  embed_a(h_id_a') · ε ≡ embed_a_hb = embed_a(h_id_b)
+    let h_id_a2 = crate::normal_form_afp_textbook::a_rcoset_h(afp, embed_a_hb);
+    let embed_a_ha2 = apply_embedding(a_ws, h_id_a2);
+
+    //  embed_a(h_id_a') ≡ embed_a(h_id_b) (since rep_a = ε, decomp gives identity)
+    //  Iso transfer A→B:
+    lemma_iso_transfer_a_to_b(data, h_id_a2, h_id_b);
+    //  embed_b(h_id_a') ≡ embed_b(h_id_b)
+
+    //  concat(embed_b(h_id_a'), rep_b) ≡ concat(embed_b(h_id_b), rep_b) ≡ h
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a2, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_b, ng);
+    lemma_equiv_concat_left(data.base,
+        apply_embedding(b_ws, h_id_a2), apply_embedding(b_ws, h_id_b), rep_b);
+    lemma_equiv_transitive(data.base,
+        concat(apply_embedding(b_ws, h_id_a2), rep_b),
+        concat(apply_embedding(b_ws, h_id_b), rep_b), h);
+}
+
+/// 1b Case B: psi_p COLLAPSEs, then psi_p_inv PREPENDs back.
+proof fn lemma_stable_pair_inv_gen_case_b(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            rep_b =~= empty_word() && syls.len() > 0 && syls.first().is_left
+        }),
+        //  Canonicity: LEFT top syllable rep is A-canonical and non-trivial
+        word_valid(syls.first().rep, data.base.num_generators),
+        !(syls.first().rep =~= empty_word()),
+        crate::normal_form_afp_textbook::a_rcoset_rep(
+            tower_afp_data(data, 0), syls.first().rep) =~= syls.first().rep,
+    ensures ({
+        let mid = textbook_psi_p(data, h, syls);
+        let out = textbook_psi_p_inv(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    lemma_tower_afp_data_valid(data, 0);
+
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let embed_a_hb = apply_embedding(a_ws, h_id_b);
+    let top_rep = syls.first().rep;
+    let h_mid = concat(embed_a_hb, top_rep);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    assert(a_ws.len() == ks);
+    assert(b_ws.len() == ks);
+
+    //  B-decomposition witness + properties
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_b, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_b), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h, inverse_word(rep_b)));
+    let hw_b: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h, inverse_word(rep_b)));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw_b);
+
+    //  embed_a(h_id_b) ∈ A
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_b, ng);
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup(
+        data.base, a_ws, h_id_b);
+    crate::word::lemma_concat_word_valid(embed_a_hb, top_rep, ng);
+
+    //  same_a_rcoset(h_mid, top_rep): concat(h_mid, inv(top_rep)) ≡ embed_a_hb ∈ A
+    crate::word::lemma_inverse_word_valid(top_rep, ng);
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, embed_a_hb, top_rep);
+    crate::word::lemma_concat_word_valid(h_mid, inverse_word(top_rep), ng);
+    lemma_equiv_symmetric(data.base, concat(h_mid, inverse_word(top_rep)), embed_a_hb);
+    crate::normal_form_afp_textbook::lemma_in_subgroup_equiv(
+        data.base, a_ws, embed_a_hb, concat(h_mid, inverse_word(top_rep)));
+
+    //  rep_a = a_rcoset_rep(h_mid) =~= a_rcoset_rep(top_rep) =~= top_rep (canonical)
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_invariant(afp, h_mid, top_rep);
+
+    //  Compute round-trip
+    let mid = textbook_psi_p(data, h, syls);
+    let out = textbook_psi_p_inv(data, mid.0, mid.1);
+    assert(mid.0 =~= h_mid);
+    assert(mid.1 =~= syls.drop_first());
+    let rep_a_mid = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h_mid);
+    assert(rep_a_mid =~= top_rep);
+    assert(out.1 =~= syls) by {
+        assert(out.1.len() == syls.len());
+        assert forall|k: int| 0 <= k < out.1.len()
+            implies #[trigger] out.1[k] == syls[k]
+        by {
+            if k == 0 {} else {}
+        }
+    }
+
+    //  h-equiv: same chain as 1a Case B but A↔B swapped
+    //  A-decomp of h_mid gives h_id_a' and rep_a' =~= top_rep
+    //  embed_a(h_id_a') · top_rep ≡ embed_a(h_id_b) · top_rep
+    //  Right cancel → embed_a(h_id_a') ≡ embed_a(h_id_b)
+    //  Iso A→B: embed_b(h_id_a') ≡ embed_b(h_id_b)
+    //  B-decomp: embed_b(h_id_b) · ε ≡ h (rep_b = ε)
+    //  So embed_b(h_id_a') ≡ h
+    let h_id_a_mid = crate::normal_form_afp_textbook::a_rcoset_h(afp, h_mid);
+
+    //  A-decomposition of h_mid
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h_mid);
+    crate::word::lemma_inverse_word_valid(rep_a_mid, ng);
+    crate::word::lemma_concat_word_valid(h_mid, inverse_word(rep_a_mid), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(h_mid, inverse_word(rep_a_mid)));
+    let hw_a_mid: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(h_mid, inverse_word(rep_a_mid)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h_mid, hw_a_mid);
+    //  embed_a(h_id_a_mid) · rep_a_mid ≡ h_mid = embed_a(h_id_b) · top_rep
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_a_mid, ng);
+
+    //  embed_a(h_id_a_mid) ≡ embed_a(h_id_b) via right cancel
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(a_ws, h_id_a_mid), top_rep), h_mid);
+    lemma_equiv_refl(data.base, h_mid);
+    lemma_equiv_transitive(data.base,
+        concat(apply_embedding(a_ws, h_id_a_mid), top_rep),
+        h_mid, concat(embed_a_hb, top_rep));
+    crate::word::lemma_concat_word_valid(apply_embedding(a_ws, h_id_a_mid), top_rep, ng);
+    crate::word::lemma_concat_word_valid(embed_a_hb, top_rep, ng);
+    crate::normal_form_afp_textbook::lemma_right_cancel(
+        data.base, apply_embedding(a_ws, h_id_a_mid), top_rep);
+    crate::normal_form_afp_textbook::lemma_right_cancel(data.base, embed_a_hb, top_rep);
+    lemma_equiv_concat_left(data.base,
+        concat(apply_embedding(a_ws, h_id_a_mid), top_rep),
+        concat(embed_a_hb, top_rep), inverse_word(top_rep));
+    crate::word::lemma_concat_word_valid(
+        concat(apply_embedding(a_ws, h_id_a_mid), top_rep), inverse_word(top_rep), ng);
+    lemma_equiv_symmetric(data.base,
+        concat(concat(apply_embedding(a_ws, h_id_a_mid), top_rep), inverse_word(top_rep)),
+        apply_embedding(a_ws, h_id_a_mid));
+    lemma_equiv_transitive(data.base,
+        apply_embedding(a_ws, h_id_a_mid),
+        concat(concat(apply_embedding(a_ws, h_id_a_mid), top_rep), inverse_word(top_rep)),
+        concat(concat(embed_a_hb, top_rep), inverse_word(top_rep)));
+    lemma_equiv_transitive(data.base,
+        apply_embedding(a_ws, h_id_a_mid),
+        concat(concat(embed_a_hb, top_rep), inverse_word(top_rep)),
+        embed_a_hb);
+    //  embed_a(h_id_a_mid) ≡ embed_a(h_id_b)
+
+    //  Iso A→B: embed_b(h_id_a_mid) ≡ embed_b(h_id_b)
+    lemma_iso_transfer_a_to_b(data, h_id_a_mid, h_id_b);
+
+    //  Chain: embed_b(h_id_a_mid) ≡ embed_b(h_id_b) and embed_b(h_id_b) · ε ≡ h (rep_b = ε)
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a_mid, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_b, ng);
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(b_ws, h_id_b), rep_b), h);
+    //  embed_b(h_id_b) ≡ h: from B-decomp, embed_b(h_id_b) · rep_b ≡ h, and rep_b =~= ε
+    //  so concat(embed_b(h_id_b), rep_b) =~= concat(embed_b(h_id_b), ε) and h is reached
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(b_ws, h_id_b), rep_b), h);
+    lemma_equiv_transitive(data.base,
+        apply_embedding(b_ws, h_id_a_mid),
+        apply_embedding(b_ws, h_id_b), h);
+}
+
+/// Lemma 1b: ψ(p⁻¹) ∘ ψ(p) restores syllables exactly, h is base-equivalent.
+proof fn lemma_stable_pair_inv_gen(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        (syls.len() > 0 && syls.first().is_left) ==> ({
+            let afp = tower_afp_data(data, 0);
+            &&& word_valid(syls.first().rep, data.base.num_generators)
+            &&& !(syls.first().rep =~= empty_word())
+            &&& crate::normal_form_afp_textbook::a_rcoset_rep(
+                    afp, syls.first().rep) =~= syls.first().rep
+        }),
+    ensures ({
+        let mid = textbook_psi_p(data, h, syls);
+        let out = textbook_psi_p_inv(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let is_collapse = rep_b =~= empty_word()
+        && syls.len() > 0 && syls.first().is_left;
+    if !is_collapse {
+        lemma_stable_pair_inv_gen_case_a(data, h, syls);
+    } else {
+        lemma_stable_pair_inv_gen_case_b(data, h, syls);
+    }
+}
+
 ///  **Britton's Lemma (Full, Miller Thm 3.10):**
 ///  If w ≡ ε in G* and w has stable letters, then w has a pinch.
 ///
