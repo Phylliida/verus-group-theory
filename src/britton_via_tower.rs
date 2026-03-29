@@ -7648,6 +7648,328 @@ proof fn lemma_no_pinch_action_nontrivial(data: HNNData, w: Word)
     lemma_has_stable_implies_count(data, w);
 }
 
+/// General state validity: textbook_act_hnn preserves word_valid(h, ng)
+/// when all syllable reps are also word_valid.
+proof fn lemma_act_hnn_h_valid(
+    data: HNNData, w: Word, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        word_valid(h, data.base.num_generators),
+        forall|j: int| 0 <= j < syls.len()
+            ==> word_valid(#[trigger] syls[j].rep, data.base.num_generators),
+    ensures
+        word_valid(textbook_act_hnn(data, w, h, syls).0, data.base.num_generators),
+    decreases w.len(),
+{
+    if w.len() > 0 {
+        let s = w.last();
+        let ng = data.base.num_generators;
+        assert(word_valid(w.drop_last(), ng + 1)) by {
+            assert forall|k: int| 0 <= k < w.drop_last().len()
+                implies symbol_valid(#[trigger] w.drop_last()[k], ng + 1)
+            by { assert(w.drop_last()[k] == w[k]); }
+        }
+        if s == Symbol::Gen(ng) {
+            lemma_psi_p_h_valid_general(data, h, syls);
+            let afp = tower_afp_data(data, 0);
+            let (h1, syls1) = textbook_psi_p(data, h, syls);
+            let rep = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            let is_collapse = rep =~= empty_word()
+                && syls.len() > 0 && syls.first().is_left;
+            //  Syllable rep validity for psi_p output
+            assert forall|j: int| 0 <= j < syls1.len()
+                implies word_valid(#[trigger] syls1[j].rep, ng)
+            by {
+                if !is_collapse {
+                    //  PREPEND: syls1 = [{right, rep}] ++ syls
+                    if j == 0 {
+                        lemma_tower_afp_data_valid(data, 0);
+                        crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+                    } else {
+                        assert(syls1[j] == syls[j - 1]);
+                    }
+                } else {
+                    //  COLLAPSE: syls1 = syls.drop_first()
+                    assert(syls1[j] == syls[j + 1]);
+                }
+            }
+            lemma_act_hnn_h_valid(data, w.drop_last(), h1, syls1);
+        } else if s == Symbol::Inv(ng) {
+            let afp = tower_afp_data(data, 0);
+            let (h1, syls1) = textbook_psi_p_inv(data, h, syls);
+            let rep = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            let is_collapse = rep =~= empty_word()
+                && syls.len() > 0 && !syls.first().is_left;
+            //  psi_p_inv output h: word_valid
+            //  (embed_b(h_id) is word_valid, concat with syllable rep if COLLAPSE)
+            lemma_tower_afp_data_valid(data, 0);
+            crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+            crate::word::lemma_inverse_word_valid(rep, ng);
+            crate::word::lemma_concat_word_valid(h, inverse_word(rep), ng);
+            crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+                data.base,
+                crate::normal_form_afp_textbook::a_words(afp),
+                concat(h, inverse_word(rep)));
+            assert(crate::normal_form_afp_textbook::a_words(afp).len()
+                == crate::normal_form_afp_textbook::k_size(afp));
+            let hw: Word = choose|hw: Word|
+                word_valid(hw, crate::normal_form_afp_textbook::k_size(afp))
+                && equiv_in_presentation(data.base,
+                    apply_embedding(crate::normal_form_afp_textbook::a_words(afp), hw),
+                    concat(h, inverse_word(rep)));
+            crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h, hw);
+            let h_id = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+            crate::benign::lemma_apply_embedding_valid(
+                crate::normal_form_afp_textbook::b_words(afp), h_id, ng);
+            if is_collapse {
+                crate::word::lemma_concat_word_valid(
+                    apply_embedding(crate::normal_form_afp_textbook::b_words(afp), h_id),
+                    syls.first().rep, ng);
+            }
+            //  Syllable rep validity for psi_p_inv output
+            assert forall|j: int| 0 <= j < syls1.len()
+                implies word_valid(#[trigger] syls1[j].rep, ng)
+            by {
+                if !is_collapse {
+                    //  PREPEND: syls1 = [{left, rep}] ++ syls
+                    if j == 0 {
+                        crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+                    } else {
+                        assert(syls1[j] == syls[j - 1]);
+                    }
+                } else {
+                    //  COLLAPSE: syls1 = syls.drop_first()
+                    assert(syls1[j] == syls[j + 1]);
+                }
+            }
+            lemma_act_hnn_h_valid(data, w.drop_last(), h1, syls1);
+        } else {
+            let s_word: Word = Seq::new(1, |_i: int| s);
+            assert(generator_index(s) < ng) by {
+                match s { Symbol::Gen(i) => { assert(i != ng); }
+                          Symbol::Inv(i) => { assert(i != ng); } }
+            }
+            assert(word_valid(s_word, ng)) by {
+                assert forall|k: int| 0 <= k < s_word.len()
+                    implies symbol_valid(#[trigger] s_word[k], ng) by {}
+            }
+            crate::word::lemma_concat_word_valid(s_word, h, ng);
+            lemma_act_hnn_h_valid(data, w.drop_last(), concat(s_word, h), syls);
+        }
+    }
+}
+
+/// If middle acts trivially on act(suffix, ε, []), then inserting middle
+/// between prefix and suffix doesn't change .1 of the action.
+/// This is the core of Miller's well-definedness argument.
+proof fn lemma_trivial_middle_preserves_syls(
+    data: HNNData,
+    prefix: Word, middle: Word, suffix: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(prefix, hnn_presentation(data).num_generators),
+        word_valid(suffix, hnn_presentation(data).num_generators),
+        ({
+            let (h_s, syls_s) = textbook_act_hnn(data, suffix, empty_word(), Seq::<Syllable>::empty());
+            let (h_m, syls_m) = textbook_act_hnn(data, middle, h_s, syls_s);
+            &&& syls_m == syls_s
+            &&& equiv_in_presentation(data.base, h_m, h_s)
+            &&& word_valid(h_s, data.base.num_generators)
+            &&& word_valid(h_m, data.base.num_generators)
+        }),
+    ensures
+        textbook_act_hnn(data, concat(prefix, concat(middle, suffix)),
+            empty_word(), Seq::<Syllable>::empty()).1
+        =~= textbook_act_hnn(data, concat(prefix, suffix),
+            empty_word(), Seq::<Syllable>::empty()).1,
+{
+    let es = Seq::<Syllable>::empty();
+    let ew = empty_word();
+    //  Decompose via act_concat
+    lemma_textbook_act_concat(data, prefix, concat(middle, suffix), ew, es);
+    lemma_textbook_act_concat(data, middle, suffix, ew, es);
+    lemma_textbook_act_concat(data, prefix, suffix, ew, es);
+    //  act(prefix + middle + suffix) = act(prefix, act(middle, act(suffix, ε, [])))
+    //  act(prefix + suffix) = act(prefix, act(suffix, ε, []))
+    let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+    let (h_m, syls_m) = textbook_act_hnn(data, middle, h_s, syls_s);
+    //  By precondition: syls_m == syls_s, h_m ≡ h_s
+    //  By Lemma 0c: act(prefix, h_m, syls_s).1 == act(prefix, h_s, syls_s).1
+    lemma_act_hnn_respects_base_equiv(data, prefix, h_m, h_s, syls_s);
+}
+
+/// Per-step preservation: a single derivation step preserves .1 of the action from (ε, []).
+/// Uses lemma_trivial_middle_preserves_syls after identifying prefix/middle/suffix
+/// and proving the middle acts trivially via Tiers 0-2.
+proof fn lemma_single_step_preserves_syls(
+    data: HNNData,
+    w: Word,
+    step: DerivationStep,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        apply_step(hnn_presentation(data), w, step).is_some(),
+    ensures
+        textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1
+            =~= textbook_act_hnn(data,
+                    apply_step(hnn_presentation(data), w, step).unwrap(),
+                    empty_word(), Seq::<Syllable>::empty()).1,
+{
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    let w_next = apply_step(hp, w, step).unwrap();
+    reveal(presentation_valid);
+
+    //  For each step: identify prefix, middle, suffix such that
+    //  one of (w, w_next) = concat(prefix, suffix)
+    //  and the other = concat(prefix, concat(middle, suffix)).
+    //  Prove middle acts trivially, call lemma_trivial_middle_preserves_syls.
+
+    match step {
+        DerivationStep::FreeExpand { position, symbol } => {
+            //  w = prefix + suffix, w_next = prefix + [s, inv(s)] + suffix
+            let pos = position;
+            let s = symbol;
+            let prefix = w.subrange(0, pos);
+            let suffix = w.subrange(pos, w.len() as int);
+            let middle = Seq::new(1, |_i: int| s)
+                + Seq::new(1, |_i: int| inverse_symbol(s));
+            assert(w =~= concat(prefix, suffix)) by {
+                assert forall|k: int| 0 <= k < w.len()
+                    implies w[k] == concat(prefix, suffix)[k] by {}
+            }
+            //  State validity for act(suffix, ε, [])
+            assert(word_valid(suffix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < suffix.len()
+                    implies symbol_valid(#[trigger] suffix[k], ng + 1)
+                by { assert(suffix[k] == w[pos + k]); }
+            }
+            lemma_act_hnn_h_valid(data, suffix, ew, es);
+            let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+            //  Middle = [s, inv(s)]. Base-only if s is base symbol.
+            assert forall|k: int| 0 <= k < middle.len()
+                implies !is_stable(data, #[trigger] middle[k])
+            by {
+                if generator_index(s) < ng {
+                } else {
+                    //  s is stable — Tier 1 needed
+                    //  PLACEHOLDER for stable pair case
+                }
+            }
+            lemma_textbook_base_only(data, middle, h_s, syls_s);
+            //  act(middle, h_s, syls_s) = (concat(middle, h_s), syls_s)
+            //  concat([s, inv(s)], h_s) ≡ h_s
+            let s_word: Word = Seq::new(1, |_i: int| s);
+            crate::word::lemma_inverse_word_valid(s_word, ng + 1);
+            lemma_word_inverse_right(hp, s_word);
+            lemma_equiv_concat_left(hp, concat(s_word, inverse_word(s_word)),
+                empty_word(), h_s);
+            lemma_concat_identity_left(hp, h_s);
+            //  word_valid for h_m
+            crate::word::lemma_concat_word_valid(middle, h_s, ng);
+            //  Call helper
+            assert(word_valid(prefix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(#[trigger] prefix[k], ng + 1)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+        },
+        DerivationStep::FreeReduce { position } => {
+            //  w = prefix + [s, inv(s)] + suffix, w_next = prefix + suffix
+            let pos = position;
+            let prefix = w.subrange(0, pos);
+            let middle = w.subrange(pos, pos + 2);
+            let suffix = w.subrange(pos + 2, w.len() as int);
+            //  Same argument as FreeExpand but roles swapped
+            assert(word_valid(suffix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < suffix.len()
+                    implies symbol_valid(#[trigger] suffix[k], ng + 1)
+                by { assert(suffix[k] == w[pos + 2 + k]); }
+            }
+            lemma_act_hnn_h_valid(data, suffix, ew, es);
+            let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+            assert forall|k: int| 0 <= k < middle.len()
+                implies !is_stable(data, #[trigger] middle[k])
+            by {
+                if generator_index(w[pos]) < ng {
+                    assert(middle[k] == w[pos + k]);
+                } else {
+                    //  PLACEHOLDER: stable pair needs Tier 1
+                }
+            }
+            lemma_textbook_base_only(data, middle, h_s, syls_s);
+            //  middle = [s, inv(s)] → middle ≡ ε
+            assert(middle[1] == inverse_symbol(middle[0]));
+            let s_word: Word = Seq::new(1, |_i: int| middle[0]);
+            crate::word::lemma_inverse_word_valid(s_word, ng + 1);
+            lemma_word_inverse_right(hp, s_word);
+            lemma_equiv_concat_left(hp,
+                concat(s_word, inverse_word(s_word)),
+                empty_word(), h_s);
+            lemma_concat_identity_left(hp, h_s);
+            crate::word::lemma_concat_word_valid(middle, h_s, ng);
+            assert(word_valid(prefix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(#[trigger] prefix[k], ng + 1)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            let pos = position;
+            let r = get_relator(hp, relator_index, inverted);
+            let prefix = w.subrange(0, pos);
+            let suffix = w.subrange(pos, w.len() as int);
+            assert(word_valid(suffix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < suffix.len()
+                    implies symbol_valid(#[trigger] suffix[k], ng + 1)
+                by { assert(suffix[k] == w[pos + k]); }
+            }
+            assert(word_valid(prefix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(#[trigger] prefix[k], ng + 1)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_act_hnn_h_valid(data, suffix, ew, es);
+            let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+            //  PLACEHOLDER: prove r acts trivially on (h_s, syls_s)
+            //  then call lemma_trivial_middle_preserves_syls
+            crate::word::lemma_concat_word_valid(r, h_s, ng);
+            lemma_trivial_middle_preserves_syls(data, prefix, r, suffix);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            let pos = position;
+            let r = get_relator(hp, relator_index, inverted);
+            let rlen = r.len() as int;
+            let prefix = w.subrange(0, pos);
+            let suffix = w.subrange(pos + rlen, w.len() as int);
+            assert(word_valid(suffix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < suffix.len()
+                    implies symbol_valid(#[trigger] suffix[k], ng + 1)
+                by { assert(suffix[k] == w[pos + rlen + k]); }
+            }
+            assert(word_valid(prefix, ng + 1)) by {
+                assert forall|k: int| 0 <= k < prefix.len()
+                    implies symbol_valid(#[trigger] prefix[k], ng + 1)
+                by { assert(prefix[k] == w[k]); }
+            }
+            lemma_act_hnn_h_valid(data, suffix, ew, es);
+            let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+            //  PLACEHOLDER: prove r acts trivially on (h_s, syls_s)
+            crate::word::lemma_concat_word_valid(r, h_s, ng);
+            lemma_trivial_middle_preserves_syls(data, prefix, r, suffix);
+        },
+    }
+}
+
 /// Derivation induction: if derivation from w to ε, then act(w, ε, []).1 is empty.
 /// This is Miller's "θ⋆ψ is well-defined": equivalent words give the same action.
 /// Induction on derivation length.
@@ -7682,10 +8004,7 @@ proof fn lemma_derivation_preserves_syls(
         lemma_derivation_preserves_syls(data, steps.drop_first(), w_next);
 
         //  Per-step preservation: act(w, ε, []).1 =~= act(w_next, ε, []).1
-        //  This requires decomposing w at the step position and showing the
-        //  middle (inserted/deleted word) acts trivially. Dispatches to Tiers 0-2.
-        //  PLACEHOLDER: per-step .1 preservation
-        //  (All individual lemmas verified; need step-type dispatch)
+        lemma_single_step_preserves_syls(data, w, step);
     }
 }
 
