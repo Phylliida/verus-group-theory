@@ -7526,11 +7526,10 @@ proof fn lemma_hnn_relator_inverse_decompose(
 
     //  Help Z3: inverse_word(hnn_relator) =~= right-associated concat
     let r_inv = inverse_word(hnn_relator(data, i));
-    assert(r_inv =~= concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)))) by {
-        assert(r_inv.len() == b_i.len() + 1 + inv_ai.len() + 1);
-        assert forall|k: int| 0 <= k < r_inv.len()
-            implies r_inv[k] == concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)))[k]
-        by {}
+    let target = concat(b_i, concat(t_inv_word, concat(inv_ai, t_word)));
+    assert(r_inv =~= target) by {
+        reveal_with_fuel(inverse_word, 3);
+        crate::word::lemma_inverse_involution(b_i);
     }
 }
 
@@ -7593,8 +7592,19 @@ proof fn lemma_hnn_relator_inverse_preserves(
     }
     lemma_hnn_dual_conjugation_chain(data, i, h1, syls1);
 
-    //  Tier 1b round-trip
+    //  Tier 1b round-trip: psi_p_inv(psi_p(h, syls)).1 == syls, .0 ≡ h
     lemma_stable_pair_inv_gen(data, h, syls);
+
+    //  Chain for Z3:
+    //  act(r_inv, h, syls) == (concat(b_i, h2), syls2) [decompose]
+    //  syls2 == psi_p_inv(h1, syls1).1 [dual conjugation: same syls]
+    //  psi_p_inv(h1, syls1).1 == syls [Tier 1b]
+    //  So: act(r_inv, h, syls).1 == syls ✓
+    //  concat(b_i, h2) ≡ psi_p_inv(h1, syls1).0 [dual conjugation: h relation]
+    //  psi_p_inv(h1, syls1).0 ≡ h [Tier 1b]
+    //  So: act(r_inv, h, syls).0 ≡ h ✓
+    let rt = textbook_psi_p_inv(data, h1, syls1);
+    lemma_equiv_transitive(data.base, concat(b_i, h2), rt.0, h);
 }
 
 //  ---- Tier 3: Assembly — the final Miller argument ----
