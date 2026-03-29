@@ -7648,6 +7648,25 @@ proof fn lemma_no_pinch_action_nontrivial(data: HNNData, w: Word)
     lemma_has_stable_implies_count(data, w);
 }
 
+/// Miller's Ω: canonical HNN action state.
+/// Matches the AFP's is_canonical_state but for the HNN permutation representation.
+/// The initial state (ε, []) satisfies this trivially (empty syls, h = ε is word_valid).
+pub open spec fn hnn_canonical_state(data: HNNData, h: Word, syls: Seq<Syllable>) -> bool {
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    &&& word_valid(h, ng)
+    &&& (forall|j: int| #![trigger syls[j]] 0 <= j < syls.len() ==> ({
+        &&& word_valid(syls[j].rep, ng)
+        &&& !(syls[j].rep =~= empty_word())
+        &&& (syls[j].is_left ==>
+                crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls[j].rep)
+                    =~= syls[j].rep)
+        &&& (!syls[j].is_left ==>
+                crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls[j].rep)
+                    =~= syls[j].rep)
+    }))
+}
+
 /// General state validity: textbook_act_hnn preserves word_valid(h, ng)
 /// when all syllable reps are also word_valid.
 proof fn lemma_act_hnn_h_valid(
@@ -7759,6 +7778,36 @@ proof fn lemma_act_hnn_h_valid(
             lemma_act_hnn_h_valid(data, w.drop_last(), concat(s_word, h), syls);
         }
     }
+}
+
+/// The action from (ε, []) preserves hnn_canonical_state.
+/// This is the HNN analogue of action_preserves_canonical from the AFP.
+proof fn lemma_hnn_act_preserves_canonical(
+    data: HNNData, w: Word,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+    ensures
+        hnn_canonical_state(data,
+            textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).0,
+            textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1),
+    decreases w.len(),
+{
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    //  h word_valid from existing lemma
+    lemma_act_hnn_h_valid(data, w, ew, es);
+    //  Syllable canonicity: all syllable reps are word_valid, non-empty, and canonical.
+    //  The action only creates syllable reps via psi_p PREPEND (b_rcoset_rep)
+    //  or psi_p_inv PREPEND (a_rcoset_rep). Both are canonical by construction.
+    //  COLLAPSE only removes syllables, preserving canonicity of the rest.
+    //
+    //  Full inductive proof deferred — the structure mirrors lemma_act_hnn_h_valid
+    //  but tracks additional properties per syllable.
+    //  For now: the word_valid(h, ng) part is proven; syllable properties need induction.
+    //  PLACEHOLDER: syllable canonicity tracking
 }
 
 /// If middle acts trivially on act(suffix, ε, []), then inserting middle
