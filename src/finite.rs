@@ -62,7 +62,6 @@ pub proof fn lemma_cyclic_is_finite(n: nat)
     reveal(coset_table_consistent);
     reveal(coset_table_complete);
     reveal(relator_closed);
-    reveal(presentation_valid);
     let p = cyclic_presentation(n);
 
     //  Build the coset table

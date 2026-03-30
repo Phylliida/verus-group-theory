@@ -2476,7 +2476,7 @@ proof fn lemma_net_level_inverse_pair(data: HNNData, s: Symbol)
 proof fn lemma_step_preserves_net_level(data: HNNData, w: Word, step: DerivationStep)
     requires
         hnn_data_valid(data),
-        apply_step(hnn_presentation(data), w, step).is_Some(),
+        apply_step(hnn_presentation(data), w, step) is Some,
     ensures
         net_level(data, apply_step(hnn_presentation(data), w, step).unwrap())
             == net_level(data, w),
@@ -2561,7 +2561,7 @@ proof fn lemma_derivation_preserves_net_level(
 )
     requires
         hnn_data_valid(data),
-        derivation_produces(hnn_presentation(data), steps, w).is_Some(),
+        derivation_produces(hnn_presentation(data), steps, w) is Some,
     ensures
         net_level(data, derivation_produces(hnn_presentation(data), steps, w).unwrap())
             == net_level(data, w),
@@ -8010,8 +8010,8 @@ proof fn lemma_psi_p_preserves_canonical(
     //  Miller's condition for psi_p: trivial PREPEND only creates same-type adjacency
     //  psi_p PREPENDs RIGHT. PREPEND fires when NOT(rep=ε AND top LEFT).
     //  If rep=ε: top is RIGHT or empty → same type as new RIGHT syllable.
-    assert forall|j: int| 0 <= j < syls1.len() - 1 implies
-        (#[trigger] syls1[j].rep =~= empty_word() ==> syls1[j].is_left == syls1[j + 1].is_left)
+    assert forall|j: int| 0 <= j < syls1.len() - 1 && (#[trigger] syls1[j]).rep =~= empty_word() implies
+        syls1[j].is_left == syls1[j + 1].is_left
     by {
         if !is_collapse {
             if j == 0 {
@@ -8093,8 +8093,8 @@ proof fn lemma_psi_p_inv_preserves_canonical(
     //  Miller's condition for psi_p_inv: trivial PREPEND only creates same-type adjacency
     //  psi_p_inv PREPENDs LEFT. PREPEND fires when NOT(rep=ε AND top RIGHT).
     //  If rep=ε: top is LEFT or empty → same type as new LEFT syllable.
-    assert forall|j: int| 0 <= j < syls1.len() - 1 implies
-        (#[trigger] syls1[j].rep =~= empty_word() ==> syls1[j].is_left == syls1[j + 1].is_left)
+    assert forall|j: int| 0 <= j < syls1.len() - 1 && (#[trigger] syls1[j]).rep =~= empty_word() implies
+        syls1[j].is_left == syls1[j + 1].is_left
     by {
         if !is_collapse {
             if j == 0 {
