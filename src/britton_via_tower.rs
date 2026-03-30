@@ -7190,15 +7190,7 @@ proof fn lemma_hnn_relator_preserves(
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
-        word_valid(h, data.base.num_generators),
-        //  Miller's Ω: syllable rep validity + canonicity
-        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
-        (syls.len() > 0 && syls.first().is_left) ==> ({
-            let afp = tower_afp_data(data, 0);
-            &&& !(syls.first().rep =~= empty_word())
-            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
-                    =~= syls.first().rep
-        }),
+        hnn_canonical_state(data, h, syls),
     ensures ({
         let r = hnn_relator(data, i);
         &&& textbook_act_hnn(data, r, h, syls).1 == syls
@@ -7462,14 +7454,7 @@ proof fn lemma_hnn_relator_preserves_inner(
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
-        word_valid(h, data.base.num_generators),
-        syls.len() > 0 ==> word_valid(syls.first().rep, data.base.num_generators),
-        (syls.len() > 0 && syls.first().is_left) ==> ({
-            let afp = tower_afp_data(data, 0);
-            &&& !(syls.first().rep =~= empty_word())
-            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
-                    =~= syls.first().rep
-        }),
+        hnn_canonical_state(data, h, syls),
     ensures ({
         let r = hnn_relator(data, i);
         &&& textbook_act_hnn(data, r, h, syls).1 == syls
@@ -7506,7 +7491,7 @@ proof fn lemma_hnn_relator_preserves_inner(
     lemma_psi_p_inv_respects_base_equiv(data, h2, h_psi_orig, syls_psi_orig);
 
     //  Step 5: Tier 1b round-trip → ψ(p⁻¹)(ψ(p)(h, syls)).1 == syls, .0 ≡ h
-    lemma_stable_pair_inv_gen(data, h, syls);
+    lemma_stable_pair_inv_gen_canonical(data, h, syls);
 
     //  Chain: act(r, h, syls) == ψ(p⁻¹)(h2, syls_conj) [decompose]
     //                          == ψ(p⁻¹)(h_orig, syls_orig) [Lemma 0b]
@@ -7753,22 +7738,7 @@ proof fn lemma_hnn_relator_inverse_preserves(
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
         0 <= i < data.associations.len(),
-        word_valid(h, data.base.num_generators),
-        //  Miller's Ω: all syllable reps are word_valid, non-empty, and canonical
-        forall|j: int| 0 <= j < syls.len() ==>
-            word_valid(#[trigger] syls[j].rep, data.base.num_generators),
-        (syls.len() > 0 && syls.first().is_left) ==> ({
-            let afp = tower_afp_data(data, 0);
-            &&& !(syls.first().rep =~= empty_word())
-            &&& crate::normal_form_afp_textbook::a_rcoset_rep(afp, syls.first().rep)
-                    =~= syls.first().rep
-        }),
-        (syls.len() > 0 && !syls.first().is_left) ==> ({
-            let afp = tower_afp_data(data, 0);
-            &&& !(syls.first().rep =~= empty_word())
-            &&& crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls.first().rep)
-                    =~= syls.first().rep
-        }),
+        hnn_canonical_state(data, h, syls),
     ensures ({
         let r_inv = inverse_word(hnn_relator(data, i));
         &&& textbook_act_hnn(data, r_inv, h, syls).1 == syls
@@ -7805,7 +7775,7 @@ proof fn lemma_hnn_relator_inverse_preserves(
     lemma_hnn_dual_conjugation_chain(data, i, h1, syls1);
 
     //  Tier 1b round-trip: psi_p_inv(psi_p(h, syls)).1 == syls, .0 ≡ h
-    lemma_stable_pair_inv_gen(data, h, syls);
+    lemma_stable_pair_inv_gen_canonical(data, h, syls);
 
     //  Chain for Z3:
     //  act(r_inv, h, syls) == (concat(b_i, h2), syls2) [decompose]
@@ -8461,52 +8431,50 @@ proof fn lemma_relator_insert_preserves(
         by { assert(prefix[k] == w[k]); }
     }
     //  word_valid for r from presentation_valid
-    assert(word_valid(hp.relators[relator_index as int], ng + 1)) by {
-        reveal(presentation_valid);
-        assert(presentation_valid(hp));
-        //  Trigger: hp.relators[relator_index as int] is the trigger pattern
-        assert(hp.relators[relator_index as int] =~= hp.relators[relator_index as int]);
-    }
+    crate::britton_proof::lemma_hnn_presentation_valid(data);
+    reveal(presentation_valid);
+    assert(word_valid(hp.relators[relator_index as int], ng + 1));
     if inverted {
         crate::word::lemma_inverse_word_valid(hp.relators[relator_index as int], ng + 1);
     }
-    //  Canonical state
+    //  Canonical state from acting suffix on (ε, [])
     lemma_hnn_act_preserves_canonical(data, suffix, ew, es);
     lemma_act_hnn_h_valid(data, suffix, ew, es);
     let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
     //  word_valid for act(r, h_s, syls_s).0
     lemma_act_hnn_h_valid(data, r, h_s, syls_s);
     //  Relator r acts trivially: dispatch base vs HNN
-    //  For now: base relators only. HNN relators need Tier 2.
-    //  PLACEHOLDER: HNN relator dispatch
-    //  Base relators: no stable letters → base_only + relator ≡ ε in base
     if (relator_index as int) < data.base.relators.len() {
-        //  Base relator: r has no stable letters
+        //  Base relator: word_valid from presentation_valid(data.base)
+        let base_rel = data.base.relators[relator_index as int];
+        assert(word_valid(base_rel, ng));
+        //  r has no stable letters (generators < ng)
         let base_r = if inverted {
-            inverse_word(data.base.relators[relator_index as int])
+            inverse_word(base_rel)
         } else {
-            data.base.relators[relator_index as int]
+            base_rel
         };
         assert(r =~= base_r);
+        if inverted {
+            crate::word::lemma_inverse_word_valid(base_rel, ng);
+        }
         assert forall|k: int| 0 <= k < r.len()
             implies !is_stable(data, #[trigger] r[k])
         by {
-            assert(symbol_valid(r[k], ng + 1));
             if inverted {
-                assert(word_valid(data.base.relators[relator_index as int], ng));
-            } else {
-                assert(word_valid(data.base.relators[relator_index as int], ng));
+                assert(word_valid(base_rel, ng));
             }
         }
         lemma_textbook_base_only(data, r, h_s, syls_s);
         //  r ≡ ε in base group → concat(r, h_s) ≡ h_s
         crate::presentation_lemmas::lemma_relator_is_identity(data.base, relator_index as int);
+        //  relator_is_identity gives: equiv(base_rel, ε)
         if inverted {
-            lemma_equiv_symmetric(data.base,
-                data.base.relators[relator_index as int], empty_word());
-            crate::word::lemma_inverse_word_valid(
-                data.base.relators[relator_index as int], ng);
-            lemma_word_inverse_left(data.base, data.base.relators[relator_index as int]);
+            //  Need: equiv(inv(base_rel), ε)
+            //  From equiv(base_rel, ε) + equiv_inverse → equiv(inv(base_rel), inv(ε)) =~= equiv(inv(base_rel), ε)
+            crate::normal_form_afp_textbook::lemma_equiv_inverse(
+                data.base, base_rel, empty_word());
+            crate::word::lemma_inverse_empty();
         }
         //  equiv(r, ε) in data.base
         lemma_equiv_concat_left(data.base, r, empty_word(), h_s);
@@ -8516,15 +8484,99 @@ proof fn lemma_relator_insert_preserves(
     } else {
         //  HNN relator: Tier 2 forward/inverse
         let j = (relator_index as int) - data.base.relators.len();
+        //  j < data.associations.len() because:
+        //  hp.relators = data.base.relators + hnn_relators(data)
+        //  hnn_relators(data).len() == data.associations.len()
+        assert(0 <= j < data.associations.len()) by {
+            reveal(hnn_presentation);
+            reveal(hnn_relators);
+        }
+        //  Connect r to hnn_relator(data, j)
+        assert(hp.relators[relator_index as int] =~= hnn_relator(data, j)) by {
+            reveal(hnn_presentation);
+            reveal(hnn_relators);
+        }
         if !inverted {
-            //  Forward: r = hnn_relator(data, j)
+            assert(r =~= hnn_relator(data, j));
             lemma_hnn_relator_preserves(data, j, h_s, syls_s);
-            //  act(r, h_s, syls_s).1 == syls_s, .0 ≡ h_s
         } else {
-            //  Inverse: r = inverse_word(hnn_relator(data, j))
+            assert(r =~= inverse_word(hnn_relator(data, j)));
             lemma_hnn_relator_inverse_preserves(data, j, h_s, syls_s);
         }
         lemma_trivial_middle_preserves_syls(data, prefix, r, suffix);
+    }
+}
+
+/// RelatorDelete helper: deleting a relator preserves .1 of the action.
+/// Mirrors RelatorInsert: calls lemma_relator_insert_preserves on w_next, then bridges back.
+proof fn lemma_relator_delete_preserves(
+    data: HNNData, w: Word, position: int, relator_index: nat, inverted: bool,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        apply_step(hnn_presentation(data), w,
+            DerivationStep::RelatorDelete { position, relator_index, inverted }).is_some(),
+    ensures ({
+        let w_next = apply_step(hnn_presentation(data), w,
+            DerivationStep::RelatorDelete { position, relator_index, inverted }).unwrap();
+        textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1
+            =~= textbook_act_hnn(data, w_next, empty_word(), Seq::<Syllable>::empty()).1
+    }),
+{
+    let hp = hnn_presentation(data);
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    let step = DerivationStep::RelatorDelete { position, relator_index, inverted };
+    crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
+    let w_next_val = apply_step(hp, w, step).unwrap();
+    lemma_relator_insert_preserves(
+        data, w_next_val, position, relator_index, inverted);
+    //  Bridge: w =~= concat(w_next_val[0..pos], concat(r, w_next_val[pos..]))
+    let r = get_relator(hp, relator_index, inverted);
+    let rlen = r.len();
+    assert(w.subrange(position, position + rlen as int) =~= r);
+    let prefix = w_next_val.subrange(0, position);
+    let suffix_next = w_next_val.subrange(position, w_next_val.len() as int);
+    //  prefix =~= w[0..pos]
+    assert(prefix =~= w.subrange(0, position)) by {
+        assert forall|k: int| 0 <= k < prefix.len()
+            implies prefix[k] == w.subrange(0, position)[k]
+        by { assert(prefix[k] == w_next_val[k]); }
+    }
+    //  suffix_next =~= w[pos+rlen..]
+    assert(suffix_next =~= w.subrange(position + rlen as int, w.len() as int)) by {
+        assert forall|k: int| 0 <= k < suffix_next.len()
+            implies suffix_next[k] == w.subrange(position + rlen as int, w.len() as int)[k]
+        by { assert(suffix_next[k] == w_next_val[position + k]); }
+    }
+    //  w =~= prefix + r + suffix_next
+    assert(w =~= concat(prefix, concat(r, suffix_next))) by {
+        assert(w.len() == prefix.len() + r.len() + suffix_next.len());
+        assert forall|k: int| 0 <= k < w.len()
+            implies w[k] == concat(prefix, concat(r, suffix_next))[k]
+        by {
+            if k < position {
+                assert(w[k] == prefix[k]);
+            } else if k < position + rlen as int {
+                assert(w[k] == r[k - position]);
+            } else {
+                assert(w[k] == suffix_next[k - position - rlen as int]);
+            }
+        }
+    }
+    //  w_next_val =~= concat(prefix, suffix_next)
+    assert(w_next_val =~= concat(prefix, suffix_next)) by {
+        assert forall|k: int| 0 <= k < w_next_val.len()
+            implies w_next_val[k] == concat(prefix, suffix_next)[k]
+        by {
+            if k < position {
+                assert(w_next_val[k] == prefix[k]);
+            } else {
+                assert(w_next_val[k] == suffix_next[k - position]);
+            }
+        }
     }
 }
 
@@ -8547,14 +8599,10 @@ proof fn lemma_single_step_preserves_syls(
                     apply_step(hnn_presentation(data), w, step).unwrap(),
                     empty_word(), Seq::<Syllable>::empty()).1,
 {
-    //  Dispatch to per-case helpers.
-    let hp = hnn_presentation(data);
     let ng = data.base.num_generators;
     let ew = empty_word();
     let es = Seq::<Syllable>::empty();
-    let w_next = apply_step(hp, w, step).unwrap();
-    reveal(presentation_valid);
-
+    let hp = hnn_presentation(data);
     match step {
         DerivationStep::FreeExpand { position, symbol } => {
             if generator_index(symbol) < ng {
@@ -8562,20 +8610,29 @@ proof fn lemma_single_step_preserves_syls(
             } else {
                 lemma_free_expand_stable_preserves(data, w, position, symbol);
             }
+            //  Helper gives: act(concat(prefix, suffix)).1 =~= act(concat(prefix, concat(mid, suffix))).1
+            //  Connect to postcondition
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position, w.len() as int);
+            assert(concat(prefix, suffix) =~= w);
+            let pair = Seq::new(1, |_i: int| symbol) + Seq::new(1, |_i: int| inverse_symbol(symbol));
+            let w_next_exp = apply_step(hp, w, step).unwrap();
+            assert(w_next_exp =~= concat(prefix, concat(pair, suffix)));
         },
         DerivationStep::FreeReduce { position } => {
             lemma_free_reduce_preserves(data, w, position);
         },
         DerivationStep::RelatorInsert { position, relator_index, inverted } => {
             lemma_relator_insert_preserves(data, w, position, relator_index, inverted);
+            let prefix = w.subrange(0, position);
+            let suffix = w.subrange(position, w.len() as int);
+            assert(concat(prefix, suffix) =~= w);
+            let r = get_relator(hp, relator_index, inverted);
+            let w_next_ins = apply_step(hp, w, step).unwrap();
+            assert(w_next_ins =~= concat(prefix, concat(r, suffix)));
         },
         DerivationStep::RelatorDelete { position, relator_index, inverted } => {
-            //  Mirror of insert: w has the relator, w_next doesn't.
-            //  Call insert helper on w_next.
-            crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
-            let w_next_val = apply_step(hp, w, step).unwrap();
-            lemma_relator_insert_preserves(
-                data, w_next_val, position, relator_index, inverted);
+            lemma_relator_delete_preserves(data, w, position, relator_index, inverted);
         },
     }
 }
