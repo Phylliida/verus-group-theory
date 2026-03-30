@@ -5777,6 +5777,98 @@ proof fn lemma_act_sym_h_canonical(
 ///  Full act_sym preserves canonical (h-part + syllables).
 ///  h-part from lemma_act_sym_h_canonical. Syllables: case analysis on subgroup/prepend/merge.
 #[verifier::rlimit(500)]
+///  G₁ case of act_sym_preserves_canonical.
+proof fn lemma_act_sym_preserves_canonical_g1(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        is_canonical_state(data, h, syls),
+        symbol_valid(s, data.p1.num_generators + data.p2.num_generators),
+        generator_index(s) < data.p1.num_generators,
+    ensures
+        is_canonical_state(data,
+            act_sym(data, s, h, syls).0,
+            act_sym(data, s, h, syls).1),
+{
+    let n1 = data.p1.num_generators;
+    reveal(presentation_valid);
+    lemma_act_sym_h_canonical(data, s, h, syls);
+
+    let embed_h = apply_embedding(a_words(data), h);
+    let product = concat(Seq::new(1, |_i: int| s), embed_h);
+    let rep = a_rcoset_rep(data, product);
+
+    assert forall|i: int| 0 <= i < a_words(data).len()
+        implies word_valid(#[trigger] a_words(data)[i], n1)
+    by { assert(word_valid(data.identifications[i].0, n1)); }
+    crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
+    crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s), embed_h, n1);
+
+    if rep =~= empty_word() {
+    } else if syls.len() == 0 || !syls.first().is_left {
+        lemma_a_rcoset_rep_props(data, product);
+        lemma_a_rcoset_rep_idempotent(data, product);
+    } else {
+        let full = concat(product, syls.first().rep);
+        crate::word::lemma_concat_word_valid(product, syls.first().rep, n1);
+        if !(a_rcoset_rep(data, full) =~= empty_word()) {
+            lemma_a_rcoset_rep_props(data, full);
+            lemma_a_rcoset_rep_idempotent(data, full);
+        }
+    }
+}
+
+///  G₂ case of act_sym_preserves_canonical.
+proof fn lemma_act_sym_preserves_canonical_g2(
+    data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        amalgamated_data_valid(data),
+        presentation_valid(data.p1),
+        presentation_valid(data.p2),
+        identifications_isomorphic(data),
+        is_canonical_state(data, h, syls),
+        symbol_valid(s, data.p1.num_generators + data.p2.num_generators),
+        generator_index(s) >= data.p1.num_generators,
+    ensures
+        is_canonical_state(data,
+            act_sym(data, s, h, syls).0,
+            act_sym(data, s, h, syls).1),
+{
+    let n1 = data.p1.num_generators;
+    let n2 = data.p2.num_generators;
+    reveal(presentation_valid);
+    lemma_act_sym_h_canonical(data, s, h, syls);
+
+    let s_local = unshift_sym(s, n1);
+    let embed_h = apply_embedding(b_words(data), h);
+    let product = concat(Seq::new(1, |_i: int| s_local), embed_h);
+
+    assert forall|i: int| 0 <= i < b_words(data).len()
+        implies word_valid(#[trigger] b_words(data)[i], n2)
+    by { assert(word_valid(data.identifications[i].1, n2)); }
+    crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
+    crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s_local), embed_h, n2);
+
+    if b_rcoset_rep(data, product) =~= empty_word() {
+    } else if syls.len() == 0 || syls.first().is_left {
+        lemma_b_rcoset_rep_props(data, product);
+        lemma_b_rcoset_rep_idempotent(data, product);
+    } else {
+        let full = concat(product, syls.first().rep);
+        crate::word::lemma_concat_word_valid(product, syls.first().rep, n2);
+        if !(b_rcoset_rep(data, full) =~= empty_word()) {
+            lemma_b_rcoset_rep_props(data, full);
+            lemma_b_rcoset_rep_idempotent(data, full);
+        }
+    }
+}
+
+///  act_sym preserves canonical state. Dispatches to G₁/G₂ cases.
 proof fn lemma_act_sym_preserves_canonical(
     data: AmalgamatedData, s: Symbol, h: Word, syls: Seq<Syllable>,
 )
@@ -5792,88 +5884,10 @@ proof fn lemma_act_sym_preserves_canonical(
             act_sym(data, s, h, syls).0,
             act_sym(data, s, h, syls).1),
 {
-    let n1 = data.p1.num_generators;
-    let n2 = data.p2.num_generators;
-    reveal(presentation_valid);
-
-    //  h-part canonical (conditions 1-3)
-    lemma_act_sym_h_canonical(data, s, h, syls);
-    let (h_out, syls_out) = act_sym(data, s, h, syls);
-
-    //  Syllable conditions (4-6): case analysis on the action
-    if generator_index(s) < n1 {
-        //  G₁: act_left_sym
-        let embed_h = apply_embedding(a_words(data), h);
-        let product = concat(Seq::new(1, |_i: int| s), embed_h);
-        let rep = a_rcoset_rep(data, product);
-
-        assert forall|i: int| 0 <= i < a_words(data).len()
-            implies word_valid(#[trigger] a_words(data)[i], n1)
-        by { assert(word_valid(data.identifications[i].0, n1)); }
-        crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
-        crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s), embed_h, n1);
-
-        if rep =~= empty_word() {
-            //  Subgroup case: syls_out = syls → preserved
-        } else if syls.len() == 0 || !syls.first().is_left {
-            //  Prepend case: new syllable rep is canonical
-            lemma_a_rcoset_rep_props(data, product);
-            lemma_a_rcoset_rep_idempotent(data, product);
-        } else {
-            //  Merge: full_product = concat(product, syls.first().rep)
-            assert forall|i: int| 0 <= i < a_words(data).len()
-                implies word_valid(#[trigger] a_words(data)[i], n1)
-            by { assert(word_valid(data.identifications[i].0, n1)); }
-            crate::benign::lemma_apply_embedding_valid(a_words(data), h, n1);
-            let full = concat(product, syls.first().rep);
-            crate::word::lemma_concat_word_valid(product, syls.first().rep, n1);
-            let merged_rep = a_rcoset_rep(data, full);
-
-            if merged_rep =~= empty_word() {
-                //  Absorbed: syls_out = syls.drop_first()
-            } else {
-                //  Replaced: new merged_rep is canonical
-                lemma_a_rcoset_rep_props(data, full);
-                lemma_a_rcoset_rep_idempotent(data, full);
-            }
-        }
+    if generator_index(s) < data.p1.num_generators {
+        lemma_act_sym_preserves_canonical_g1(data, s, h, syls);
     } else {
-        //  G₂: act_right_sym — symmetric
-        let s_local = unshift_sym(s, n1);
-        let embed_h = apply_embedding(b_words(data), h);
-        let product = concat(Seq::new(1, |_i: int| s_local), embed_h);
-        let rep = b_rcoset_rep(data, product);
-
-        assert forall|i: int| 0 <= i < b_words(data).len()
-            implies word_valid(#[trigger] b_words(data)[i], n2)
-        by { assert(word_valid(data.identifications[i].1, n2)); }
-        crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
-        crate::word::lemma_concat_word_valid(Seq::new(1, |_i: int| s_local), embed_h, n2);
-
-        if rep =~= empty_word() {
-            //  Subgroup: syls unchanged
-        } else if syls.len() == 0 || syls.first().is_left {
-            //  Prepend right syllable
-            lemma_b_rcoset_rep_props(data, product);
-            lemma_b_rcoset_rep_idempotent(data, product);
-        } else {
-            //  Merge
-            let full = concat(product, syls.first().rep);
-            let merged_rep = b_rcoset_rep(data, full);
-
-            if merged_rep =~= empty_word() {
-                //  Absorbed
-            } else {
-                //  Replaced
-                assert forall|i: int| 0 <= i < b_words(data).len()
-                    implies word_valid(#[trigger] b_words(data)[i], n2)
-                by { assert(word_valid(data.identifications[i].1, n2)); }
-                crate::benign::lemma_apply_embedding_valid(b_words(data), h, n2);
-                crate::word::lemma_concat_word_valid(product, syls.first().rep, n2);
-                lemma_b_rcoset_rep_props(data, full);
-                lemma_b_rcoset_rep_idempotent(data, full);
-            }
-        }
+        lemma_act_sym_preserves_canonical_g2(data, s, h, syls);
     }
 }
 
