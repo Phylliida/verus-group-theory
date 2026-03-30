@@ -1936,7 +1936,7 @@ pub proof fn lemma_hnn_derivation_to_tower_equiv(
         lemma_hnn_step_tower_equiv(data, m, base_level, start, step);
 
         //  mid is word_valid (step preserves word_valid)
-        crate::britton_proof::lemma_hnn_presentation_valid(data);
+        crate::britton_infra::lemma_hnn_presentation_valid(data);
         crate::presentation::lemma_step_preserves_word_valid_pres(p, start, step, mid);
 
         //  Inductive: translate(mid) ≡ translate(end)
@@ -6827,6 +6827,7 @@ proof fn lemma_stable_pair_inv_gen_case_a(
 /// 1b Case B: psi_p COLLAPSEs, then psi_p_inv PREPENDs back.
 /// 1b Case B2: COLLAPSE with trivial LEFT rep. By Miller's condition, follower is same-type (LEFT).
 /// So psi_p_inv PREPENDs ε back. Mirror of lemma_stable_pair_gen_inv_case_b2.
+#[verifier::rlimit(40)]
 proof fn lemma_stable_pair_inv_gen_case_b2(
     data: HNNData, h: Word, syls: Seq<Syllable>,
 )
@@ -8359,7 +8360,7 @@ proof fn lemma_free_reduce_preserves(
     let prefix = w.subrange(0, pos);
     let suffix = w.subrange(pos + 2, w.len() as int);
     //  w_next is word_valid
-    crate::britton_proof::lemma_step_preserves_word_valid(
+    crate::britton_infra::lemma_step_preserves_word_valid(
         data, w, DerivationStep::FreeReduce { position: pos });
     let w_next = reduce_at(w, pos);
     //  w_next =~= concat(prefix, suffix)
@@ -8431,7 +8432,7 @@ proof fn lemma_relator_insert_preserves(
         by { assert(prefix[k] == w[k]); }
     }
     //  word_valid for r from presentation_valid
-    crate::britton_proof::lemma_hnn_presentation_valid(data);
+    crate::britton_infra::lemma_hnn_presentation_valid(data);
     reveal(presentation_valid);
     assert(word_valid(hp.relators[relator_index as int], ng + 1));
     if inverted {
@@ -8529,7 +8530,7 @@ proof fn lemma_relator_delete_preserves(
     let ew = empty_word();
     let es = Seq::<Syllable>::empty();
     let step = DerivationStep::RelatorDelete { position, relator_index, inverted };
-    crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
+    crate::britton_infra::lemma_step_preserves_word_valid(data, w, step);
     let w_next_val = apply_step(hp, w, step).unwrap();
     lemma_relator_insert_preserves(
         data, w_next_val, position, relator_index, inverted);
@@ -8666,7 +8667,7 @@ proof fn lemma_derivation_preserves_syls(
         let step = steps.first();
         let w_next = apply_step(hnn_presentation(data), w, step).unwrap();
         //  word_valid preserved by step
-        crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
+        crate::britton_infra::lemma_step_preserves_word_valid(data, w, step);
         //  Recurse: act(w_next, ε, []).1 =~= []
         lemma_derivation_preserves_syls(data, steps.drop_first(), w_next);
 
