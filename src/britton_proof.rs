@@ -6874,6 +6874,7 @@ proof fn lemma_k3_freeexpand_inside_noninv(
 
 ///  Inside-relator case for FreeExpand + inverted HNN relator.
 ///  r0 (inv) = b_j0 + [Inv(n)] + inv(a_j0) + [Gen(n)].
+#[verifier::rlimit(40)]
 proof fn lemma_k3_freeexpand_inside_inv(
     data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
     p0: int, ri0: nat, p1: int, sym1: Symbol, step2: DerivationStep,
@@ -10597,6 +10598,7 @@ proof fn lemma_k3_rd_inside_inv(
 }
 
 ///  Case 1: r1 entirely within b_j region.
+#[verifier::rlimit(60)]
 proof fn lemma_k3_rd_inside_inv_case_bj(
     data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
     p0: int, ri0: nat, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
@@ -10728,6 +10730,7 @@ proof fn lemma_k3_rd_inside_inv_case_bj(
 }
 
 ///  Case 2: r1 entirely within inv(a_j) region.
+#[verifier::rlimit(60)]
 proof fn lemma_k3_rd_inside_inv_case_invaj(
     data: HNNData, w: Word, w1: Word, w2: Word, w_end: Word,
     p0: int, ri0: nat, p1: int, ri1: nat, inv1: bool, step2: DerivationStep,
