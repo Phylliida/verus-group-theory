@@ -80,16 +80,7 @@ pub mod britton;
 pub mod benign;
 
 #[cfg(verus_keep_ghost)]
-pub mod britton_proof;
-
-#[cfg(verus_keep_ghost)]
-pub mod britton_proof_helpers;
-
-#[cfg(verus_keep_ghost)]
-pub mod britton_proof_helpers2;
-
-#[cfg(verus_keep_ghost)]
-pub mod britton_proof_helpers3;
+pub mod britton_infra;
 
 #[cfg(verus_keep_ghost)]
 pub mod higman_operations;

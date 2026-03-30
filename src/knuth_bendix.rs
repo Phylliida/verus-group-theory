@@ -444,6 +444,19 @@ pub fn knuth_bendix_exec(
         forall|i: int| 0 <= i < initial_rules@.len() ==>
             (#[trigger] initial_rules@[i]).lhs@.len() > 0
             && initial_rules@[i].rhs@.len() < initial_rules@[i].lhs@.len(),
+    ensures
+        match out {
+            KBResult::Complete { system } =>
+                system.rules@.len() <= max_rules
+                && forall|i: int| 0 <= i < system.rules@.len() ==>
+                    (#[trigger] system.rules@[i]).lhs@.len() > 0
+                    && system.rules@[i].rhs@.len() < system.rules@[i].lhs@.len(),
+            KBResult::Incomplete { system } =>
+                system.rules@.len() <= max_rules
+                && forall|i: int| 0 <= i < system.rules@.len() ==>
+                    (#[trigger] system.rules@[i]).lhs@.len() > 0
+                    && system.rules@[i].rhs@.len() < system.rules@[i].lhs@.len(),
+        },
 {
     let mut sys = RuntimeRewriteSystem { rules: initial_rules };
     let mut fuel: usize = max_rules;
