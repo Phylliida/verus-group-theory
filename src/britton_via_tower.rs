@@ -6387,6 +6387,68 @@ proof fn lemma_stable_pair_gen_inv_case_a(
 }
 
 /// Case B helper: psi_p_inv COLLAPSEs, then psi_p PREPENDs back.
+/// Case B2: COLLAPSE with trivial rep. By Miller's condition, follower is same-type (RIGHT).
+/// So psi_p PREPENDs ε back. Syls restored, h ≡ h by iso round-trip.
+proof fn lemma_stable_pair_gen_inv_case_b2(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        hnn_canonical_state(data, h, syls),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+            rep_a =~= empty_word() && syls.len() > 0 && !syls.first().is_left
+        }),
+        syls.first().rep =~= empty_word(),
+    ensures ({
+        let mid = textbook_psi_p_inv(data, h, syls);
+        let out = textbook_psi_p(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks && b_ws.len() == ks);
+    //  A-decomposition: get h_id_a word_valid
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, h);
+    let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_a, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_a), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(h, inverse_word(rep_a)));
+    let hw_a: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(h, inverse_word(rep_a)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, h, hw_a);
+    let h_id_a = crate::normal_form_afp_textbook::a_rcoset_h(afp, h);
+    //  h_id_a word_valid, embed_a(h_id_a) · rep_a ≡ h
+    //  embed_b(h_id_a) = phi_h
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a, ng);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_a, ng);
+    let phi_h = apply_embedding(b_ws, h_id_a);
+    //  phi_h ∈ B → rep = ε
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup_g2(
+        data.base, b_ws, h_id_a);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_in_subgroup(afp, phi_h);
+    //  Round-trip: b_rcoset_h(embed_b(h_id_a)) =~= h_id_a
+    lemma_tower_identifications_isomorphic(data, 0);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_h_b_canonical(afp, h, hw_a);
+    //  h-equiv: embed_a(h_id_a) · ε ≡ h (since rep_a = ε)
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(a_ws, h_id_a), rep_a), h);
+    //  psi_p_inv COLLAPSES {right, ε}: h' = phi_h. syls' = syls.drop_first().
+    //  psi_p on (phi_h, syls'): rep = ε. By Miller's condition, if syls' non-empty,
+    //  top is same type (RIGHT, not LEFT) → PREPEND with ε.
+    //  [{right, ε}] ++ syls.drop_first() = syls ✓. h round-trips ✓.
+}
+
 proof fn lemma_stable_pair_gen_inv_case_b(
     data: HNNData, h: Word, syls: Seq<Syllable>,
 )
@@ -6642,14 +6704,7 @@ proof fn lemma_stable_pair_gen_inv(
     requires
         hnn_data_valid(data),
         hnn_associations_isomorphic(data),
-        word_valid(h, data.base.num_generators),
-        (syls.len() > 0 && !syls.first().is_left) ==> ({
-            let afp = tower_afp_data(data, 0);
-            &&& word_valid(syls.first().rep, data.base.num_generators)
-            &&& !(syls.first().rep =~= empty_word())
-            &&& crate::normal_form_afp_textbook::b_rcoset_rep(
-                    afp, syls.first().rep) =~= syls.first().rep
-        }),
+        hnn_canonical_state(data, h, syls),
     ensures ({
         let mid = textbook_psi_p_inv(data, h, syls);
         let out = textbook_psi_p(data, mid.0, mid.1);
@@ -6663,8 +6718,10 @@ proof fn lemma_stable_pair_gen_inv(
         && syls.len() > 0 && !syls.first().is_left;
     if !is_collapse {
         lemma_stable_pair_gen_inv_case_a(data, h, syls);
-    } else {
+    } else if !(syls.first().rep =~= empty_word()) {
         lemma_stable_pair_gen_inv_case_b(data, h, syls);
+    } else {
+        lemma_stable_pair_gen_inv_case_b2(data, h, syls);
     }
 }
 
@@ -6768,6 +6825,130 @@ proof fn lemma_stable_pair_inv_gen_case_a(
 }
 
 /// 1b Case B: psi_p COLLAPSEs, then psi_p_inv PREPENDs back.
+/// 1b Case B2: COLLAPSE with trivial LEFT rep. By Miller's condition, follower is same-type (LEFT).
+/// So psi_p_inv PREPENDs ε back. Mirror of lemma_stable_pair_gen_inv_case_b2.
+proof fn lemma_stable_pair_inv_gen_case_b2(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        hnn_canonical_state(data, h, syls),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            rep_b =~= empty_word() && syls.len() > 0 && syls.first().is_left
+        }),
+        syls.first().rep =~= empty_word(),
+    ensures ({
+        let mid = textbook_psi_p(data, h, syls);
+        let out = textbook_psi_p_inv(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks && b_ws.len() == ks);
+    //  B-decomposition
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    crate::word::lemma_inverse_word_valid(rep_b, ng);
+    crate::word::lemma_concat_word_valid(h, inverse_word(rep_b), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, b_ws, concat(h, inverse_word(rep_b)));
+    let hw_b: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(b_ws, hw), concat(h, inverse_word(rep_b)));
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw_b);
+    let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_b, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_b, ng);
+    let embed_a_hb = apply_embedding(a_ws, h_id_b);
+    //  embed_a(h_id_b) ∈ A → a_rcoset_rep = ε
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup(
+        data.base, a_ws, h_id_b);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_in_subgroup(afp, embed_a_hb);
+    //  Round-trip: a_rcoset_h(embed_a(h_id_b)) by b_rcoset_h_b_canonical
+    lemma_tower_identifications_isomorphic(data, 0);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_h_b_canonical(afp, h, hw_b);
+    //  h-equiv: use iso transfer. embed_a(h_id_a') ≡ embed_a(h_id_b) → embed_b equiv → ≡ h.
+    //  Extract to avoid rlimit.
+    lemma_stable_pair_inv_gen_case_b2_h_equiv(data, h, hw_b);
+}
+
+/// Helper for 1b Case B2 h-equiv chain.
+proof fn lemma_stable_pair_inv_gen_case_b2_h_equiv(
+    data: HNNData, h: Word, hw_b: Word,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(h, data.base.num_generators),
+        ({
+            let afp = tower_afp_data(data, 0);
+            let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+            let ks = crate::normal_form_afp_textbook::k_size(afp);
+            let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+            &&& rep_b =~= empty_word()
+            &&& word_valid(hw_b, ks)
+            &&& equiv_in_presentation(data.base,
+                    apply_embedding(b_ws, hw_b), concat(h, inverse_word(rep_b)))
+        }),
+    ensures ({
+        let afp = tower_afp_data(data, 0);
+        let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+        let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+        let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+        let embed_a_hb = apply_embedding(a_ws, h_id_b);
+        let h_id_a = crate::normal_form_afp_textbook::a_rcoset_h(afp, embed_a_hb);
+        equiv_in_presentation(data.base, apply_embedding(b_ws, h_id_a), h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let ng = data.base.num_generators;
+    let a_ws = crate::normal_form_afp_textbook::a_words(afp);
+    let b_ws = crate::normal_form_afp_textbook::b_words(afp);
+    let ks = crate::normal_form_afp_textbook::k_size(afp);
+    lemma_tower_afp_data_valid(data, 0);
+    assert(a_ws.len() == ks && b_ws.len() == ks);
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_decomposition(afp, h, hw_b);
+    let h_id_b = crate::normal_form_afp_textbook::b_rcoset_h(afp, h);
+    crate::benign::lemma_apply_embedding_valid(a_ws, h_id_b, ng);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_b, ng);
+    let embed_a_hb = apply_embedding(a_ws, h_id_b);
+    //  A-decompose embed_a(h_id_b): ∈ A → rep_a = ε
+    crate::normal_form_afp_textbook::lemma_apply_embedding_in_subgroup(
+        data.base, a_ws, h_id_b);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_in_subgroup(afp, embed_a_hb);
+    crate::normal_form_afp_textbook::lemma_a_rcoset_rep_props(afp, embed_a_hb);
+    let rep_a = crate::normal_form_afp_textbook::a_rcoset_rep(afp, embed_a_hb);
+    crate::word::lemma_inverse_word_valid(rep_a, ng);
+    crate::word::lemma_concat_word_valid(embed_a_hb, inverse_word(rep_a), ng);
+    crate::normal_form_afp_textbook::lemma_subgroup_to_k_word(
+        data.base, a_ws, concat(embed_a_hb, inverse_word(rep_a)));
+    let hw_a: Word = choose|hw: Word|
+        word_valid(hw, ks) && equiv_in_presentation(data.base,
+            apply_embedding(a_ws, hw), concat(embed_a_hb, inverse_word(rep_a)));
+    crate::normal_form_afp_textbook::lemma_rcoset_decomposition(afp, embed_a_hb, hw_a);
+    let h_id_a = crate::normal_form_afp_textbook::a_rcoset_h(afp, embed_a_hb);
+    //  embed_a(h_id_a) · ε ≡ embed_a(h_id_b) → iso → embed_b(h_id_a) ≡ embed_b(h_id_b) ≡ h
+    lemma_tower_identifications_isomorphic(data, 0);
+    lemma_iso_transfer_a_to_b(data, h_id_a, h_id_b);
+    crate::normal_form_afp_textbook::lemma_b_rcoset_rep_props(afp, h);
+    lemma_equiv_symmetric(data.base,
+        concat(apply_embedding(b_ws, h_id_b), rep_b), h);
+    crate::benign::lemma_apply_embedding_valid(b_ws, h_id_a, ng);
+    lemma_equiv_transitive(data.base,
+        apply_embedding(b_ws, h_id_a),
+        apply_embedding(b_ws, h_id_b), h);
+}
+
 proof fn lemma_stable_pair_inv_gen_case_b(
     data: HNNData, h: Word, syls: Seq<Syllable>,
 )
@@ -6948,8 +7129,39 @@ proof fn lemma_stable_pair_inv_gen(
         && syls.len() > 0 && syls.first().is_left;
     if !is_collapse {
         lemma_stable_pair_inv_gen_case_a(data, h, syls);
-    } else {
+    } else if !(syls.first().rep =~= empty_word()) {
         lemma_stable_pair_inv_gen_case_b(data, h, syls);
+    } else {
+        lemma_stable_pair_inv_gen_case_b2(data, h, syls);
+    }
+}
+
+/// Lemma 1b canonical: like lemma_stable_pair_inv_gen but takes hnn_canonical_state.
+/// Dispatches to Case A, B (non-empty), or B2 (empty rep with Miller's condition).
+proof fn lemma_stable_pair_inv_gen_canonical(
+    data: HNNData, h: Word, syls: Seq<Syllable>,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        hnn_canonical_state(data, h, syls),
+    ensures ({
+        let mid = textbook_psi_p(data, h, syls);
+        let out = textbook_psi_p_inv(data, mid.0, mid.1);
+        out.1 == syls
+        && equiv_in_presentation(data.base, out.0, h)
+    }),
+{
+    let afp = tower_afp_data(data, 0);
+    let rep_b = crate::normal_form_afp_textbook::b_rcoset_rep(afp, h);
+    let is_collapse = rep_b =~= empty_word()
+        && syls.len() > 0 && syls.first().is_left;
+    if !is_collapse {
+        lemma_stable_pair_inv_gen_case_a(data, h, syls);
+    } else if !(syls.first().rep =~= empty_word()) {
+        lemma_stable_pair_inv_gen_case_b(data, h, syls);
+    } else {
+        lemma_stable_pair_inv_gen_case_b2(data, h, syls);
     }
 }
 
@@ -7664,6 +7876,11 @@ pub open spec fn hnn_canonical_state(data: HNNData, h: Word, syls: Seq<Syllable>
                 crate::normal_form_afp_textbook::b_rcoset_rep(afp, syls[j].rep)
                     =~= syls[j].rep)
     }))
+    //  Miller's normal form condition: if gᵢ = 1 then εᵢ ≠ -εᵢ₊₁
+    //  Trivial rep only with same-type follower (prevents cascade in round-trip)
+    &&& (forall|j: int| 0 <= j < syls.len() - 1 ==>
+            (#[trigger] syls[j].rep =~= empty_word() ==>
+                syls[j].is_left == syls[j + 1].is_left))
 }
 
 /// General state validity: textbook_act_hnn preserves word_valid(h, ng)
@@ -7819,6 +8036,25 @@ proof fn lemma_psi_p_preserves_canonical(
             if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
         } else { assert(syls1[j] == syls[j + 1]); }
     }
+    //  Miller's condition for psi_p: trivial PREPEND only creates same-type adjacency
+    //  psi_p PREPENDs RIGHT. PREPEND fires when NOT(rep=ε AND top LEFT).
+    //  If rep=ε: top is RIGHT or empty → same type as new RIGHT syllable.
+    assert forall|j: int| 0 <= j < syls1.len() - 1 implies
+        (#[trigger] syls1[j].rep =~= empty_word() ==> syls1[j].is_left == syls1[j + 1].is_left)
+    by {
+        if !is_collapse {
+            if j == 0 {
+                //  New RIGHT syl at 0. If rep=ε and syls non-empty: syls[0] is NOT LEFT
+                //  (because COLLAPSE would fire if it were). So !syls[0].is_left = !is_left = RIGHT.
+            } else if j + 1 < syls1.len() {
+                assert(syls1[j] == syls[j - 1]);
+                assert(syls1[j + 1] == syls[j]);
+            }
+        } else {
+            assert(syls1[j] == syls[j + 1]);
+            if j + 1 < syls1.len() { assert(syls1[j + 1] == syls[j + 2]); }
+        }
+    }
 }
 
 /// Helper: psi_p_inv preserves hnn_canonical_state.
@@ -7882,6 +8118,25 @@ proof fn lemma_psi_p_inv_preserves_canonical(
         if !is_collapse {
             if j == 0 {} else { assert(syls1[j] == syls[j - 1]); }
         } else { assert(syls1[j] == syls[j + 1]); }
+    }
+    //  Miller's condition for psi_p_inv: trivial PREPEND only creates same-type adjacency
+    //  psi_p_inv PREPENDs LEFT. PREPEND fires when NOT(rep=ε AND top RIGHT).
+    //  If rep=ε: top is LEFT or empty → same type as new LEFT syllable.
+    assert forall|j: int| 0 <= j < syls1.len() - 1 implies
+        (#[trigger] syls1[j].rep =~= empty_word() ==> syls1[j].is_left == syls1[j + 1].is_left)
+    by {
+        if !is_collapse {
+            if j == 0 {
+                //  New LEFT syl at 0. If rep=ε and syls non-empty: syls[0] is NOT RIGHT
+                //  (because COLLAPSE would fire if it were). So syls[0].is_left = LEFT.
+            } else if j + 1 < syls1.len() {
+                assert(syls1[j] == syls[j - 1]);
+                assert(syls1[j + 1] == syls[j]);
+            }
+        } else {
+            assert(syls1[j] == syls[j + 1]);
+            if j + 1 < syls1.len() { assert(syls1[j + 1] == syls[j + 2]); }
+        }
     }
 }
 
@@ -7974,6 +8229,305 @@ proof fn lemma_trivial_middle_preserves_syls(
     lemma_act_hnn_respects_base_equiv(data, prefix, h_m, h_s, syls_s);
 }
 
+/// FreeExpand case helper: base symbol inverse pair acts trivially.
+proof fn lemma_free_expand_base_preserves(
+    data: HNNData, w: Word, pos: int, s: Symbol,
+)
+    requires
+        hnn_data_valid(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        0 <= pos <= w.len(),
+        symbol_valid(s, hnn_presentation(data).num_generators),
+        generator_index(s) < data.base.num_generators,
+    ensures ({
+        let prefix = w.subrange(0, pos);
+        let suffix = w.subrange(pos, w.len() as int);
+        let middle = Seq::new(1, |_i: int| s) + Seq::new(1, |_i: int| inverse_symbol(s));
+        textbook_act_hnn(data, concat(prefix, suffix),
+            empty_word(), Seq::<Syllable>::empty()).1
+        =~= textbook_act_hnn(data, concat(prefix, concat(middle, suffix)),
+            empty_word(), Seq::<Syllable>::empty()).1
+    }),
+{
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    let prefix = w.subrange(0, pos);
+    let suffix = w.subrange(pos, w.len() as int);
+    let middle = Seq::new(1, |_i: int| s) + Seq::new(1, |_i: int| inverse_symbol(s));
+    assert(word_valid(suffix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < suffix.len()
+            implies symbol_valid(#[trigger] suffix[k], ng + 1)
+        by { assert(suffix[k] == w[pos + k]); }
+    }
+    assert(word_valid(prefix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < prefix.len()
+            implies symbol_valid(#[trigger] prefix[k], ng + 1)
+        by { assert(prefix[k] == w[k]); }
+    }
+    lemma_act_hnn_h_valid(data, suffix, ew, es);
+    let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+    assert(word_valid(middle, ng)) by {
+        assert forall|k: int| 0 <= k < middle.len()
+            implies symbol_valid(#[trigger] middle[k], ng) by {
+            //  s has generator_index < ng, inv(s) has same index
+        }
+    }
+    assert forall|k: int| 0 <= k < middle.len()
+        implies !is_stable(data, #[trigger] middle[k]) by {}
+    lemma_textbook_base_only(data, middle, h_s, syls_s);
+    //  middle = [s, inv(s)] ≡ ε in data.base
+    assert(equiv_in_presentation(data.base, middle, empty_word())) by {
+        let s_word: Word = Seq::new(1, |_i: int| s);
+        assert(word_valid(s_word, ng)) by {
+            assert forall|k: int| 0 <= k < s_word.len()
+                implies symbol_valid(#[trigger] s_word[k], ng) by {}
+        }
+        crate::word::lemma_inverse_word_valid(s_word, ng);
+        lemma_word_inverse_right(data.base, s_word);
+        //  concat(s_word, inverse_word(s_word)) =~= middle
+        assert(middle =~= concat(s_word, inverse_word(s_word))) by {
+            reveal_with_fuel(inverse_word, 2);
+        }
+    }
+    //  concat(middle, h_s) ≡ h_s
+    lemma_equiv_concat_left(data.base, middle, empty_word(), h_s);
+    lemma_concat_identity_left(data.base, h_s);
+    lemma_equiv_transitive(data.base,
+        concat(middle, h_s), concat(empty_word(), h_s), h_s);
+    crate::word::lemma_concat_word_valid(middle, h_s, ng);
+    lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+}
+
+/// FreeExpand case helper: stable letter inverse pair acts trivially (Tier 1).
+proof fn lemma_free_expand_stable_preserves(
+    data: HNNData, w: Word, pos: int, s: Symbol,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        0 <= pos <= w.len(),
+        symbol_valid(s, hnn_presentation(data).num_generators),
+        generator_index(s) == data.base.num_generators,
+    ensures ({
+        let prefix = w.subrange(0, pos);
+        let suffix = w.subrange(pos, w.len() as int);
+        let middle = Seq::new(1, |_i: int| s) + Seq::new(1, |_i: int| inverse_symbol(s));
+        textbook_act_hnn(data, concat(prefix, suffix),
+            empty_word(), Seq::<Syllable>::empty()).1
+        =~= textbook_act_hnn(data, concat(prefix, concat(middle, suffix)),
+            empty_word(), Seq::<Syllable>::empty()).1
+    }),
+{
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    let prefix = w.subrange(0, pos);
+    let suffix = w.subrange(pos, w.len() as int);
+    let middle = Seq::new(1, |_i: int| s) + Seq::new(1, |_i: int| inverse_symbol(s));
+    assert(word_valid(suffix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < suffix.len()
+            implies symbol_valid(#[trigger] suffix[k], ng + 1)
+        by { assert(suffix[k] == w[pos + k]); }
+    }
+    assert(word_valid(prefix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < prefix.len()
+            implies symbol_valid(#[trigger] prefix[k], ng + 1)
+        by { assert(prefix[k] == w[k]); }
+    }
+    //  Canonical state for Tier 1
+    lemma_hnn_act_preserves_canonical(data, suffix, ew, es);
+    let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+    //  act(middle, h_s, syls_s) = psi round-trip via Tier 1
+    if s == Symbol::Gen(ng) {
+        //  [Gen, Inv]: R→L = psi_p_inv then psi_p. Tier 1a.
+        lemma_stable_pair_gen_inv(data, h_s, syls_s);
+    } else {
+        //  [Inv, Gen]: R→L = psi_p then psi_p_inv. Tier 1b.
+        lemma_stable_pair_inv_gen_canonical(data, h_s, syls_s);
+    }
+    //  word_valid for act(middle, h_s, syls_s).0
+    assert(word_valid(middle, ng + 1)) by {
+        assert forall|k: int| 0 <= k < middle.len()
+            implies symbol_valid(#[trigger] middle[k], ng + 1) by {}
+    }
+    lemma_act_hnn_h_valid(data, middle, h_s, syls_s);
+    //  Connect act(middle) to the psi round-trip via unfolding
+    assert(textbook_act_hnn(data, middle, h_s, syls_s).1 == syls_s) by {
+        reveal_with_fuel(textbook_act_hnn, 3);
+    }
+    assert(equiv_in_presentation(data.base,
+        textbook_act_hnn(data, middle, h_s, syls_s).0, h_s)) by {
+        reveal_with_fuel(textbook_act_hnn, 3);
+    }
+    lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+}
+
+/// FreeReduce: mirror of FreeExpand. w has the pair, w_next doesn't.
+/// Calls the expand helpers since lemma_trivial_middle_preserves_syls is symmetric.
+proof fn lemma_free_reduce_preserves(
+    data: HNNData, w: Word, pos: int,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        has_cancellation_at(w, pos),
+    ensures ({
+        let w_next = reduce_at(w, pos);
+        textbook_act_hnn(data, w, empty_word(), Seq::<Syllable>::empty()).1
+        =~= textbook_act_hnn(data, w_next, empty_word(), Seq::<Syllable>::empty()).1
+    }),
+{
+    //  w = prefix + [s, inv(s)] + suffix, w_next = prefix + suffix
+    //  This is the INSERT direction with w_next as "smaller" and w as "bigger".
+    //  lemma_trivial_middle_preserves_syls shows bigger.1 =~= smaller.1 (symmetric).
+    //  Reuse: w_next = prefix + suffix, middle = [s, inv(s)]
+    let s = w[pos];
+    let ng = data.base.num_generators;
+    let prefix = w.subrange(0, pos);
+    let suffix = w.subrange(pos + 2, w.len() as int);
+    //  w_next is word_valid
+    crate::britton_proof::lemma_step_preserves_word_valid(
+        data, w, DerivationStep::FreeReduce { position: pos });
+    let w_next = reduce_at(w, pos);
+    //  w_next =~= concat(prefix, suffix)
+    //  w =~= concat(prefix, concat(middle, suffix)) where middle = [w[pos], w[pos+1]]
+    //  Use the expand helpers on w_next (the "smaller" word)
+    //  Help Z3: w_next =~= concat(prefix, suffix), w =~= concat(prefix, concat(middle, suffix))
+    let middle = Seq::new(1, |_i: int| s) + Seq::new(1, |_i: int| inverse_symbol(s));
+    assert(w_next =~= concat(prefix, suffix)) by {
+        assert forall|k: int| 0 <= k < w_next.len()
+            implies w_next[k] == concat(prefix, suffix)[k] by {}
+    }
+    assert(w =~= concat(prefix, concat(middle, suffix))) by {
+        assert forall|k: int| 0 <= k < w.len()
+            implies w[k] == concat(prefix, concat(middle, suffix))[k] by {}
+    }
+    //  Bridge: expand helpers use w_next subranges = our prefix/suffix
+    assert(w_next.subrange(0, pos) =~= prefix) by {
+        assert forall|k: int| 0 <= k < prefix.len()
+            implies w_next.subrange(0, pos)[k] == prefix[k] by {}
+    }
+    assert(w_next.subrange(pos, w_next.len() as int) =~= suffix) by {
+        assert forall|k: int| 0 <= k < suffix.len()
+            implies w_next.subrange(pos, w_next.len() as int)[k] == suffix[k] by {}
+    }
+    if generator_index(s) < ng {
+        lemma_free_expand_base_preserves(data, w_next, pos, s);
+    } else {
+        lemma_free_expand_stable_preserves(data, w_next, pos, s);
+    }
+}
+
+/// RelatorInsert helper: inserting a relator preserves .1 of the action.
+proof fn lemma_relator_insert_preserves(
+    data: HNNData, w: Word, pos: int, relator_index: nat, inverted: bool,
+)
+    requires
+        hnn_data_valid(data),
+        hnn_associations_isomorphic(data),
+        word_valid(w, hnn_presentation(data).num_generators),
+        0 <= pos <= w.len(),
+        0 <= relator_index < hnn_presentation(data).relators.len(),
+    ensures ({
+        let hp = hnn_presentation(data);
+        let r = get_relator(hp, relator_index, inverted);
+        let prefix = w.subrange(0, pos);
+        let suffix = w.subrange(pos, w.len() as int);
+        textbook_act_hnn(data, concat(prefix, suffix),
+            empty_word(), Seq::<Syllable>::empty()).1
+        =~= textbook_act_hnn(data, concat(prefix, concat(r, suffix)),
+            empty_word(), Seq::<Syllable>::empty()).1
+    }),
+{
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
+    let r = get_relator(hp, relator_index, inverted);
+    let prefix = w.subrange(0, pos);
+    let suffix = w.subrange(pos, w.len() as int);
+    //  word_valid for prefix, suffix
+    assert(word_valid(suffix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < suffix.len()
+            implies symbol_valid(#[trigger] suffix[k], ng + 1)
+        by { assert(suffix[k] == w[pos + k]); }
+    }
+    assert(word_valid(prefix, ng + 1)) by {
+        assert forall|k: int| 0 <= k < prefix.len()
+            implies symbol_valid(#[trigger] prefix[k], ng + 1)
+        by { assert(prefix[k] == w[k]); }
+    }
+    //  word_valid for r from presentation_valid
+    assert(word_valid(hp.relators[relator_index as int], ng + 1)) by {
+        reveal(presentation_valid);
+        assert(presentation_valid(hp));
+        //  Trigger: hp.relators[relator_index as int] is the trigger pattern
+        assert(hp.relators[relator_index as int] =~= hp.relators[relator_index as int]);
+    }
+    if inverted {
+        crate::word::lemma_inverse_word_valid(hp.relators[relator_index as int], ng + 1);
+    }
+    //  Canonical state
+    lemma_hnn_act_preserves_canonical(data, suffix, ew, es);
+    lemma_act_hnn_h_valid(data, suffix, ew, es);
+    let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
+    //  word_valid for act(r, h_s, syls_s).0
+    lemma_act_hnn_h_valid(data, r, h_s, syls_s);
+    //  Relator r acts trivially: dispatch base vs HNN
+    //  For now: base relators only. HNN relators need Tier 2.
+    //  PLACEHOLDER: HNN relator dispatch
+    //  Base relators: no stable letters → base_only + relator ≡ ε in base
+    if (relator_index as int) < data.base.relators.len() {
+        //  Base relator: r has no stable letters
+        let base_r = if inverted {
+            inverse_word(data.base.relators[relator_index as int])
+        } else {
+            data.base.relators[relator_index as int]
+        };
+        assert(r =~= base_r);
+        assert forall|k: int| 0 <= k < r.len()
+            implies !is_stable(data, #[trigger] r[k])
+        by {
+            assert(symbol_valid(r[k], ng + 1));
+            if inverted {
+                assert(word_valid(data.base.relators[relator_index as int], ng));
+            } else {
+                assert(word_valid(data.base.relators[relator_index as int], ng));
+            }
+        }
+        lemma_textbook_base_only(data, r, h_s, syls_s);
+        //  r ≡ ε in base group → concat(r, h_s) ≡ h_s
+        crate::presentation_lemmas::lemma_relator_is_identity(data.base, relator_index as int);
+        if inverted {
+            lemma_equiv_symmetric(data.base,
+                data.base.relators[relator_index as int], empty_word());
+            crate::word::lemma_inverse_word_valid(
+                data.base.relators[relator_index as int], ng);
+            lemma_word_inverse_left(data.base, data.base.relators[relator_index as int]);
+        }
+        //  equiv(r, ε) in data.base
+        lemma_equiv_concat_left(data.base, r, empty_word(), h_s);
+        lemma_concat_identity_left(data.base, h_s);
+        lemma_equiv_transitive(data.base, concat(r, h_s), concat(empty_word(), h_s), h_s);
+        lemma_trivial_middle_preserves_syls(data, prefix, r, suffix);
+    } else {
+        //  HNN relator: Tier 2 forward/inverse
+        let j = (relator_index as int) - data.base.relators.len();
+        if !inverted {
+            //  Forward: r = hnn_relator(data, j)
+            lemma_hnn_relator_preserves(data, j, h_s, syls_s);
+            //  act(r, h_s, syls_s).1 == syls_s, .0 ≡ h_s
+        } else {
+            //  Inverse: r = inverse_word(hnn_relator(data, j))
+            lemma_hnn_relator_inverse_preserves(data, j, h_s, syls_s);
+        }
+        lemma_trivial_middle_preserves_syls(data, prefix, r, suffix);
+    }
+}
+
 /// Per-step preservation: a single derivation step preserves .1 of the action from (ε, []).
 /// Uses lemma_trivial_middle_preserves_syls after identifying prefix/middle/suffix
 /// and proving the middle acts trivially via Tiers 0-2.
@@ -7993,6 +8547,7 @@ proof fn lemma_single_step_preserves_syls(
                     apply_step(hnn_presentation(data), w, step).unwrap(),
                     empty_word(), Seq::<Syllable>::empty()).1,
 {
+    //  Dispatch to per-case helpers.
     let hp = hnn_presentation(data);
     let ng = data.base.num_generators;
     let ew = empty_word();
@@ -8000,11 +8555,41 @@ proof fn lemma_single_step_preserves_syls(
     let w_next = apply_step(hp, w, step).unwrap();
     reveal(presentation_valid);
 
-    //  For each step: identify prefix, middle, suffix such that
-    //  one of (w, w_next) = concat(prefix, suffix)
-    //  and the other = concat(prefix, concat(middle, suffix)).
-    //  Prove middle acts trivially, call lemma_trivial_middle_preserves_syls.
+    match step {
+        DerivationStep::FreeExpand { position, symbol } => {
+            if generator_index(symbol) < ng {
+                lemma_free_expand_base_preserves(data, w, position, symbol);
+            } else {
+                lemma_free_expand_stable_preserves(data, w, position, symbol);
+            }
+        },
+        DerivationStep::FreeReduce { position } => {
+            lemma_free_reduce_preserves(data, w, position);
+        },
+        DerivationStep::RelatorInsert { position, relator_index, inverted } => {
+            lemma_relator_insert_preserves(data, w, position, relator_index, inverted);
+        },
+        DerivationStep::RelatorDelete { position, relator_index, inverted } => {
+            //  Mirror of insert: w has the relator, w_next doesn't.
+            //  Call insert helper on w_next.
+            crate::britton_proof::lemma_step_preserves_word_valid(data, w, step);
+            let w_next_val = apply_step(hp, w, step).unwrap();
+            lemma_relator_insert_preserves(
+                data, w_next_val, position, relator_index, inverted);
+        },
+    }
+}
 
+//  OLD STALE CODE BELOW — to be removed once relator helpers are written
+proof fn lemma_single_step_preserves_syls_OLD(
+    data: HNNData, w: Word, step: DerivationStep,
+)
+    requires false,  //  dead code
+{
+    let hp = hnn_presentation(data);
+    let ng = data.base.num_generators;
+    let ew = empty_word();
+    let es = Seq::<Syllable>::empty();
     match step {
         DerivationStep::FreeExpand { position, symbol } => {
             //  w = prefix + suffix, w_next = prefix + [s, inv(s)] + suffix
@@ -8024,36 +8609,54 @@ proof fn lemma_single_step_preserves_syls(
                     implies symbol_valid(#[trigger] suffix[k], ng + 1)
                 by { assert(suffix[k] == w[pos + k]); }
             }
-            lemma_act_hnn_h_valid(data, suffix, ew, es);
             let (h_s, syls_s) = textbook_act_hnn(data, suffix, ew, es);
-            //  Middle = [s, inv(s)]. Base-only if s is base symbol.
-            assert forall|k: int| 0 <= k < middle.len()
-                implies !is_stable(data, #[trigger] middle[k])
-            by {
-                if generator_index(s) < ng {
-                } else {
-                    //  s is stable — Tier 1 needed
-                    //  PLACEHOLDER for stable pair case
-                }
-            }
-            lemma_textbook_base_only(data, middle, h_s, syls_s);
-            //  act(middle, h_s, syls_s) = (concat(middle, h_s), syls_s)
-            //  concat([s, inv(s)], h_s) ≡ h_s
-            let s_word: Word = Seq::new(1, |_i: int| s);
-            crate::word::lemma_inverse_word_valid(s_word, ng + 1);
-            lemma_word_inverse_right(hp, s_word);
-            lemma_equiv_concat_left(hp, concat(s_word, inverse_word(s_word)),
-                empty_word(), h_s);
-            lemma_concat_identity_left(hp, h_s);
-            //  word_valid for h_m
-            crate::word::lemma_concat_word_valid(middle, h_s, ng);
-            //  Call helper
             assert(word_valid(prefix, ng + 1)) by {
                 assert forall|k: int| 0 <= k < prefix.len()
                     implies symbol_valid(#[trigger] prefix[k], ng + 1)
                 by { assert(prefix[k] == w[k]); }
             }
-            lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+            //  Canonical state for Tier 1 calls
+            lemma_hnn_act_preserves_canonical(data, suffix, ew, es);
+            //  Split: base symbol vs stable letter
+            if generator_index(s) < ng {
+                //  Base pair: base_only + free cancellation
+                lemma_act_hnn_h_valid(data, suffix, ew, es);
+                assert forall|k: int| 0 <= k < middle.len()
+                    implies !is_stable(data, #[trigger] middle[k]) by {}
+                lemma_textbook_base_only(data, middle, h_s, syls_s);
+                let s_word: Word = Seq::new(1, |_i: int| s);
+                assert(word_valid(s_word, ng)) by {
+                    assert forall|k: int| 0 <= k < s_word.len()
+                        implies symbol_valid(#[trigger] s_word[k], ng) by {}
+                }
+                crate::word::lemma_inverse_word_valid(s_word, ng);
+                lemma_word_inverse_right(data.base, s_word);
+                lemma_equiv_concat_left(data.base,
+                    concat(s_word, inverse_word(s_word)), empty_word(), h_s);
+                lemma_concat_identity_left(data.base, h_s);
+                crate::word::lemma_concat_word_valid(middle, h_s, ng);
+                lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+            } else {
+                //  Stable pair: use Tier 1
+                //  middle = [Gen(ng), Inv(ng)] or [Inv(ng), Gen(ng)]
+                //  act(middle, h_s, syls_s) = psi_p(psi_p_inv(h_s, syls_s)) or vice versa
+                //  By Tier 1: .1 == syls_s, .0 ≡ h_s
+                if s == Symbol::Gen(ng) {
+                    //  [Gen, Inv]: R→L = psi_p_inv then psi_p = Tier 1a
+                    lemma_stable_pair_gen_inv(data, h_s, syls_s);
+                } else {
+                    //  [Inv, Gen]: R→L = psi_p then psi_p_inv = Tier 1b
+                    lemma_stable_pair_inv_gen(data, h_s, syls_s);
+                }
+                //  Connect act(middle) to the psi round-trip
+                assert(textbook_act_hnn(data, middle, h_s, syls_s)
+                    == textbook_act_hnn(data, middle, h_s, syls_s));  //  tautology for trigger
+                //  word_valid for h_m from canonical preservation
+                lemma_psi_p_preserves_canonical(data, h_s, syls_s);
+                lemma_psi_p_inv_preserves_canonical(data, h_s, syls_s);
+                lemma_act_hnn_h_valid(data, middle, h_s, syls_s);
+                lemma_trivial_middle_preserves_syls(data, prefix, middle, suffix);
+            }
         },
         DerivationStep::FreeReduce { position } => {
             //  w = prefix + [s, inv(s)] + suffix, w_next = prefix + suffix
