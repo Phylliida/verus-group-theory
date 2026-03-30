@@ -270,6 +270,25 @@ pub proof fn lemma_apply_embedding_valid(images: Seq<Word>, w: Word, n: nat)
     }
 }
 
+///  Helper: apply_embedding_symbol commutes with inverse_symbol.
+pub proof fn lemma_apply_embedding_symbol_inverse(images: Seq<Word>, sym: Symbol)
+    ensures
+        apply_embedding_symbol(images, inverse_symbol(sym))
+            =~= inverse_word(apply_embedding_symbol(images, sym)),
+{
+    match sym {
+        Symbol::Gen(_i) => {
+            //  apply_embedding_symbol(images, Inv(i)) = inverse_word(images[i])
+            //  inverse_word(apply_embedding_symbol(images, Gen(i))) = inverse_word(images[i])
+        },
+        Symbol::Inv(i) => {
+            //  apply_embedding_symbol(images, Gen(i)) = images[i]
+            //  inverse_word(apply_embedding_symbol(images, Inv(i))) = inverse_word(inverse_word(images[i]))
+            crate::word::lemma_inverse_involution(images[i as int]);
+        },
+    }
+}
+
 ///  apply_embedding commutes with inverse_word.
 pub proof fn lemma_apply_embedding_inverse(images: Seq<Word>, w: Word)
     ensures
@@ -278,37 +297,51 @@ pub proof fn lemma_apply_embedding_inverse(images: Seq<Word>, w: Word)
     decreases w.len(),
 {
     if w.len() == 0 {
+        assert(inverse_word(w) =~= empty_word());
+        assert(apply_embedding(images, w) =~= empty_word());
+        assert(inverse_word(empty_word()) =~= empty_word());
     } else {
         let sym = w.first();
         let rest = w.drop_first();
         let inv_sym_word = Seq::new(1, |_i: int| inverse_symbol(sym));
 
-        //  IH: apply_embedding(images, inverse_word(rest)) =~= inverse_word(apply_embedding(images, rest))
+        //  IH
         lemma_apply_embedding_inverse(images, rest);
 
-        //  Distribute embedding over inverse_word(w) = concat(inverse_word(rest), [inv_sym])
+        //  inverse_word(w) = concat(inverse_word(rest), [inverse_symbol(sym)])
+        assert(inverse_word(w) =~= concat(inverse_word(rest), inv_sym_word));
+
+        //  Distribute embedding over this concat
         lemma_apply_embedding_concat(images, inverse_word(rest), inv_sym_word);
 
-        //  Decompose: inverse_word(concat(A, B)) =~= concat(inverse_word(B), inverse_word(A))
+        //  Simplify apply_embedding(images, [inv_sym])
+        //  Need 2 levels: once for the singleton, once for its empty tail
+        reveal_with_fuel(apply_embedding, 2);
+        lemma_concat_empty_right(apply_embedding_symbol(images, inverse_symbol(sym)));
+        assert(apply_embedding(images, inv_sym_word)
+            =~= apply_embedding_symbol(images, inverse_symbol(sym)));
+
+        //  Key bridge: embedding of inverse_symbol = inverse of embedding
+        lemma_apply_embedding_symbol_inverse(images, sym);
+        assert(apply_embedding(images, inv_sym_word)
+            =~= inverse_word(apply_embedding_symbol(images, sym)));
+
+        //  Chain the LHS
+        assert(apply_embedding(images, inverse_word(w))
+            =~= concat(
+                apply_embedding(images, inverse_word(rest)),
+                apply_embedding(images, inv_sym_word)));
+        assert(apply_embedding(images, inverse_word(w))
+            =~= concat(
+                inverse_word(apply_embedding(images, rest)),
+                inverse_word(apply_embedding_symbol(images, sym))));
+
+        //  RHS: inverse_word(concat(emb_sym, emb_rest))
+        //     =~= concat(inverse_word(emb_rest), inverse_word(emb_sym))
         lemma_inverse_concat(
             apply_embedding_symbol(images, sym),
             apply_embedding(images, rest),
         );
-
-        //  Simplify apply_embedding(images, [inv_sym]) to apply_embedding_symbol(images, inv_sym)
-        assert(inv_sym_word.first() == inverse_symbol(sym));
-        assert(inv_sym_word.drop_first() =~= empty_word());
-        lemma_concat_empty_right(apply_embedding_symbol(images, inverse_symbol(sym)));
-
-        //  Bridge: apply_embedding_symbol(images, inverse_symbol(sym))
-        //      =~= inverse_word(apply_embedding_symbol(images, sym))
-        //  For Inv(i) case, need inverse_word involution
-        match sym {
-            Symbol::Gen(_i) => {},
-            Symbol::Inv(i) => {
-                crate::word::lemma_inverse_involution(images[i as int]);
-            },
-        }
     }
 }
 
