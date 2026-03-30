@@ -279,10 +279,36 @@ pub proof fn lemma_apply_embedding_inverse(images: Seq<Word>, w: Word)
 {
     if w.len() == 0 {
     } else {
+        let sym = w.first();
         let rest = w.drop_first();
+        let inv_sym_word = Seq::new(1, |_i: int| inverse_symbol(sym));
+
+        //  IH: apply_embedding(images, inverse_word(rest)) =~= inverse_word(apply_embedding(images, rest))
         lemma_apply_embedding_inverse(images, rest);
-        lemma_apply_embedding_concat(images,
-            inverse_word(rest), Seq::new(1, |_i: int| inverse_symbol(w.first())));
+
+        //  Distribute embedding over inverse_word(w) = concat(inverse_word(rest), [inv_sym])
+        lemma_apply_embedding_concat(images, inverse_word(rest), inv_sym_word);
+
+        //  Decompose: inverse_word(concat(A, B)) =~= concat(inverse_word(B), inverse_word(A))
+        lemma_inverse_concat(
+            apply_embedding_symbol(images, sym),
+            apply_embedding(images, rest),
+        );
+
+        //  Simplify apply_embedding(images, [inv_sym]) to apply_embedding_symbol(images, inv_sym)
+        assert(inv_sym_word.first() == inverse_symbol(sym));
+        assert(inv_sym_word.drop_first() =~= empty_word());
+        lemma_concat_empty_right(apply_embedding_symbol(images, inverse_symbol(sym)));
+
+        //  Bridge: apply_embedding_symbol(images, inverse_symbol(sym))
+        //      =~= inverse_word(apply_embedding_symbol(images, sym))
+        //  For Inv(i) case, need inverse_word involution
+        match sym {
+            Symbol::Gen(_i) => {},
+            Symbol::Inv(i) => {
+                crate::word::lemma_inverse_involution(images[i as int]);
+            },
+        }
     }
 }
 
@@ -295,10 +321,22 @@ pub proof fn lemma_apply_embedding_concat(images: Seq<Word>, w1: Word, w2: Word)
 {
     if w1.len() == 0 {
         assert(concat(w1, w2) =~= w2);
+        assert(apply_embedding(images, w1) =~= empty_word());
+        lemma_concat_empty_left(apply_embedding(images, w2));
     } else {
+        let sym = w1.first();
         let w1_rest = w1.drop_first();
+        //  Help Z3 see the structure of concat(w1, w2)
+        assert(concat(w1, w2).len() > 0);
+        assert(concat(w1, w2).first() == sym);
+        assert(concat(w1, w2).drop_first() =~= concat(w1_rest, w2));
+        //  IH: apply_embedding distributes over concat(w1_rest, w2)
         lemma_apply_embedding_concat(images, w1_rest, w2);
-        //  Z3 should unfold apply_embedding and see the mapped seqs match.
+        //  Now use associativity of concat
+        let a = apply_embedding_symbol(images, sym);
+        let b = apply_embedding(images, w1_rest);
+        let c = apply_embedding(images, w2);
+        lemma_concat_assoc(a, b, c);
     }
 }
 
